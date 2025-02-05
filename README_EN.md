@@ -77,3 +77,4 @@ This project welcomes sponsorship. Your support is very important to me!
 - Bilibili: [umaru今天吃什么](https://space.bilibili.com/209397245)
 - Thank you for your support and usage!  
   ![qrcode.jpg](img%2Fqrcode.jpg)
+- Thanks
