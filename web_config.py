@@ -88,7 +88,7 @@ def index():
             'ROBOT_WX_NAME':{
                 'value': config.get('ROBOT_WX_NAME', ''),
                 'description': config_descriptions['ROBOT_WX_NAME']
-            }
+            },
         },
         '对话配置': {
             'MAX_TOKEN': {
@@ -135,8 +135,16 @@ def index():
                 'value': config.get('TEMP_IMAGE_DIR', 'temp_images'),
                 'description': config_descriptions['TEMP_IMAGE_DIR']
             }
+        },# 在config_groups字典中添加自动通过好友配置项
+
+    # ...原有配置组...
+    '好友设置': {
+        'AUTO_ACCEPT_FRIEND': {
+            'value': config.get('AUTO_ACCEPT_FRIEND', True),
+            'description': '是否自动通过好友请求'
         }
     }
+}
     return render_template('config.html', config_groups=config_groups)
 
 @app.route('/save', methods=['POST'])
