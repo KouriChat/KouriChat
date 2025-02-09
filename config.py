@@ -1,8 +1,8 @@
 # 用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！)
 # 例如：LISTEN_LIST = ['用户1','用户2','群名']
-LISTEN_LIST = ['请配置要和bot说话的账号的昵称或者群名，不要写备注！']
+LISTEN_LIST = ['']
 # 机器人的微信名称，如'亚托莉'
-ROBOT_WX_NAME = '亚托莉'
+ROBOT_WX_NAME = ''
 # DeepSeek API 配置
 # 填你的秘钥
 DEEPSEEK_API_KEY = 'sk-'
@@ -41,5 +41,14 @@ EMOJI_DIR = 'emojis'
 #语音配置（请配置自己的tts服务，用GPT-SoVITS-Inference和自己训练的语音模型，不会去b站上搜索）
 TTS_API_URL = 'http://127.0.0.1:5000/tts'
 VOICE_DIR = 'voices'  # 语音文件临时存储目录
+
+# 自动消息配置
+AUTO_MESSAGE = "请你模拟一个暗恋对象，在微信上找对方发消息想知道对方在做什么"
+MIN_COUNTDOWN_HOURS = 1  # 最小倒计时时间（小时）
+MAX_COUNTDOWN_HOURS = 3  # 最大倒计时时间（小时）
+
+# 消息发送时间限制
+QUIET_TIME_START = "22:00"  # 安静时间开始
+QUIET_TIME_END = "08:00"    # 安静时间结束
 
 

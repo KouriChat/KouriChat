@@ -10,7 +10,9 @@ from database import Session, ChatMessage
 from config import (
     DEEPSEEK_API_KEY, MAX_TOKEN, ROBOT_WX_NAME, TEMPERATURE, MODEL, DEEPSEEK_BASE_URL, LISTEN_LIST,
     IMAGE_MODEL, TEMP_IMAGE_DIR, MAX_GROUPS, PROMPT_NAME, EMOJI_DIR, TTS_API_URL, VOICE_DIR,
-    MOONSHOT_API_KEY, MOONSHOT_BASE_URL, MOONSHOT_TEMPERATURE
+    MOONSHOT_API_KEY, MOONSHOT_BASE_URL, MOONSHOT_TEMPERATURE,
+    AUTO_MESSAGE, MIN_COUNTDOWN_HOURS, MAX_COUNTDOWN_HOURS,
+    QUIET_TIME_START, QUIET_TIME_END
 )
 from wxauto import WeChat
 from openai import OpenAI
@@ -47,6 +49,11 @@ user_queues = {}  # 用户消息队列管理
 queue_lock = threading.Lock()  # 队列访问锁
 chat_contexts = {}  # 存储上下文
 
+# 添加新的全局变量
+last_chat_time = None  # 最后一次聊天时间
+countdown_timer = None  # 倒计时定时器
+is_countdown_running = False  # 倒计时运行状态标志
+
 # 读取文件内容到变量
 with open(file_path, "r", encoding="utf-8") as file:
     prompt_content = file.read()
@@ -66,7 +73,7 @@ IMAGE_API_URL = f"{DEEPSEEK_BASE_URL}/images/generations"  # 需要在config.py�
 temp_dir = os.path.join(root_dir, TEMP_IMAGE_DIR)
 if not os.path.exists(temp_dir):
     os.makedirs(temp_dir)
-
+#保存聊天记录到数据库
 def save_message(sender_id, sender_name, message, reply):
     # 保存聊天记录到数据库
     try:
@@ -83,7 +90,7 @@ def save_message(sender_id, sender_name, message, reply):
     except Exception as e:
         print(f"保存消息失败: {str(e)}")
 
-
+#调用api生成图片
 def generate_image(prompt: str) -> Optional[str]:
     """
     调用API生成图片，保存到临时目录并返回路径
@@ -125,7 +132,7 @@ def generate_image(prompt: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"图像生成失败: {str(e)}")
         return None
-
+#判断是否需要图像生成
 def is_image_generation_request(text: str) -> bool:
     """
     判断是否为图像生成请求
@@ -189,7 +196,7 @@ def is_image_generation_request(text: str) -> bool:
         return True
     
     return False
-
+#表情包选取模块
 def is_emoji_request(text: str) -> bool:
     """
     判断是否为表情包请求
@@ -211,7 +218,7 @@ def is_emoji_request(text: str) -> bool:
         return True
         
     return False
-
+#表情包模块
 def get_random_emoji() -> Optional[str]:
     """
     从表情包目录随机获取一个表情包
@@ -233,7 +240,7 @@ def get_random_emoji() -> Optional[str]:
     except Exception as e:
         logger.error(f"获取表情包失败: {str(e)}")
         return None
-
+#文生图功能
 def get_deepseek_response(message, user_id):
     try:
         # 检查是否为图像生成请求
@@ -283,6 +290,9 @@ def get_deepseek_response(message, user_id):
         print(f"API响应 - 用户ID: {user_id}")
         print(f"响应内容: {reply}")
 
+        # 更新最后聊天时间
+        update_last_chat_time()
+        
         with queue_lock:
             chat_contexts[user_id].append({"role": "assistant", "content": reply})
             
@@ -292,6 +302,7 @@ def get_deepseek_response(message, user_id):
         logger.error(f"DeepSeek调用失败: {str(e)}", exc_info=True)
         return "抱歉主人，刚刚不小心睡着了..."
 
+#判断是否需要语音
 def is_voice_request(text: str) -> bool:
     """
     判断是否为语音请求，减少语音关键词，避免误判
@@ -299,7 +310,7 @@ def is_voice_request(text: str) -> bool:
     voice_keywords = ["语音"]
     return any(keyword in text for keyword in voice_keywords)
 
-
+#语音模块
 def generate_voice(text: str) -> Optional[str]:
     """
     调用TTS API生成语音
@@ -330,15 +341,15 @@ def generate_voice(text: str) -> Optional[str]:
         logger.error(f"语音生成失败: {str(e)}")
         return None
 
-def process_user_messages(user_id):
+def process_user_messages(chat_id):
     with queue_lock:
-        if user_id not in user_queues:
+        if chat_id not in user_queues:
             return
-        user_data = user_queues.pop(user_id)
+        user_data = user_queues.pop(chat_id)
         messages = user_data['messages']
         sender_name = user_data['sender_name']
         username = user_data['username']
-        recipient_id = user_data.get('chat_id', user_id)
+        is_group = user_data.get('is_group', False)  # 获取是否为群聊标记
 
     # 优化消息合并逻辑，只保留最后5条消息
     messages = messages[-5:]  # 限制处理的消息数量
@@ -348,25 +359,29 @@ def process_user_messages(user_id):
     try:
         # 首先检查是否为语音请求
         if is_voice_request(merged_message):
-            # 获取API回复并生成语音
-            reply = get_deepseek_response(merged_message, user_id)
+            reply = get_deepseek_response(merged_message, chat_id)
             if "</think>" in reply:
                 reply = reply.split("</think>", 1)[1].strip()
             
             voice_path = generate_voice(reply)
             if voice_path:
                 try:
-                    wx.SendFiles(filepath=voice_path, who=user_id)
+                    wx.SendFiles(filepath=voice_path, who=chat_id)
                 except Exception as e:
                     logger.error(f"发送语音失败: {str(e)}")
-                    wx.SendMsg(msg=reply, who=user_id)
+                    # 在群聊中需要@发送者
+                    if is_group:
+                        reply = f"@{sender_name} {reply}"
+                    wx.SendMsg(msg=reply, who=chat_id)
                 finally:
                     try:
                         os.remove(voice_path)
                     except Exception as e:
                         logger.error(f"删除临时语音文件失败: {str(e)}")
             else:
-                wx.SendMsg(msg=reply, who=user_id)
+                if is_group:
+                    reply = f"@{sender_name} {reply}"
+                wx.SendMsg(msg=reply, who=chat_id)
             
             # 异步保存消息记录
             threading.Thread(target=save_message, args=(username, sender_name, merged_message, reply)).start()
@@ -377,12 +392,12 @@ def process_user_messages(user_id):
             emoji_path = get_random_emoji()
             if emoji_path:
                 try:
-                    wx.SendFiles(filepath=emoji_path, who=user_id)
+                    wx.SendFiles(filepath=emoji_path, who=chat_id)
                 except Exception as e:
                     logger.error(f"发送表情包失败: {str(e)}")
 
         # 获取API回复（只调用一次）
-        reply = get_deepseek_response(merged_message, user_id)
+        reply = get_deepseek_response(merged_message, chat_id)
         if "</think>" in reply:
             reply = reply.split("</think>", 1)[1].strip()
 
@@ -393,11 +408,13 @@ def process_user_messages(user_id):
             logger.info(f"准备发送图片: {img_path}")
             if os.path.exists(img_path):
                 try:
-                    wx.SendFiles(filepath=img_path, who=user_id)
+                    wx.SendFiles(filepath=img_path, who=chat_id)
                     logger.info(f"图片发送成功: {img_path}")
                     text_msg = reply.split('[/IMAGE]')[1].strip()
                     if text_msg:
-                        wx.SendMsg(msg=text_msg, who=user_id)
+                        if is_group:
+                            text_msg = f"@{sender_name} {text_msg}"
+                        wx.SendMsg(msg=text_msg, who=chat_id)
                 except Exception as e:
                     logger.error(f"发送图片失败: {str(e)}")
                 finally:
@@ -408,16 +425,22 @@ def process_user_messages(user_id):
                         logger.error(f"删除临时图片失败: {str(e)}")
             else:
                 logger.error(f"图片文件不存在: {img_path}")
-                wx.SendMsg(msg="抱歉，图片生成失败了...", who=user_id)
+                error_msg = "抱歉，图片生成失败了..."
+                if is_group:
+                    error_msg = f"@{sender_name} {error_msg}"
+                wx.SendMsg(msg=error_msg, who=chat_id)
         elif '\\' in reply:
             parts = [p.strip() for p in reply.split('\\') if p.strip()]
-            for idx,part in enumerate(parts):
-                if idx == 0 and recipient_id != user_id:
-                    part = f"@{sender_name} {part}"
-                wx.SendMsg(msg=part, who=user_id)
+            for idx, part in enumerate(parts):
+                if is_group:
+                    if idx == 0:
+                        part = f"@{sender_name} {part}"
+                wx.SendMsg(msg=part, who=chat_id)
                 time.sleep(random.randint(2,4))
         else:
-            wx.SendMsg(msg=reply, who=user_id)
+            if is_group:
+                reply = f"@{sender_name} {reply}"
+            wx.SendMsg(msg=reply, who=chat_id)
             
     except Exception as e:
         logger.error(f"发送回复失败: {str(e)}")
@@ -469,9 +492,10 @@ def message_listener():
                         # 只输出实际的消息内容
                         # 接收窗口名跟发送人一样，代表是私聊，否则是群聊
                         if who == msg.sender:
-                            handle_wxauto_message(msg,msg.sender) # 处理私聊信息
+                            handle_wxauto_message(msg, msg.sender) # 处理私聊信息
                         elif ROBOT_WX_NAME != '' and bool(re.search(f'@{ROBOT_WX_NAME}\u2005', msg.content)): 
-                            handle_wxauto_message(msg,who) # 处理群聊信息，只有@当前机器人才会处理
+                            # 修改：在群聊被@时，传入群聊ID(who)作为回复目标
+                            handle_wxauto_message(msg, who, is_group=True) # 处理群聊信息，只有@当前机器人才会处理
                         # TODO(jett): 这里看需要要不要打日志，群聊信息太多可能日志会很多    
                         else:
                             logger.debug(f"非需要处理消息，可能是群聊非@消息: {content}")   
@@ -517,11 +541,16 @@ def recognize_image_with_moonshot(image_path):
         print(f"调用Moonshot AI识别图片失败: {str(e)}")
         return ""
 
-def handle_wxauto_message(msg,chatName):
+def handle_wxauto_message(msg, chatName, is_group=False):
     try:
         username = msg.sender  # 获取发送者的昵称或唯一标识
         content = getattr(msg, 'content', None) or getattr(msg, 'text', None)  # 获取消息内容
         img_path = None  # 初始化图片路径
+        
+        # 如果是群聊@消息，移除@机器人的部分
+        if is_group and ROBOT_WX_NAME and content:
+            content = re.sub(f'@{ROBOT_WX_NAME}\u2005', '', content).strip()
+        
         if content and content.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
             img_path = content  # 如果消息内容是图片路径，则赋值给img_path
             content = None  # 将内容置为空，因为我们只处理图片
@@ -540,21 +569,22 @@ def handle_wxauto_message(msg,chatName):
         time_aware_content = f"[{current_time}] {content}"
 
         with queue_lock:
-            if username not in user_queues:
+            if chatName not in user_queues:
                 # 减少等待时间为5秒
-                user_queues[username] = {
-                    'timer': threading.Timer(5.0, process_user_messages, args=[username]),
+                user_queues[chatName] = {
+                    'timer': threading.Timer(5.0, process_user_messages, args=[chatName]),
                     'messages': [time_aware_content],
                     'sender_name': sender_name,
-                    'username': username
+                    'username': username,
+                    'is_group': is_group  # 添加群聊标记
                 }
-                user_queues[username]['timer'].start()
+                user_queues[chatName]['timer'].start()
             else:
                 # 重置现有定时器
-                user_queues[username]['timer'].cancel()
-                user_queues[username]['messages'].append(time_aware_content)
-                user_queues[username]['timer'] = threading.Timer(5.0, process_user_messages, args=[username])
-                user_queues[username]['timer'].start()
+                user_queues[chatName]['timer'].cancel()
+                user_queues[chatName]['messages'].append(time_aware_content)
+                user_queues[chatName]['timer'] = threading.Timer(5.0, process_user_messages, args=[chatName])
+                user_queues[chatName]['timer'].start()
 
     except Exception as e:
         print(f"消息处理失败: {str(e)}")
@@ -617,6 +647,92 @@ def cleanup_temp_dir():
     except Exception as e:
         logger.error(f"清理临时目录失败: {str(e)}")
 
+#更新最后聊天时间
+def update_last_chat_time():
+    """
+    更新最后一次聊天时间
+    """
+    global last_chat_time
+    last_chat_time = datetime.now()
+    logger.info(f"更新最后聊天时间: {last_chat_time}")
+
+def is_quiet_time() -> bool:
+    """
+    检查当前是否在安静时间段内
+    """
+    try:
+        current_time = datetime.now().time()
+        quiet_start = datetime.strptime(QUIET_TIME_START, "%H:%M").time()
+        quiet_end = datetime.strptime(QUIET_TIME_END, "%H:%M").time()
+        
+        if quiet_start <= quiet_end:
+            # 如果安静时间不跨天
+            return quiet_start <= current_time <= quiet_end
+        else:
+            # 如果安静时间跨天（比如22:00到次日08:00）
+            return current_time >= quiet_start or current_time <= quiet_end
+    except Exception as e:
+        logger.error(f"检查安静时间出错: {str(e)}")
+        return False  # 出错时默认不在安静时间
+
+def get_random_countdown_time():
+    """
+    获取随机倒计时时间（以秒为单位）
+    """
+    return random.randint(
+        MIN_COUNTDOWN_HOURS * 3600,
+        MAX_COUNTDOWN_HOURS * 3600
+    )
+
+def auto_send_message():
+    """
+    模拟发送消息到API
+    """
+    # 检查是否在安静时间
+    if is_quiet_time():
+        logger.info("当前处于安静时间，跳过自动发送消息")
+        start_countdown()  # 重新开始倒计时
+        return
+        
+    # 从listen_list中随机选择一个聊天对象
+    if listen_list:
+        user_id = random.choice(listen_list)
+        logger.info(f"自动发送消息到 {user_id}: {AUTO_MESSAGE}")
+        try:
+            reply = get_deepseek_response(AUTO_MESSAGE, user_id)
+            if reply:
+                if '\\' in reply:
+                    parts = [p.strip() for p in reply.split('\\') if p.strip()]
+                    for part in parts:
+                        wx.SendMsg(msg=part, who=user_id)
+                        time.sleep(random.randint(2, 4))
+                else:
+                    wx.SendMsg(msg=reply, who=user_id)
+            start_countdown()  # 重新开始倒计时
+        except Exception as e:
+            logger.error(f"自动发送消息失败: {str(e)}")
+            start_countdown()  # 即使失败也重新开始倒计时
+    else:
+        logger.error("没有可用的聊天对象")
+        start_countdown()  # 没有聊天对象时也重新开始倒计时
+
+def start_countdown():
+    """
+    开始新的倒计时
+    """
+    global countdown_timer, is_countdown_running
+    
+    if countdown_timer:
+        countdown_timer.cancel()
+    
+    countdown_seconds = get_random_countdown_time()
+    logger.info(f"开始新的倒计时: {countdown_seconds/3600:.2f}小时")
+    
+    countdown_timer = threading.Timer(countdown_seconds, auto_send_message)
+    countdown_timer.daemon = True  # 设置为守护线程
+    countdown_timer.start()
+    is_countdown_running = True
+
 def main():
     try:
         # 清理临时目录
@@ -628,11 +744,14 @@ def main():
             print("微信初始化失败，请确保微信已登录并保持在前台运行!")
             return
 
-        # 启动监听线程
+        # 启动消息监听线程
         print("启动消息监听...")
         listener_thread = threading.Thread(target=message_listener)
         listener_thread.daemon = True
         listener_thread.start()
+
+        # 启动倒计时
+        start_countdown()
 
         # 主循环
         while True:
@@ -652,6 +771,9 @@ def main():
     except Exception as e:
         logger.error(f"主程序异常: {str(e)}")
     finally:
+        # 清理倒计时
+        if countdown_timer:
+            countdown_timer.cancel()
         print("程序退出")
 
 
