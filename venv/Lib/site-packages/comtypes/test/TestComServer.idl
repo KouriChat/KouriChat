@@ -1,0 +1,101 @@
+/*
+b30428b4-cc67-48ba-81db-4c6a6b3db1a3
+*/
+
+/*
+
+  REMEMBER TO COMPILE A NEW .TLB FILE WHEN THIS CHANGES,
+  AND ALSO TO REMOVE THE comtypes\gen DIRECTORY TO DELETE
+  THE TYPELIB WRAPPERS!
+  The TestServer.py should also be registered again.
+
+*/
+
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+	object,
+	oleautomation,
+	uuid(f0a241e2-25d1-4f6d-9461-c67bf262779f),
+	helpstring("A custom event interface")
+	]
+interface ITestComServerEvents : IUnknown {
+	[id(10)]
+	HRESULT EvalStarted([in] BSTR what);
+
+	[id(11)]
+	HRESULT EvalCompleted([in] BSTR what, [in] VARIANT result);
+};
+
+[
+	object,
+	/*
+	  the oleautomation flag enables universal marshalling on non-dispatch
+	  interfaces. See Don Box, Page 220.
+	*/
+	oleautomation,
+	uuid(58955c76-60a9-4eeb-8b8a-8f92e90d0fe7),
+	helpstring("ITestComServer interface")
+	]
+interface ITestComServer : IDispatch {
+	[propget, id(10), helpstring("returns the id of the server")]
+	HRESULT id([out, retval] UINT *pid);
+
+	[propget, id(11), helpstring("the name of the server")]
+	HRESULT name([out, retval] BSTR *pname);
+
+	[propput, id(11), helpstring("the name of the server")]
+	HRESULT name([in] BSTR name);
+
+	[id(12), helpstring("a method that receives an BSTR [in] parameter")]
+	HRESULT SetName([in] BSTR name);
+
+	[id(13), helpstring("evaluate an expression and return the result")]
+	HRESULT eval([in] BSTR what, [out, retval] VARIANT *presult);
+
+	/* Some methods that use defaultvalues */
+	[id(14)]
+	HRESULT do_cy([in, defaultvalue(32.78)] CURRENCY *value);
+
+	[id(15)]
+	HRESULT do_date([in, defaultvalue(32)] DATE *value);
+
+	[id(16), helpstring("execute a statement")]
+	HRESULT Exec([in] BSTR what);
+
+	[id(17), helpstring("execute a statement")]
+	HRESULT Exec2([in] BSTR what);
+
+	[id(18), helpstring("a method with [in] and [out] args in mixed order")]
+	HRESULT MixedInOut([in] int a, [out] int *b, [in] int c, [out] int *d);
+};
+
+[
+	uuid(5a3e1d1d-947a-44ac-9b03-5c37d5f5fffc),
+	version(1.0),
+	helpstring("TestComServer 1.0 Type library")
+	]
+library TestComServerLib
+{
+	importlib("stdole2.tlb");
+
+	typedef
+		[
+			uuid(086b7f11-aed0-4de0-b77a-f1998371da83)
+			]
+		struct MYCOLOR {
+			double red;
+			double green;
+			double blue;
+		} MYCOLOR;
+
+	[
+		uuid(1fca61d1-a1a6-464c-b3a8-e9508b4ac8f7),
+		helpstring("TestComServer class object")
+		]
+		coclass TestComServer {
+		[default] interface ITestComServer;
+		[default, source] interface ITestComServerEvents;
+	};
+};

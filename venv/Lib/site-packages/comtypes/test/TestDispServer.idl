@@ -1,0 +1,79 @@
+/*
+  2882fa40-2d69-4880-8073-e81fa29e1785
+  7ae4b0e3-5d92-4ab1-b5d0-2a95c1c3ba73
+  f557bf87-3e3f-4c73-9bc1-7d633d83714b
+*/
+
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+	uuid(3b3b2a10-7fef-4bcc-90fe-43a221162b1b),
+	helpstring("A custom event interface")
+	]
+dispinterface DTestDispServerEvents {
+  properties:
+
+  methods:
+	[id(10)]
+	void EvalStarted([in] BSTR what);
+
+	[id(11)]
+	void EvalCompleted([in] BSTR what, [in] VARIANT result);
+};
+
+[
+	uuid(d44d11ba-aa1f-4e93-8f5a-8fa0a4715241),
+	helpstring("DTestDispServer interface")
+	]
+dispinterface DTestDispServer {
+  properties:
+	[readonly, id(10), helpstring("the id of the server")]
+		UINT id;
+
+	[id(11), helpstring("the name of the server")]
+		BSTR name;
+
+  methods:
+
+	[id(12), helpstring("a method that receives an BSTR [in] parameter")]
+		void SetName([in] BSTR name);
+
+	[id(13), helpstring("evaluate an expression and return the result")]
+		VARIANT eval([in] BSTR what);
+
+	[id(14), helpstring("evaluate an expression and return the result")]
+		VARIANT eval2([in] BSTR what);
+
+	[id(16), helpstring("execute a statement")]
+		void Exec([in] BSTR what);
+
+	[id(17), helpstring("execute a statement")]
+		void Exec2([in] BSTR what);
+
+	/* Some methods that use defaultvalues */
+	[id(100)]
+		void do_cy([in, defaultvalue(32.78)] CURRENCY *value);
+
+	[id(101)]
+		void do_date([in, defaultvalue(32)] DATE *value);
+};
+
+[
+	uuid(6baa1c79-4ba0-47f2-9ad7-d2ffb1c0f3e3),
+	version(1.0),
+	helpstring("TestDispServer 1.0 Type library")
+	]
+library TestDispServerLib
+{
+	importlib("stdole2.tlb");
+
+	[
+		uuid(bb2aba53-9d42-435b-acc3-ae2c274517b0),
+		helpstring("TestDispServer class object")
+		]
+		coclass TestDispServer {
+		[default] dispinterface DTestDispServer;
+		[default, source] dispinterface DTestDispServerEvents;
+	};
+};

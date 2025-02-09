@@ -1,0 +1,40 @@
+import "oaidl.idl";
+                    import "ocidl.idl";
+                    [uuid(f4f74946-4546-44bd-a073-9ea6f9fe78cb)] library TestLib {
+[object,
+                        oleautomation,
+                        dual,
+                        uuid(ed978f5f-cc45-4fcc-a7a6-751ffa8dfedd)]
+                        interface IMyInterface : IDispatch {
+[id(100), propget] HRESULT Name([out, retval] BSTR *pname);
+               [id(100), propput] HRESULT Name([in] BSTR name);
+[id(101)] HRESULT MixedInOut([in] int a, [out] int *b, [in] int c, [out] int *d);
+[id(102)] HRESULT MultiInOutArgs([in, out] int *pa, [in, out] int *pb);
+HRESULT MultiInOutArgs2([in, out] int *pa, [out] int *pb);
+HRESULT MultiInOutArgs3([out] int *pa, [out] int *pb);
+HRESULT MultiInOutArgs4([out] int *pa, [in, out] int *pb);
+HRESULT GetStackTrace([in] ULONG FrameOffset,
+                                     [in, out] INT *Frames,
+                                     [in] ULONG FramesSize,
+                                     [out, optional] ULONG *FramesFilled);
+HRESULT dummy([in] SAFEARRAY(VARIANT *) foo);
+HRESULT DoSomething();
+HRESULT DoSomethingElse();
+}
+
+[object,
+                             oleautomation,
+                             dual,
+                             uuid(f7c48a90-64ea-4bb8-abf1-b3a3aa996848)]
+                             interface IMyEventInterface : IDispatch {
+[id(103)] HRESULT OnSomething();
+[id(104)] HRESULT OnSomethingElse([out, retval] int *px);
+}
+
+
+[uuid(fa9de8f4-20de-45fc-b079-648572428817)]
+coclass MyServer {
+    [default] interface IMyInterface;
+    [default, source] interface IMyEventInterface;
+};
+}

@@ -1,0 +1,2 @@
+[console_scripts]
+clear_comtypes_cache = comtypes.clear_cache:main

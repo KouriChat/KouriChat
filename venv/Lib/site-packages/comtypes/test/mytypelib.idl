@@ -1,0 +1,99 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+typedef
+[
+	uuid(0a411e93-aeb0-4b84-8722-b237a1b87ba1)
+	]
+struct Pair {
+	double a;
+	double b;
+} Pair;
+
+typedef
+[
+	uuid(00b7e135-f7a3-42f8-b65b-ecd106b3c17d)
+	]
+struct Point {
+	double x;
+	double y;
+} Point;
+
+[
+	object,
+	/*
+	  the oleautomation flag enables universal marshalling on non-dispatch
+	  interfaces. See Don Box, Page 220.
+	*/
+	oleautomation,
+	uuid(368ce4db-5f87-4927-b134-2a955c1dea1f),
+	]
+interface IMyInterface : IUnknown {
+	[propget, id(10), helpstring("returns the id of the server")]
+	HRESULT id([out, retval] UINT *pid);
+
+	[propget, id(11), helpstring("the name of the server")]
+	HRESULT name([out, retval] BSTR *pname);
+
+	[propput, id(11), helpstring("the name of the server")]
+	HRESULT name([in] BSTR name);
+
+	[id(12), helpstring("a method that receives an BSTR [in] parameter")]
+	HRESULT SetName([in] BSTR name);
+
+	[id(13), helpstring("evaluate an expression and return the result")]
+	HRESULT eval([in] BSTR what, [out, retval] VARIANT *presult);
+
+	/* Some methods that use defaultvalues */
+	[id(14)]
+	HRESULT do_cy([in, defaultvalue(32.78)] CURRENCY *value);
+
+	[id(15)]
+	HRESULT do_date([in, defaultvalue(32)] DATE *value);
+
+	[id(16), helpstring("execute a statement")]
+	HRESULT Exec([in] BSTR what);
+
+	[helpstring("execute a statement")]
+	HRESULT Exec2([in] BSTR what);
+
+	[helpstring("a method with [in] and [out] args in mixed order")]
+	HRESULT MixedInOut([in] int a, [out] int *b, [in] int c, [out] int *d);
+
+	[helpstring("a method that receives and returns SAFEARRAYs of pairs")]
+	HRESULT TestPairArray([in] SAFEARRAY(Pair) val, [out, retval] SAFEARRAY(Pair) *result);
+
+	[helpstring("a method that receives and returns SAFEARRAYs of pairs")]
+	HRESULT TestPairArray2([in] SAFEARRAY(Pair) val, [out, retval] SAFEARRAY(Pair) *result);
+
+	[helpstring("a method that receives and returns SAFEARRAYs of points")]
+	HRESULT TestPointArray([in] SAFEARRAY(Point) val, [out, retval] SAFEARRAY(Point) *result);
+
+	[local, helpstring("...")]
+	LONG Test([in] int value, [out, retval] int *result);
+
+	HRESULT MultiInOutArgs([in, out] int *pa,
+			       [in, out] int *pb,
+			       [in, out] int *pc);
+
+	HRESULT MultiOutArgs2([in, out] int *pa,
+			      [in, out] int *pb,
+			      [out, retval] int *pc);
+
+};
+
+[
+	uuid(6a237363-015c-4ded-937e-7e4d80b0a6cf),
+	version(1.0),
+	]
+library MyTypeLib
+{
+	importlib("stdole2.tlb");
+
+	[
+		uuid(08420058-ef6b-4884-9c78-14e73dfaf767),
+		]
+		coclass MyComServer {
+		[default] interface IMyInterface;
+	};
+};
