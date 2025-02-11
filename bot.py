@@ -91,6 +91,55 @@ def save_message(sender_id, sender_name, message, reply):
         session.close()
     except Exception as e:
         print(f"保存消息失败: {str(e)}")
+def master_cofig(message: str) -> tuple[bool, str]:
+    """
+    判断是否为主人配置命令,并返回相应回复
+    
+    Args:
+        message: 用户发送的消息
+        
+    Returns:
+        tuple: (是否为配置命令, 回复消息)
+    """
+    global prompt_content
+
+    # 主人配置关键词与对应回复
+    master_commands = {
+        "/help": """1. 切换角色 - 使用/prompt xxx.md来切换AI角色"""
+    }
+    
+    # 检查是否是prompt切换命令
+    if message.startswith("/prompt"):
+        try:
+            # 获取提示词文件名
+            prompt_file = message.split(" ")[1].strip()
+            # 拼接完整路径
+            prompt_path = os.path.join(root_dir, "prompts", prompt_file)
+            
+            # 检查文件是否存在
+            if not os.path.exists(prompt_path):
+                return True, f"提示词文件 {prompt_file} 不存在!"
+                
+            # 读取新的提示词文件
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                prompt_content = f.read()
+                
+            # 清空所有用户的对话上下文
+            chat_contexts.clear()
+            
+            return True, f"已成功切换到 {prompt_file} 角色设定"
+            
+        except Exception as e:
+            logger.error(f"切换提示词失败: {str(e)}")
+            return True, "切换角色失败,请检查命令格式是否正确(/prompt xxx.md)"
+    
+    # 检查其他命令
+    for command, reply in master_commands.items():
+        if command in message:
+            return True, reply
+            
+    return False, ""
+
 # 判断是否需要随机图像
 def is_random_image_request(message: str) -> bool:
     """检查消息是否为请求图片的模式"""
@@ -354,7 +403,7 @@ def get_deepseek_response(message, user_id):
                 stream=False
             )
         except Exception as api_error:
-            logger.error(f"API调用失败: {str(api_error)}")
+            logger.error(f"API调用失败: {api_error}")
             return "抱歉主人，我现在有点累，请稍后再试..."
 
         if not response.choices:
@@ -450,7 +499,7 @@ def process_user_messages(chat_id):
                     wx.SendFiles(filepath=voice_path, who=chat_id)
                     cleanup_wxauto_files()  # 添加清理
                 except Exception as e:
-                    logger.error(f"发送语音失败: {str(e)}")
+                    logger.error(f"发送语音失败: {e}")
                     if is_group:
                         reply = f"@{sender_name} {reply}"
                     wx.SendMsg(msg=reply, who=chat_id)
@@ -458,7 +507,7 @@ def process_user_messages(chat_id):
                     try:
                         os.remove(voice_path)
                     except Exception as e:
-                        logger.error(f"删除临时语音文件失败: {str(e)}")
+                        logger.error(f"删除临时语音文件失败: {e}")
             else:
                 if is_group:
                     reply = f"@{sender_name} {reply}"
@@ -475,7 +524,7 @@ def process_user_messages(chat_id):
                 try:
                     wx.SendFiles(filepath=emoji_path, who=chat_id)
                 except Exception as e:
-                    logger.error(f"发送表情包失败: {str(e)}")
+                    logger.error(f"发送表情包失败: {e}")
 
         # 获取API回复（只调用一次）
         reply = get_deepseek_response(merged_message, chat_id)
@@ -498,13 +547,13 @@ def process_user_messages(chat_id):
                             text_msg = f"@{sender_name} {text_msg}"
                         wx.SendMsg(msg=text_msg, who=chat_id)
                 except Exception as e:
-                    logger.error(f"发送图片失败: {str(e)}")
+                    logger.error(f"发送图片失败: {e}")
                 finally:
                     try:
                         os.remove(img_path)
                         logger.info(f"已删除临时图片: {img_path}")
                     except Exception as e:
-                        logger.error(f"删除临时图片失败: {str(e)}")
+                        logger.error(f"删除临时图片失败: {e}")
             else:
                 logger.error(f"图片文件不存在: {img_path}")
                 error_msg = "抱歉，图片生成失败了..."
@@ -525,7 +574,7 @@ def process_user_messages(chat_id):
             wx.SendMsg(msg=reply, who=chat_id)
             
     except Exception as e:
-        logger.error(f"发送回复失败: {str(e)}")
+        logger.error(f"发送回复失败: {e}")
 
     # 异步保存消息记录
     threading.Thread(target=save_message, args=(username, sender_name, merged_message, reply)).start()
@@ -582,11 +631,11 @@ def message_listener():
                         else:
                             logger.debug(f"非需要处理消息，可能是群聊非@消息: {content}")   
                     except Exception as e:
-                        logger.debug(f"不好了主人！处理单条消息失败: {str(e)}")
+                        logger.debug(f"不好了主人！处理单条消息失败: {e}")
                         continue
                         
         except Exception as e:
-            logger.debug(f"不好了主人！消息监听出错: {str(e)}")
+            logger.debug(f"不好了主人！消息监听出错: {e}")
             wx = None  # 出错时重置微信对象
         time.sleep(wait)
 
@@ -628,7 +677,7 @@ def recognize_image_with_moonshot(image_path, is_emoji=False):
         return recognized_text
 
     except Exception as e:
-        logger.error(f"调用Moonshot AI识别图片失败: {str(e)}")
+        logger.error(f"调用Moonshot AI识别图片失败: {e}")
         return ""
 
 def handle_wxauto_message(msg, chatName, is_group=False):
@@ -667,6 +716,11 @@ def handle_wxauto_message(msg, chatName, is_group=False):
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         time_aware_content = f"[{current_time}] {content}"
 
+        is_command, reply = master_cofig(content)
+        if is_command:
+            wx.SendMsg(msg=reply, who=chatName)
+            return
+
         with queue_lock:
             if chatName not in user_queues:
                 # 减少等待时间为5秒
@@ -686,7 +740,7 @@ def handle_wxauto_message(msg, chatName, is_group=False):
                 user_queues[chatName]['timer'].start()
 
     except Exception as e:
-        print(f"消息处理失败: {str(e)}")
+        print(f"消息处理失败: {e}")
 
 
 def initialize_wx_listener():
@@ -717,13 +771,13 @@ def initialize_wx_listener():
                     logger.info(f"成功添加监听: {chat_name}")
                     time.sleep(0.5)  # 添加短暂延迟，避免操作过快
                 except Exception as e:
-                    logger.error(f"添加监听失败 {chat_name}: {str(e)}")
+                    logger.error(f"添加监听失败 {chat_name}: {e}")
                     continue
                     
             return wx
             
         except Exception as e:
-            logger.error(f"初始化微信失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+            logger.error(f"初始化微信失败 (尝试 {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
             else:
@@ -742,9 +796,9 @@ def cleanup_temp_dir():
                         os.remove(file_path)
                         logger.info(f"清理旧临时文件: {file_path}")
                 except Exception as e:
-                    logger.error(f"清理文件失败 {file_path}: {str(e)}")
+                    logger.error(f"清理文件失败 {file_path}: {e}")
     except Exception as e:
-        logger.error(f"清理临时目录失败: {str(e)}")
+        logger.error(f"清理临时目录失败: {e}")
 
 #更新最后聊天时间
 def update_last_chat_time():
@@ -771,7 +825,7 @@ def is_quiet_time() -> bool:
             # 如果安静时间跨天（比如22:00到次日08:00）
             return current_time >= quiet_start or current_time <= quiet_end
     except Exception as e:
-        logger.error(f"检查安静时间出错: {str(e)}")
+        logger.error(f"检查安静时间出错: {e}")
         return False  # 出错时默认不在安静时间
 
 def get_random_countdown_time():
@@ -804,12 +858,12 @@ def auto_send_message():
                     parts = [p.strip() for p in reply.split('\\') if p.strip()]
                     for part in parts:
                         wx.SendMsg(msg=part, who=user_id)
-                        time.sleep(random.randint(2, 4))
+                        time.sleep(random.randint(1,2))
                 else:
                     wx.SendMsg(msg=reply, who=user_id)
             start_countdown()  # 重新开始倒计时
         except Exception as e:
-            logger.error(f"自动发送消息失败: {str(e)}")
+            logger.error(f"自动发送消息失败: {e}")
             start_countdown()  # 即使失败也重新开始倒计时
     else:
         logger.error("没有可用的聊天对象")
@@ -862,12 +916,12 @@ def cleanup_wxauto_files():
                     # print(f"已删除文件夹: {file_path}")
                     deleted_count += 1
             except Exception as e:
-                # print(f"删除失败 {file_path}: {str(e)}")
+                # print(f"删除失败 {file_path}: {e}")
                 continue
                 
         print(f"清理完成，共删除 {deleted_count} 个文件/文件夹")
     except Exception as e:
-        print(f"清理wxauto文件夹时发生错误: {str(e)}")
+        print(f"清理wxauto文件夹时发生错误: {e}")
 
 def clean_up_screenshot ():
     # 检查是否存在该目录
@@ -908,7 +962,7 @@ def capture_and_save_screenshot(who):
         logger.info(f'已保存截图: {screenshot_path}')
         return screenshot_path
     except Exception as e:
-        logger.error(f'保存截图失败: {str(e)}')
+        logger.error(f'保存截图失败: {e}')
 
 
 def main():
@@ -947,11 +1001,11 @@ def main():
                         listener_thread.daemon = True
                         listener_thread.start()
                 except Exception as e:
-                    logger.error(f"重新连接失败: {str(e)}")
+                    logger.error(f"重新连接失败: {e}")
                     time.sleep(5)  # 等待一段时间后重试
 
     except Exception as e:
-        logger.error(f"主程序异常: {str(e)}")
+        logger.error(f"主程序异常: {e}")
     finally:
         # 清理倒计时
         if countdown_timer:
@@ -965,4 +1019,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("\n用户终止程序")
     except Exception as e:
-        print(f"程序异常退出: {str(e)}")
+        print(f"程序异常退出: {e}")
