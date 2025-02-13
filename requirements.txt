@@ -9,4 +9,3 @@ requests
 itchat-uos==1.5.0.dev0
 wxauto~=3.9.11.17.5
 openai~=1.61.0
-pyautogui
