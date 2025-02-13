@@ -1,0 +1,1 @@
+logger.info(f"获取到机器人名称: {ROBOT_WX_NAME}")
