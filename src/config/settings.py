@@ -1,11 +1,11 @@
 # 用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！)
 # 例如：LISTEN_LIST = ['智械危机']
-LISTEN_LIST = ['']
+LISTEN_LIST = ['刘彻']
 # 机器人的微信名称，如'亚托莉'，已经弃用目前
 # ROBOT_WX_NAME = ''
 # DeepSeek API 配置
 # 填你的秘钥
-DEEPSEEK_API_KEY = 'sk-qv'
+DEEPSEEK_API_KEY = 'sk-qvmdocndozmhtovfglilxlcdyvueqsjacujrzrvthskfipju'
 # 硅基流动API注册地址，免费15元额度 https://cloud.siliconflow.cn/i/aQXU6eC5
 DEEPSEEK_BASE_URL = 'https://api.siliconflow.cn/v1/'
 # 如果要使用官方的API
@@ -16,7 +16,7 @@ DEEPSEEK_BASE_URL = 'https://api.siliconflow.cn/v1/'
 # 要切换模型请把括号里的内容复制到MODEL里
 MODEL = 'deepseek-ai/DeepSeek-V3'
 # 官方API的V3模型
-# MODEL = 'deepseek-ai/DeepSeek-V3'
+# MODEL = 'deepseek-ai/DeepSeek-R1'
 # 回复最大token
 MAX_TOKEN = 2000
 #温度
@@ -31,6 +31,7 @@ MOONSHOT_TEMPERATURE = 1.1
 #图像生成(默认使用 deepseek-ai/Janus-Pro-7B 模型)
 IMAGE_MODEL = 'deepseek-ai/Janus-Pro-7B'
 TEMP_IMAGE_DIR = 'data/images/temp'# 临时图片目录
+PROMPT_ENHANCEMENT = True
 #最大的上下文轮数
 MAX_GROUPS = 15
 #prompt文件名
@@ -50,3 +51,6 @@ MAX_COUNTDOWN_HOURS = 3# 最大倒计时时间（小时）
 # 消息发送时间限制
 QUIET_TIME_START = '22:00'# 安静时间开始
 QUIET_TIME_END = '08:00'# 安静时间结束
+
+MEMORY_API_ENDPOINT = "https://api.siliconflow.cn/v1/"
+

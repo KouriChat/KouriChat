@@ -35,7 +35,7 @@ class Updater:
         "data/voices",  # 语音文件目录
         "logs",  # 日志目录
         "screenshot",  # 截图目录
-        "wxautoFiles",  # wxauto临时文件
+        "wxauto文件",  # wxauto临时文件
         ".env",  # 环境变量文件
         "config.ini",  # 配置文件
         "__pycache__",  # Python缓存文件

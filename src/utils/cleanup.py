@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class CleanupUtils:
     def __init__(self, root_dir: str):
         self.root_dir = root_dir
-        self.wxauto_dir = os.path.join(root_dir, "wxautoFiles")
+        self.wxauto_dir = os.path.join(root_dir, "wxauto文件")
         self.screenshot_dir = os.path.join(root_dir, "screenshot")
 
     def cleanup_wxauto_files(self):

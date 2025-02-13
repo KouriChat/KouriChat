@@ -184,7 +184,7 @@ moonshot_ai = MoonShotAI(
 # 获取机器人名称
 wx = WeChat()
 ROBOT_WX_NAME = wx.A_MyIcon.Name
-logger.info(f"获取到机器人名称: {ROBOT_WX_NAME}")
+# logger.info(f"获取到机器人名称: {ROBOT_WX_NAME}")
 
 message_handler = MessageHandler(
     root_dir=root_dir,
@@ -396,20 +396,8 @@ def print_banner():
 {Fore.CYAN}
 ╔══════════════════════════════════════════════╗
 ║          My Dream Moments - AI Chat          ║
-║            Created with ❤️  by umaru         ║   
-║ https://github.com/umaru-233/My-Dream-Moments║
+║            Created with ❤️  by umaru          ║
 ╚══════════════════════════════════════════════╝
-
-My Dream Moments - AI Chat  Copyright (C) 2025,github.com/umaru-233
-This program comes with ABSOLUTELY NO WARRANTY; for details please read
-https://www.gnu.org/licenses/gpl-3.0.en.html.
-该程序是基于GPLv3许可证分发的，因此该程序不提供任何保证；有关更多信息，请参阅GPLv3许可证。
-This is free software, and you are welcome to redistribute it
-under certain conditions; please read
-https://www.gnu.org/licenses/gpl-3.0.en.html.
-这是免费软件，欢迎您二次分发它，在某些情况下，请参阅GPLv3许可证。
-It's freeware, and if you bought it for money, you've been scammed!
-这是免费软件，如果你是花钱购买的，说明你被骗了！
 {Style.RESET_ALL}"""
     print(banner)
 
@@ -492,7 +480,6 @@ def main():
 
     except Exception as e:
         print_status(f"主程序异常: {str(e)}", "error", "💥")
-        logger.error(f"主程序异常: {str(e)}", exc_info=True)  # 添加详细日志记录
     finally:
         # 清理资源
         if countdown_timer:
@@ -500,7 +487,9 @@ def main():
         
         # 关闭监听线程
         if listener_thread and listener_thread.is_alive():
+            # 设置一个事件或标志来通知线程退出
             print_status("正在关闭监听线程...", "info", "🔄")
+            # 等待线程结束，但设置超时时间避免无限等待
             listener_thread.join(timeout=2)
             if listener_thread.is_alive():
                 print_status("监听线程未能正常关闭", "warning", "⚠️")

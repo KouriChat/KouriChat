@@ -18,6 +18,7 @@ from services.database import Session, ChatMessage
 import random
 import os
 from services.ai.deepseek import DeepSeekAI
+from handlers.memory import MemoryHandler
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +57,12 @@ class MessageHandler:
         self.emoji_handler = emoji_handler
         self.voice_handler = voice_handler
 
+        self.memory_handler = MemoryHandler(
+        root_dir=root_dir,
+        api_endpoint="https://api.siliconflow.cn/v1/"  # 替换为实际API地址
+    )
     def save_message(self, sender_id: str, sender_name: str, message: str, reply: str):
-        """保存聊天记录到数据库"""
+        """保存聊天记录到数据库和短期记忆"""
         try:
             session = Session()
             chat_message = ChatMessage(
@@ -69,12 +74,27 @@ class MessageHandler:
             session.add(chat_message)
             session.commit()
             session.close()
+            self.memory_handler.add_to_short_memory(message, reply)
         except Exception as e:
             print(f"保存消息失败: {str(e)}")
 
     def get_api_response(self, message: str, user_id: str) -> str:
-        """获取 API 回复"""
-        return self.deepseek.get_response(message, user_id, self.prompt_content)
+        """获取 API 回复（含记忆增强）"""
+        # 查询相关记忆
+        memories = self.memory_handler.get_relevant_memories(message)
+
+        # 更新ATRI.md
+        prompt_path = os.path.join(self.root_dir, "data", "avatars", "ATRI", "ATRI.md")
+        with open(prompt_path, "r+", encoding="utf-8") as f:
+            content = f.read()
+            if "#记忆" in content:
+                memory_section = "\n".join([m["content"] for m in memories])
+                new_content = content.replace("#记忆", f"#记忆\n{memory_section}")
+                f.seek(0)
+                f.write(new_content)
+
+        # 调用原有API
+        return self.deepseek.get_response(message, user_id, content)
 
     def process_messages(self, chat_id: str):
         """处理消息队列中的消息"""
@@ -202,7 +222,9 @@ class MessageHandler:
             threading.Thread(target=self.save_message, 
                            args=(username, sender_name, merged_message, reply)).start()
 
+
         except Exception as e:
+
             logger.error(f"处理消息失败: {str(e)}")
 
     def add_to_queue(self, chat_id: str, content: str, sender_name: str, 
