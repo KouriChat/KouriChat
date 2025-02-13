@@ -28,7 +28,7 @@ class Updater:
     
     # 需要跳过的文件和文件夹（不会被更新）
     SKIP_FILES = [
-        "config/settings.py",  # 配置文件
+        "config/config.yaml",  # 配置文件
         "data/avatars/ATRI/ATRI.md",  # 角色预设文件
         "data/database/chat_history.db",  # 聊天记录数据库
         "data/images/temp",  # 临时图片目录

@@ -1,11 +1,11 @@
 # 用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！)
 # 例如：LISTEN_LIST = ['智械危机']
-LISTEN_LIST = ['']
+LISTEN_LIST = ['智械危机']
 # 机器人的微信名称，如'亚托莉'，已经弃用目前
 # ROBOT_WX_NAME = ''
 # DeepSeek API 配置
 # 填你的秘钥
-DEEPSEEK_API_KEY = ''
+DEEPSEEK_API_KEY = 'sk'
 # 硅基流动API注册地址，免费15元额度 https://cloud.siliconflow.cn/i/aQXU6eC5
 DEEPSEEK_BASE_URL = 'https://api.siliconflow.cn/v1/'
 # 如果要使用官方的API

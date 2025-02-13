@@ -1,0 +1,119 @@
+base:
+  listen_list:
+    type: list
+    description: 要监听的微信账号昵称或群名列表（不要使用备注名）
+    value:
+    - x
+    - 智械危机
+providers:
+  llm:
+    active: deepseek
+    services:
+      deepseek:
+        type: service
+        description: DeepSeek API服务配置
+        api_key:
+          type: string
+          description: DeepSeek API密钥，可在硅基流动注册获取免费额度
+          value: sk-1
+        base_url:
+          type: string
+          description: DeepSeek API基础URL，可选择官方或第三方服务
+          value: https://api.siliconflow.cn/v1/
+        models:
+          chat:
+            type: string
+            description: 使用的对话模型，推荐使用Pro版本以获得更好的效果
+            value: deepseek-ai/DeepSeek-V3
+          image:
+            type: string
+            description: 使用的图像生成模型
+            value: deepseek-ai/Janus-Pro-7B
+        parameters:
+          max_token:
+            type: integer
+            description: 回复的最大token数量
+            value: 2000
+          temperature:
+            type: float
+            description: AI回复的温度参数，越高越具有创造性
+            value: 1.1
+  vision:
+    active: moonshot
+    services:
+      moonshot:
+        type: service
+        description: Moonshot AI图像识别服务配置
+        api_key:
+          type: string
+          description: Moonshot AI API密钥，用于图片和表情包识别
+          value: sk-
+        base_url:
+          type: string
+          description: Moonshot AI API基础URL
+          value: https://api.moonshot.cn/v1
+        parameters:
+          temperature:
+            type: float
+            description: Moonshot AI的温度参数
+            value: 1.1
+  voice:
+    active: gpt_sovits
+    services:
+      gpt_sovits:
+        type: service
+        description: GPT-SoVITS本地语音服务
+        api_url:
+          type: string
+          description: TTS服务API地址
+          value: http://127.0.0.1:5000/tts
+storage:
+  paths:
+    images:
+      temp:
+        type: string
+        description: 临时图片存储目录
+        value: data/images/temp
+      emoji:
+        type: string
+        description: 表情包存储目录
+        value: data/avatars/ATRI/emoji
+    voice:
+      type: string
+      description: 语音文件存储目录
+      value: data/voices
+    character:
+      prompt:
+        type: string
+        description: 角色设定prompt文件路径
+        value: data/avatars/ATRI/ATRI.md
+system:
+  character:
+    max_context_groups:
+      type: integer
+      description: 最大的上下文轮数
+      value: 15
+  auto_message:
+    template:
+      type: string
+      description: 自动消息的模板
+      value: 请你模拟系统设置的角色，在微信上找对方发消息想知道对方在做什么
+    countdown:
+      min_hours:
+        type: integer
+        description: 最小倒计时时间（小时）
+        value: 1
+      max_hours:
+        type: integer
+        description: 最大倒计时时间（小时）
+        value: 3
+  time_limits:
+    quiet_period:
+      start:
+        type: string
+        description: 安静时间开始时间点
+        value: '22:00'
+      end:
+        type: string
+        description: 安静时间结束时间点
+        value: 08:00

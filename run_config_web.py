@@ -9,10 +9,9 @@
 """
 import os
 import sys
-import re
+import yaml
 from flask import Flask, render_template, jsonify, request
 import importlib
-import json
 from colorama import init, Fore, Style
 
 # 初始化colorama
@@ -41,95 +40,120 @@ def print_status(message: str, status: str = "info", emoji: str = ""):
     print(f"{color}{emoji} {message}{Style.RESET_ALL}")
 
 def get_config_with_comments():
-    """获取配置文件内容，包括注释"""
-    config_path = os.path.join(ROOT_DIR, 'src/config/settings.py')
+    """获取配置文件内容"""
+    config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
     with open(config_path, 'r', encoding='utf-8') as f:
         return f.read()
 
 def parse_config_groups():
     """解析配置文件，将配置项按组分类"""
-    from src.config import settings
+    config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config_data = yaml.safe_load(f)
     
-    config_content = get_config_with_comments()
     config_groups = {}
-    current_group = "基础配置"
     
-    # 使用正则表达式匹配注释
-    comment_pattern = r'#\s*(.*?)\n'
-    docstring_pattern = r'"""(.*?)"""'
-    
-    comments = {}
-    # 提取所有注释
-    for match in re.finditer(comment_pattern, config_content, re.MULTILINE):
-        line_num = config_content.count('\n', 0, match.start())
-        comments[line_num] = match.group(1).strip()
-    
-    # 获取所有配置项
-    for name in dir(settings):
-        if name.isupper():  # 只处理大写的配置项
-            value = getattr(settings, name)
-            if not callable(value):  # 排除方法
-                # 在配置内容中查找该配置项的位置
-                pattern = rf'{name}\s*='
-                match = re.search(pattern, config_content, re.MULTILINE)
-                if match:
-                    line_num = config_content.count('\n', 0, match.start())
-                    # 获取该配置项上方的注释
-                    description = comments.get(line_num - 1, "")
+    def process_config_section(section, section_name, parent_path=""):
+        if not isinstance(section, dict):
+            return
+            
+        for key, value in section.items():
+            if isinstance(value, dict):
+                if 'type' in value and 'value' in value:
+                    # 这是一个配置项
+                    group_name = section_name
+                    if group_name not in config_groups:
+                        config_groups[group_name] = {}
                     
-                    # 根据注释内容确定分组
-                    if "API" in description.upper():
-                        group = "API配置"
-                    elif "图" in description or "Image" in description:
-                        group = "图像配置"
-                    elif "语音" in description or "Voice" in description:
-                        group = "语音配置"
-                    elif "时间" in description or "Time" in description:
-                        group = "时间配置"
-                    elif "更新" in description or "Update" in description:
-                        group = "更新配置"
-                    else:
-                        group = "基础配置"
-                        
-                    if group not in config_groups:
-                        config_groups[group] = {}
-                    
-                    config_groups[group][name] = {
-                        "value": value,
-                        "description": description
+                    full_path = f"{parent_path}.{key}" if parent_path else key
+                    config_groups[group_name][full_path] = {
+                        'value': value['value'],
+                        'description': value.get('description', ''),
+                        'type': value['type']
                     }
+                else:
+                    # 这是一个配置组
+                    new_parent = f"{parent_path}.{key}" if parent_path else key
+                    process_config_section(value, section_name or key.title(), new_parent)
+    
+    # 处理顶级配置组
+    for key, value in config_data.items():
+        process_config_section(value, key.title(), key)
+    
+    print_status("配置组解析完成", "info", "📋")
+    for group, items in config_groups.items():
+        print_status(f"组 '{group}' 包含 {len(items)} 个配置项", "info", "📝")
     
     return config_groups
 
 def save_config(new_config):
     """保存新的配置到文件"""
-    config_content = get_config_with_comments()
+    config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
     
-    # 更新配置内容
-    for key, value in new_config.items():
-        # 处理不同类型的值
-        if isinstance(value, str):
-            value_str = f"'{value}'"
-        elif isinstance(value, list):
-            value_str = str(value)
-        elif isinstance(value, bool):
-            value_str = str(value).lower()  # 布尔值转换为小写字符串
-        elif isinstance(value, int):
-            value_str = str(value)  # 整数保持为字符串
-        else:
-            value_str = str(value)  # 确保其他类型的值转换为字符串
+    # 读取当前配置
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config_data = yaml.safe_load(f)
+    
+    def find_config_item(config, path):
+        """查找配置项"""
+        keys = path.split('.')
+        current = config
+        
+        for key in keys[:-1]:
+            if key not in current:
+                return None
+            current = current[key]
             
-        # 使用正则表达式替换配置值
-        pattern = rf'{key}\s*=\s*[^#\n]+'
-        config_content = re.sub(pattern, f'{key} = {value_str}', config_content)
+        last_key = keys[-1]
+        if last_key in current and isinstance(current[last_key], dict) and 'value' in current[last_key]:
+            return current[last_key]
+        return None
     
-    # 保存到文件
-    config_path = os.path.join(ROOT_DIR, 'src/config/settings.py')
-    with open(config_path, 'w', encoding='utf-8') as f:
-        f.write(config_content)
+    def update_config_value(config, path, value):
+        """更新配置值"""
+        config_item = find_config_item(config, path)
+        if config_item is None:
+            return
+        
+        try:
+            # 转换值的类型
+            if config_item['type'] == 'integer':
+                value = int(value)
+            elif config_item['type'] == 'float':
+                value = float(value)
+            elif config_item['type'] == 'list' and isinstance(value, str):
+                value = [item.strip() for item in value.split(',') if item.strip()]
+            elif config_item['type'] == 'boolean':
+                value = value.lower() == 'true' if isinstance(value, str) else bool(value)
+            
+            # 更新值
+            config_item['value'] = value
+            print_status(f"更新配置: {path} = {value}", "info", "✏️")
+        except (ValueError, TypeError) as e:
+            print_status(f"转换配置值时出错 {path}: {str(e)}", "warning", "⚠️")
     
-    # 重新加载配置模块
-    importlib.reload(sys.modules['src.config.settings'])
+    # 更新配置值
+    for path, value in new_config.items():
+        update_config_value(config_data, path, value)
+    
+    # 保存到文件，保持原有格式
+    try:
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config_data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        print_status("配置文件已保存", "success", "✅")
+    except Exception as e:
+        print_status(f"保存配置文件时出错: {str(e)}", "error", "❌")
+        raise
+    
+    try:
+        # 重新加载配置模块
+        if 'src.config.config_manager' in sys.modules:
+            importlib.reload(sys.modules['src.config.config_manager'])
+        if 'src.config' in sys.modules:
+            importlib.reload(sys.modules['src.config'])
+        print_status("配置模块已重新加载", "success", "✅")
+    except Exception as e:
+        print_status(f"重新加载配置模块时出错: {str(e)}", "warning", "⚠️")
     
     return True
 
@@ -148,6 +172,7 @@ def save():
             return jsonify({"status": "success", "message": "配置已保存"})
         return jsonify({"status": "error", "message": "保存失败"})
     except Exception as e:
+        print_status(f"保存配置时出错: {str(e)}", "error", "❌")
         return jsonify({"status": "error", "message": f"保存失败: {str(e)}"})
 
 def main():
@@ -165,7 +190,7 @@ def main():
     
     # 检查配置文件
     print_status("检查配置文件...", "info", "⚙️")
-    if not os.path.exists(os.path.join(ROOT_DIR, 'src/config/settings.py')):
+    if not os.path.exists(os.path.join(ROOT_DIR, 'src/config/config.yaml')):
         print_status("错误：配置文件不存在！", "error", "❌")
         return
     print_status("配置文件检查完成", "success", "✅")

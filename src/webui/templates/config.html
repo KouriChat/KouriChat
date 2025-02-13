@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="My Dream Moments配置管理系统 - 管理AI对话、图像生成、语音合成等功能的配置界面">
+    <meta name="keywords" content="My Dream Moments, 配置管理, AI对话, 图像生成, 语音合成, DeepSeek, Moonshot, GPT-SoVITS">
     <title>My Dream Moments - 配置中心</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
@@ -75,6 +77,60 @@
             border-radius: 0.75rem;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
+
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+
+        .navbar {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+        }
+
+        .accordion-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 1rem;
+        }
+
+        .accordion-button:not(.collapsed) {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .info-icon {
+            color: var(--primary-color);
+            cursor: help;
+            transition: color 0.3s;
+        }
+
+        .info-icon:hover {
+            color: var(--secondary-color);
+        }
     </style>
 </head>
 <body>
@@ -100,65 +156,52 @@
                     <div class="accordion-item">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
-                                data-bs-target="#{{ group_name|replace(' ', '-') }}">
+                                data-bs-target="#{{ group_name|replace(' ', '-')|replace('.', '-') }}">
                                 {{ group_name }}
                             </button>
                         </h2>
-                        <div id="{{ group_name|replace(' ', '-') }}" class="accordion-collapse collapse">
+                        <div id="{{ group_name|replace(' ', '-')|replace('.', '-') }}" class="accordion-collapse collapse">
                             <div class="accordion-body">
                                 {% for key, config in configs.items() %}
                                 <div class="mb-4">
                                     <label class="form-label">
                                         {{ key }}
+                                        {% if config.description %}
                                         <span class="badge badge-info rounded-pill" 
                                             data-bs-toggle="tooltip" 
                                             title="{{ config.description }}">
                                             <i class="bi bi-info-circle"></i>
                                         </span>
+                                        {% endif %}
                                     </label>
-                                    {% if key == 'LISTEN_LIST' %}
+                                    
+                                    {% if config.type == 'list' %}
                                         <input type="text" class="form-control" 
-                                            id="{{ key }}" name="{{ key }}" 
-                                            value="{{ config.value|join(',') }}"
+                                            id="{{ key }}" name="{{ key }}"
+                                            value="{{ config.value|join(', ') }}"
                                             placeholder="多个值用英文逗号分隔">
-                                    {% elif key == 'DEEPSEEK_BASE_URL' %}
-                                        <select class="form-select mb-2" onchange="document.getElementById('DEEPSEEK_BASE_URL').value = this.value === 'siliconflow' ? 'https://api.siliconflow.cn/v1/' : 'https://api.deepseek.com/v1'">
-                                            <option value="siliconflow" {% if config.value == 'https://api.siliconflow.cn/v1/' %}selected{% endif %}>硅基流动</option>
-                                            <option value="deepseek" {% if config.value == 'https://api.deepseek.com/v1' %}selected{% endif %}>deepseek</option>
-                                        </select>
+                                    {% elif config.type == 'string' %}
                                         <input type="text" class="form-control" 
-                                            id="{{ key }}" name="{{ key }}" 
+                                            id="{{ key }}" name="{{ key }}"
                                             value="{{ config.value }}">
-                                    {% elif key == 'PROMPT_ENHANCEMENT' %}
-                                        <select class="form-select" id="{{ key }}" name="{{ key }}">
-                                            <option value="True" {% if config.value %}selected{% endif %}>启用</option>
-                                            <option value="False" {% if not config.value %}selected{% endif %}>停用</option>
-                                        </select>
-                                    {% elif config.value is boolean %}
+                                    {% elif config.type == 'integer' %}
+                                        <input type="number" class="form-control" 
+                                            id="{{ key }}" name="{{ key }}"
+                                            value="{{ config.value }}">
+                                    {% elif config.type == 'float' %}
+                                        <input type="number" class="form-control" 
+                                            id="{{ key }}" name="{{ key }}"
+                                            value="{{ config.value }}" 
+                                            step="0.1">
+                                    {% elif config.type == 'boolean' %}
                                         <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" role="switch" 
-                                                id="{{ key }}" name="{{ key }}" 
+                                            <input class="form-check-input" type="checkbox" role="switch"
+                                                id="{{ key }}" name="{{ key }}"
                                                 {% if config.value %}checked{% endif %}>
                                             <label class="form-check-label" for="{{ key }}">
                                                 {{ '启用' if config.value else '停用' }}
                                             </label>
                                         </div>
-                                    {% elif key == 'MODEL' %}
-                                        <select class="form-select mb-2" onchange="document.getElementById('MODEL').value = this.value">
-                                            <option value="deepseek-ai/DeepSeek-V3">硅基流动V3模型（免费额度版）</option>
-                                            <option value="deepseek-ai/DeepSeek-R1">硅基流动R1模型（免费额度版）</option>
-                                            <option value="Pro/deepseek-ai/DeepSeek-V3">硅基流动V3模型（付费版）</option>
-                                            <option value="Pro/deepseek-ai/DeepSeek-R1">硅基流动R1模型（付费版）</option>
-                                            <option value="deepseek-chat">deepseek官方V3模型</option>
-                                            <option value="deepseek-reasoner">deepseek官方R1模型</option>
-                                        </select>
-                                        <input type="text" class="form-control" 
-                                            id="{{ key }}" name="{{ key }}" 
-                                            value="{{ config.value }}">
-                                    {% else %}
-                                        <input type="text" class="form-control" 
-                                            id="{{ key }}" name="{{ key }}" 
-                                            value="{{ config.value }}">
                                     {% endif %}
                                 </div>
                                 {% endfor %}
@@ -167,6 +210,7 @@
                     </div>
                 </div>
                 {% endfor %}
+                
                 <div class="d-grid gap-2 mt-4">
                     <button type="button" class="btn btn-primary btn-lg" onclick="saveConfig()">
                         <i class="bi bi-save me-2"></i>保存所有设置
@@ -189,7 +233,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // 护眼模式切换 --
+        // 护眼模式切换
         function toggleDarkMode() {
             document.body.setAttribute('data-bs-theme', 
                 document.body.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark');
@@ -206,18 +250,30 @@
             const formData = new FormData(form);
             const config = {};
             
+            // 收集所有配置项
             for (let [key, value] of formData.entries()) {
-                // 处理特殊类型
-                if (key === 'LISTEN_LIST') {
-                    config[key] = value.split(',').map(item => item.trim());
-                } else if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
-                    config[key] = value.toLowerCase() === 'true';
-                } else if (!isNaN(value) && value !== '') {
-                    config[key] = Number(value);
-                } else {
-                    config[key] = value;
+                // 只处理实际的配置值，忽略中间路径
+                if (document.querySelector(`input[name="${key}"]`)) {
+                    if (value === 'on') {
+                        // 处理复选框
+                        config[key] = true;
+                    } else if (value === 'off') {
+                        config[key] = false;
+                    } else {
+                        config[key] = value;
+                    }
                 }
             }
+
+            // 处理未选中的复选框
+            document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                if (!formData.has(checkbox.name)) {
+                    config[checkbox.name] = false;
+                }
+            });
+
+            // 打印要保存的配置（调试用）
+            console.log('Saving config:', config);
 
             fetch('/save', {
                 method: 'POST',
@@ -244,17 +300,6 @@
                 document.querySelector('.toast-body').textContent = '保存失败：' + error;
                 toast.show();
             });
-        }
-
-        function showToast(message, type = 'info') {
-            const toastEl = document.getElementById('saveToast');
-            toastEl.querySelector('.toast-body').textContent = message;
-            toastEl.classList.remove('bg-success', 'bg-danger');
-            
-            if (type === 'success') toastEl.classList.add('bg-success');
-            if (type === 'danger') toastEl.classList.add('bg-danger');
-            
-            new bootstrap.Toast(toastEl).show();
         }
     </script>
 </body>

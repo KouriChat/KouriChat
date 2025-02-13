@@ -11,3 +11,4 @@ wxauto~=3.9.11.17.5
 openai~=1.61.0
 pyautogui
 colorama
+pyyaml>=6.0.1

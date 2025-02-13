@@ -53,8 +53,9 @@ class SystemTests(unittest.TestCase):
     def test_config_files(self):
         """测试配置文件"""
         required_files = [
-            'src/config/settings.py',
+            'src/config/config.yaml',
             'src/config/__init__.py',
+            'src/config/config_manager.py',
             'requirements.txt',
             'run.py'
         ]
