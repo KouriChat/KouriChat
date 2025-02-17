@@ -255,12 +255,28 @@ def is_quiet_time() -> bool:
         logger.error(f"检查安静时间出错: {str(e)}")
         return False  # 出错时默认不在安静时间
 
-def get_random_countdown_time():
-    """获取随机倒计时时间"""
-    return random.randint(
-        config.behavior.auto_message.min_hours * 3600,
-        config.behavior.auto_message.max_hours * 3600
-    )
+def get_random_countdown_time() -> int:
+    """
+    获取随机倒计时时间（秒）
+    """
+    try:
+        min_hours = config.behavior.auto_message.countdown.min_hours
+        max_hours = config.behavior.auto_message.countdown.max_hours
+        
+        # 将小时转换为秒，并确保是整数
+        min_seconds = int(min_hours * 3600)
+        max_seconds = int(max_hours * 3600)
+        
+        # 确保最小值不大于最大值
+        if min_seconds > max_seconds:
+            min_seconds, max_seconds = max_seconds, min_seconds
+            
+        return random.randint(min_seconds, max_seconds)
+        
+    except Exception as e:
+        logger.error(f"获取随机倒计时时间失败: {str(e)}")
+        # 返回默认值：2-4小时之间
+        return random.randint(7200, 14400)
 
 def auto_send_message():
     """自动发送消息"""
