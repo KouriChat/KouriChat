@@ -362,51 +362,59 @@
         }
 
         function addNewUser(key) {
-            const inputElement = document.getElementById('input_' + key);
-            const newValue = inputElement.value.trim();
+            const input = document.getElementById(`input_${key}`);
+            const value = input.value.trim();
+            if (!value) return;
+
+            const listContainer = document.getElementById(`selected_users_${key}`);
+            const hiddenInput = document.getElementById(key);
             
-            if (newValue) {
-                const targetElement = document.getElementById(key);
-                const currentValues = targetElement.value ? targetElement.value.split(',') : [];
-                if (!currentValues.includes(newValue)) {
-                    currentValues.push(newValue);
-                    targetElement.value = currentValues.join(',');
-                    
-                    // 添加到用户列表显示
-                    const userListElement = document.getElementById('selected_users_' + key);
-                    const userDiv = document.createElement('div');
-                    userDiv.className = 'list-group-item d-flex justify-content-between align-items-center';
-                    userDiv.innerHTML = `
-                        ${newValue}
-                        <button type="button" class="btn btn-danger btn-sm" onclick="removeUser('${key}', '${newValue}')">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                    `;
-                    userListElement.appendChild(userDiv);
-                    
-                    // 清空输入框
-                    inputElement.value = '';
-                }
+            // 获取当前用户列表
+            const currentUsers = Array.from(listContainer.querySelectorAll('.user-name'))
+                .map(span => span.textContent.trim());
+            
+            if (currentUsers.includes(value)) {
+                alert('该用户已在列表中！');
+                return;
             }
+            
+            // 添加新用户到列表
+            const div = document.createElement('div');
+            div.className = 'list-group-item d-flex justify-content-between align-items-center user-item';
+            div.innerHTML = `
+                <span class="user-name">${value}</span>
+                <button type="button" class="btn btn-danger btn-sm" onclick="removeUser('${key}', '${value}')">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            `;
+            listContainer.appendChild(div);
+            
+            // 更新隐藏输入
+            currentUsers.push(value);
+            hiddenInput.value = currentUsers.join(',');
+            
+            // 清空输入框
+            input.value = '';
         }
 
-        function removeUser(key, userToRemove) {
-            const targetElement = document.getElementById(key);
-            const userListElement = document.getElementById('selected_users_' + key);
+        function removeUser(key, user) {
+            const listContainer = document.getElementById(`selected_users_${key}`);
+            const hiddenInput = document.getElementById(key);
             
-            // 更新隐藏的input值
-            let currentValues = targetElement.value ? targetElement.value.split(',') : [];
-            currentValues = currentValues.filter(user => user !== userToRemove);
-            targetElement.value = currentValues.join(',');
-            
-            // 从显示列表中移除
-            const userElements = userListElement.getElementsByClassName('list-group-item');
-            for (let element of userElements) {
-                if (element.textContent.trim() === userToRemove) {
-                    element.remove();
+            // 从列表中移除用户
+            const userItems = listContainer.querySelectorAll('.user-item');
+            for (let item of userItems) {
+                const userName = item.querySelector('.user-name').textContent.trim();
+                if (userName === user) {
+                    item.remove();
                     break;
                 }
             }
+            
+            // 更新隐藏输入
+            const currentUsers = Array.from(listContainer.querySelectorAll('.user-name'))
+                .map(span => span.textContent.trim());
+            hiddenInput.value = currentUsers.join(',');
         }
 
         // 添加背景图片上传处理
@@ -564,6 +572,47 @@
                     }
                 }
             }
+        });
+
+        // 在表单提交前处理数据
+        document.getElementById('configForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const config = {};
+            
+            for (let [key, value] of formData.entries()) {
+                if (key === 'LISTEN_LIST') {
+                    // 处理用户列表
+                    const userList = document.getElementById(`selected_users_${key}`);
+                    const users = Array.from(userList.querySelectorAll('.user-name'))
+                        .map(span => span.textContent.trim())
+                        .filter(user => user);
+                    config[key] = users;
+                } else {
+                    config[key] = value;
+                }
+            }
+            
+            // 发送配置
+            fetch('/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(config)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('配置已保存', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(data.message || '保存失败', 'error');
+                }
+            })
+            .catch(error => {
+                showToast('保存失败: ' + error, 'error');
+            });
         });
     </script>
 </body>

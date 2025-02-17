@@ -4,9 +4,7 @@
             "title": "用户设置",
             "settings": {
                 "listen_list": {
-                    "value": [
-                        ""
-                    ],
+                    "value": [],
                     "type": "array",
                     "description": "要监听的用户列表"
                 }
@@ -29,28 +27,36 @@
                 "model": {
                     "value": "deepseek-ai/DeepSeek-V3",
                     "type": "string",
-                    "description": "AI模型"
+                    "description": "使用的AI模型名称",
+                    "options": [
+                        "deepseek-ai/DeepSeek-V3",
+                        "Pro/deepseek-ai/DeepSeek-V3",
+                        "Pro/deepseek-ai/DeepSeek-R1"
+                    ]
                 },
                 "max_tokens": {
                     "value": 2000,
                     "type": "number",
-                    "description": "最大token数"
+                    "description": "回复最大token数量"
                 },
                 "temperature": {
                     "value": 1.1,
                     "type": "number",
-                    "description": "温度参数"
+                    "description": "AI回复的温度值",
+                    "min": 0,
+                    "max": 2
                 }
             }
         },
         "media_settings": {
-            "title": "高级设置",
+            "title": "媒体设置",
             "settings": {
                 "image_recognition": {
                     "api_key": {
                         "value": "",
                         "type": "string",
-                        "description": "Moonshot API密钥"
+                        "description": "Moonshot AI API密钥（用于图片和表情包识别）",
+                        "is_secret": true
                     },
                     "base_url": {
                         "value": "https://api.moonshot.cn/v1",
@@ -60,31 +66,33 @@
                     "temperature": {
                         "value": 0.8,
                         "type": "number",
-                        "description": "温度参数"
+                        "description": "Moonshot AI的温度值",
+                        "min": 0,
+                        "max": 2
                     }
                 },
                 "image_generation": {
                     "model": {
                         "value": "deepseek-ai/Janus-Pro-7B",
                         "type": "string",
-                        "description": "图像模型"
+                        "description": "图像生成模型"
                     },
                     "temp_dir": {
                         "value": "data/images/temp",
                         "type": "string",
-                        "description": "临时目录"
+                        "description": "临时图片存储目录"
                     }
                 },
                 "text_to_speech": {
                     "tts_api_url": {
                         "value": "http://127.0.0.1:5000/tts",
                         "type": "string",
-                        "description": "TTS API地址"
+                        "description": "TTS服务API地址"
                     },
                     "voice_dir": {
                         "value": "data/voices",
                         "type": "string",
-                        "description": "语音目录"
+                        "description": "语音文件存储目录"
                     }
                 },
                 "weather": {
@@ -95,15 +103,13 @@
                         "is_secret": true
                     },
                     "base_url": {
-                        "value": "https://devapi.qweather.com/v7/weather/now",
+                        "value": "https://devapi.qweather.com/v7/weather/24h",
                         "type": "string",
                         "description": "和风天气 API基础URL"
                     },
                     "city_list": {
-                        "value": [
-                            "南昌"
-                        ],
-                        "type": "array",
+                        "value": [],
+                        "type": "city_list",
                         "description": "要监听的城市列表"
                     }
                 }
@@ -122,12 +128,12 @@
                         "min_hours": {
                             "value": 1.2,
                             "type": "number",
-                            "description": "最小倒计时时间"
+                            "description": "最小倒计时时间（小时）"
                         },
                         "max_hours": {
                             "value": 3.0,
                             "type": "number",
-                            "description": "最大倒计时时间"
+                            "description": "最大倒计时时间（小时）"
                         }
                     }
                 },
@@ -152,7 +158,7 @@
                     "avatar_dir": {
                         "value": "data/avatars/ATRI",
                         "type": "string",
-                        "description": "人设目录"
+                        "description": "人设目录（自动包含 avatar.md 和 emojis 目录）"
                     }
                 }
             }

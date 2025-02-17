@@ -11,7 +11,7 @@
         <div class="input-group mb-2">
             <input type="text" class="form-control" 
                 id="input_{{ key }}" 
-                placeholder="请输入要监听的用户">
+                placeholder="请输入要监听的用户昵称">
             <button class="btn btn-primary" type="button" 
                 onclick="addNewUser('{{ key }}')">
                 <i class="bi bi-plus-lg"></i>
@@ -21,23 +21,22 @@
             {% if config.value %}
                 {% for user in config.value %}
                     {% if user %}
-                        <div class="list-group-item d-flex justify-content-between align-items-center">
-                            {{ user }}
-                            <button type="button" class="btn btn-danger btn-sm" onclick="removeUser('{{ key }}', '{{ user }}')">
-                                <i class="bi bi-x-lg"></i>
-                            </button>
-                        </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center user-item">
+                        <span class="user-name">{{ user }}</span>
+                        <button type="button" class="btn btn-danger btn-sm" 
+                            onclick="removeUser('{{ key }}', '{{ user }}')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
                     {% endif %}
                 {% endfor %}
             {% endif %}
         </div>
+        <input type="hidden" 
+            id="{{ key }}" 
+            name="{{ key }}" 
+            value="{{ config.value|join(',') if config.value and config.value|length > 0 else '' }}">
     </div>
-    <input type="text" class="form-control" 
-        id="{{ key }}" name="{{ key }}" 
-        value="{{ config.value|join(',') }}"
-        placeholder="多个值用英文逗号分隔"
-        readonly
-        style="display: none;">
 {% elif key == 'DEEPSEEK_BASE_URL' %}
     <div class="mb-3">
         <select class="form-select mb-2" onchange="updateDeepseekUrl(this.value)">
@@ -214,7 +213,7 @@
             id="{{ key }}" name="{{ key }}" 
             value="{{ config.value }}"
             placeholder="请输入和风天气 API 密钥">
-        <a href="https://dev.qweather.com/docs/configuration/project-and-key/" 
+        <a href="https://dev.qweather.com/docs/start/" 
             class="btn btn-primary w-100"
             target="_blank">
             <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
@@ -222,9 +221,15 @@
     </div>
 {% elif key == 'WEATHER_BASE_URL' %}
     <div class="mb-3">
-        <select class="form-select mb-2" id="{{ key }}" name="{{ key }}" onchange="updateWeatherUrl(this.value)">
-            <option value="https://devapi.qweather.com/v7/weather/now" {% if 'devapi' in config.value %}selected{% endif %}>免费版</option>
-            <option value="https://api.qweather.com/v7/weather/now" {% if not 'devapi' in config.value %}selected{% endif %}>付费版</option>
+        <select class="form-select mb-2" id="{{ key }}" name="{{ key }}">
+            <option value="https://devapi.qweather.com/v7/weather/24h" 
+                    {% if 'devapi' in config.value %}selected{% endif %}>
+                免费版 (24h天气)
+            </option>
+            <option value="https://api.qweather.com/v7/weather/24h" 
+                    {% if not 'devapi' in config.value %}selected{% endif %}>
+                付费版 (24h天气)
+            </option>
         </select>
     </div>
 {% elif key == 'WEATHER_CITY_LIST' %}
@@ -243,14 +248,15 @@
                 {% for city in config.value %}
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         {{ city }}
-                        <button type="button" class="btn btn-danger btn-sm" onclick="removeCity('{{ key }}', '{{ city }}')">
+                        <button type="button" class="btn btn-danger btn-sm" 
+                            onclick="removeCity('{{ key }}', '{{ city }}')">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                 {% endfor %}
             {% endif %}
         </div>
-        <input type="text" 
+        <input type="hidden" 
             id="{{ key }}" 
             name="{{ key }}" 
             value="{{ config.value|join(',') if config.value else '' }}">
