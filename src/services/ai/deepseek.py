@@ -9,6 +9,7 @@ DeepSeek AI 服务模块
 
 import logging
 import re
+import os
 import random
 import json  # 新增导入
 import time  # 新增导入
@@ -202,6 +203,21 @@ class DeepSeekAI:
             self._manage_context(user_id, message)
 
             # —— 阶段3：构建请求参数 ——
+            # 拼接基础Prompt
+            try:
+                # 从当前文件位置(deepseek.py)向上导航到项目根目录
+                current_dir = os.path.dirname(os.path.abspath(__file__))  # src/services/ai
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))  # 项目根目录
+                base_prompt_path = os.path.join(project_root, "data", "base", "base.md")
+                
+                with open(base_prompt_path, "r", encoding="utf-8") as f:
+                    base_content = f.read()
+            except Exception as e:
+                logger.error(f"基础Prompt文件读取失败: {str(e)}")
+                base_content = ""
+            
+            system_prompt = f"{system_prompt}\n{base_content}"
+            # print(system_prompt) #测试拼接
             messages = [
                 {"role": "system", "content": system_prompt},
                 *self.chat_contexts.get(user_id, [])[-self.config["max_groups"] * 2:]

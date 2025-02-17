@@ -14,7 +14,7 @@
             "title": "大语言模型配置",
             "settings": {
                 "api_key": {
-                    "value": "",
+                    "value": "sk-",
                     "type": "string",
                     "description": "DeepSeek API密钥",
                     "is_secret": true
@@ -25,7 +25,7 @@
                     "description": "DeepSeek API基础URL"
                 },
                 "model": {
-                    "value": "deepseek-ai/DeepSeek-V3",
+                    "value": "Pro/deepseek-ai/DeepSeek-V3",
                     "type": "string",
                     "description": "使用的AI模型名称",
                     "options": [

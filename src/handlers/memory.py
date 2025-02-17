@@ -1,105 +1,94 @@
-"""
-记忆处理模块
-负责短期记忆和长期记忆的管理
-"""
-
 import os
-import sqlite3
-from datetime import datetime
 import logging
-from typing import List, Dict
-import requests
-import json
-
+from typing import List
+from services.ai.deepseek import DeepSeekAI
+from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
 class MemoryHandler:
-    def __init__(self, root_dir: str, api_endpoint: str):
+    def __init__(self, root_dir: str, api_key: str, base_url: str, model:str,max_token: int, temperature: float, max_groups: int):
+
         self.root_dir = root_dir
-        self.api_endpoint = api_endpoint
-        self.short_memory_path = os.path.join(root_dir, "data", "memory", "short_memory.txt")
-        self.long_memory_path = os.path.join(root_dir, "data", "memory", "long_memory.db")
+        self.memory_dir = os.path.join(root_dir, "data", "memory")
+        self.short_memory_path = os.path.join(self.memory_dir, "short_memory.txt.txt")
+        self.long_memory_buffer_path = os.path.join(self.memory_dir, "long_memory_buffer.txt")
+        self.api_key = api_key
+        self.base_url = base_url
+        self.max_token = max_token
+        self.temperature = temperature
+        self.max_groups = max_groups
+        self.model = model
+        os.makedirs(self.memory_dir, exist_ok=True)
 
-        # 初始化长期记忆数据库
-        os.makedirs(os.path.dirname(self.long_memory_path), exist_ok=True)
-        self._init_long_memory_db()
+    def _get_deepseek_client(self):
+        """使用DeepSeekAI替代OpenAI客户端"""
+        return DeepSeekAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            model=self.model,
+            max_token=self.max_token,
+            temperature=self.temperature,
+            max_groups=self.max_groups
+        )
 
-    def _init_long_memory_db(self):
-        """初始化长期记忆数据库"""
-        conn = sqlite3.connect(self.long_memory_path)
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS memories
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      content TEXT,
-                      weight REAL,
-                      timestamp DATETIME)''')
-        conn.commit()
-        conn.close()
-
-    def add_to_short_memory(self, user_msg: str, bot_reply: str):
-        """添加消息到短期记忆"""
-        try:
-            with open(self.short_memory_path, "a", encoding="utf-8") as f:
-                f.write(f"User: {user_msg}\nBot: {bot_reply}\n")
-
-            # 检查是否达到15条
-            with open(self.short_memory_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                if len(lines) >= 30:  # 每条消息占2行
-                    self.summarize_memories()
-        except Exception as e:
-            logger.error(f"写入短期记忆失败: {str(e)}")
+    def add_short_memory(self, message: str, reply: str):
+        """添加短期记忆"""
+        with open(self.short_memory_path, "a", encoding="utf-8") as f:
+            f.write(f"用户: {message}\n")
+            f.write(f"bot: {reply}\n\n")
 
     def summarize_memories(self):
-        """调用API进行记忆提炼"""
-        try:
-            with open(self.short_memory_path, "r", encoding="utf-8") as f:
-                content = f.read()
+        """总结短期记忆到长期记忆"""
+        if not os.path.exists(self.short_memory_path):
+            return
 
-            # 调用记忆提炼API
-            response = requests.post(
-                self.api_endpoint,
-                json={"text": content},
-                headers={"Content-Type": "application/json"}
-            )
+        with open(self.short_memory_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
 
-            if response.status_code == 200:
-                result = response.json()
-                summary = result.get("summary")
-                weight = result.get("weight", 1.0)  # 默认权重
+        if len(lines) >= 2:  # 15组对话
+            try:
+                deepseek = self._get_deepseek_client()
+                summary = deepseek.get_response(
+                    message="".join(lines[-30:]),
+                    user_id="system",
+                    system_prompt="请将以下对话记录总结为最重要的3条长期记忆，用中文简要表述："
+                )
+                logger.debug(f"总结结果:\n{summary}")
 
-                # 存入长期记忆
-                conn = sqlite3.connect(self.long_memory_path)
-                c = conn.cursor()
-                c.execute("INSERT INTO memories (content, weight, timestamp) VALUES (?, ?, ?)",
-                          (summary, weight, datetime.now()))
-                conn.commit()
-                conn.close()
+                with open(self.long_memory_buffer_path, "a", encoding="utf-8") as f:
+                    f.write(f"总结时间: {datetime.now()}\n")
+                    f.write(summary + "\n\n")
 
                 # 清空短期记忆
                 open(self.short_memory_path, "w").close()
 
-        except Exception as e:
-            logger.error(f"记忆提炼失败: {str(e)}")
+            except Exception as e:
+                logger.error(f"记忆总结失败: {str(e)}")
 
-    def get_relevant_memories(self, query: str, top_n: int = 3) -> List[Dict]:
-        """从长期记忆中获取相关记忆"""
+    def get_relevant_memories(self, query: str) -> List[str]:
+        """获取相关记忆（增加空值检查和日志）"""
+        if not os.path.exists(self.long_memory_buffer_path):
+            logger.warning("长期记忆缓冲区不存在")
+            return []
+
         try:
-            conn = sqlite3.connect(self.long_memory_path)
-            c = conn.cursor()
+            with open(self.long_memory_buffer_path, "r", encoding="utf-8") as f:
+                memories = [line.strip() for line in f if line.strip()]
 
-            # 简单关键词匹配（实际应使用更复杂的NLP处理）
-            c.execute("SELECT content, weight FROM memories ORDER BY weight DESC")
-            results = []
-            for row in c.fetchall():
-                if query in row[0]:
-                    results.append({"content": row[0], "weight": row[1]})
-                if len(results) >= top_n:
-                    break
+            if not memories:
+                logger.debug("长期记忆缓冲区为空")
+                return []
 
-            conn.close()
-            return results
+            # 调用API时增加超时和重试机制
+            deepseek = self._get_deepseek_client()
+            response = deepseek.get_response(
+                message="\n".join(memories[-20:]),
+                user_id="retrieval",
+                system_prompt=f"请从以下记忆中找到与'{query}'最相关的条目，按相关性排序返回最多3条:"
+            )
+            return [line.strip() for line in response.split("\n") if line.strip()]
+
         except Exception as e:
-            logger.error(f"查询长期记忆失败: {str(e)}")
+            logger.error(f"记忆检索失败: {str(e)}")
             return []

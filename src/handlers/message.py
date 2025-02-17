@@ -39,7 +39,8 @@ class MessageHandler:
                  prompt_content: str,
                  image_handler: Any,
                  emoji_handler: Any,
-                 voice_handler: Any):
+                 voice_handler: Any,
+                 memory_handler: Any):
         """
         初始化消息处理器
         
@@ -56,6 +57,7 @@ class MessageHandler:
             image_handler: 图片处理器
             emoji_handler: 表情处理器
             voice_handler: 语音处理器
+            memory_handler: 记忆处理器
         """
         # 基础配置
         self.root_dir = root_dir
@@ -89,12 +91,7 @@ class MessageHandler:
         self.image_handler = image_handler
         self.emoji_handler = emoji_handler
         self.voice_handler = voice_handler
-
-        # 初始化记忆处理器
-        self.memory_handler = MemoryHandler(
-            root_dir=root_dir,
-            api_endpoint=base_url  # 使用传入的 base_url
-        )
+        self.memory_handler = memory_handler
 
         # 天气关键词列表
         self.weather_keywords = [
