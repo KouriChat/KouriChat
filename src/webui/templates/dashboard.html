@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- SEO Meta Tags -->
+    <title>My Dream Moments - AI 情感陪伴系统控制台</title>
+    <meta name="description" content="My Dream Moments 是基于 DeepSeek LLM 的情感陪伴系统，支持微信和 QQ 机器人接入，提供沉浸式角色扮演和多轮对话体验。">
+    <meta name="keywords" content="My Dream Moments, AI陪伴, DeepSeek, 情感陪伴, 角色扮演, AI助手, 微信机器人, QQ机器人, LLM, AI对话">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://github.com/umaru-233/My-Dream-Moments">
+    <meta property="og:title" content="My Dream Moments - AI 情感陪伴系统">
+    <meta property="og:description" content="基于 DeepSeek LLM 的情感陪伴系统，支持微信和 QQ 机器人接入，提供沉浸式角色扮演体验。">
+    <meta property="og:image" content="https://raw.githubusercontent.com/umaru-233/My-Dream-Moments/main/ATRI.jpg">
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://github.com/umaru-233/My-Dream-Moments">
+    <meta name="twitter:title" content="My Dream Moments - AI 情感陪伴系统">
+    <meta name="twitter:description" content="基于 DeepSeek LLM 的情感陪伴系统，支持微信和 QQ 机器人接入，提供沉浸式角色扮演体验。">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/umaru-233/My-Dream-Moments/main/ATRI.jpg">
+    
+    <!-- 其他 Meta -->
+    <meta name="author" content="umaru-233">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="zh-CN">
+    <meta name="revisit-after" content="7 days">
+    <meta name="theme-color" content="#6366f1">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    
+    <!-- 原有的样式表引用 -->
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    
+    <!-- Umami Analytics -->
+    <script defer src="http://umami.kourichat.com/script.js" data-website-id="319cc5bc-c057-4f6c-8bc4-4af5e110add1"></script>
+    
+    <!-- 添加结构化数据 -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "My Dream Moments",
+        "description": "基于 DeepSeek LLM 的情感陪伴系统，支持微信和 QQ 机器人接入，提供沉浸式角色扮演体验。",
+        "operatingSystem": "Windows",
+        "applicationCategory": "ChatApplication",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "CNY"
+        },
+        "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.8",
+            "ratingCount": "547",
+            "reviewCount": "81"
+        },
+        "author": {
+            "@type": "Person",
+            "name": "umaru-233",
+            "url": "https://github.com/umaru-233"
+        },
+        "downloadUrl": "https://github.com/umaru-233/My-Dream-Moments",
+        "softwareVersion": "1.3.1",
+        "keywords": "AI陪伴,DeepSeek,情感陪伴,角色扮演,AI助手,微信机器人,QQ机器人,LLM,AI对话"
+    }
+    </script>
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #4f46e5;
+            --background-color: #f8fafc;
+            --text-color: #1e293b;
+            --card-bg: rgba(255, 255, 255, 0.8);
+            --card-border: rgba(255, 255, 255, 0.5);
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        [data-bs-theme="dark"] {
+            --primary-color: #818cf8;
+            --secondary-color: #6366f1;
+            --background-color: #0f172a;
+            --text-color: #e2e8f0;
+            --card-bg: rgba(30, 41, 59, 0.8);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+
+        /* 毛玻璃效果卡片 */
+        .glass-panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--card-shadow);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .glass-panel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px -1px rgba(0, 0, 0, 0.15), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .info-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .info-card:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--card-shadow);
+        }
+
+        /* 进度条样式 */
+        .progress {
+            height: 0.5rem;
+            background-color: rgba(var(--bs-primary-rgb), 0.1);
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+
+        /* 按钮样式 */
+        .btn-glass {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+
+        .btn-glass:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--card-shadow);
+        }
+
+        /* 导航栏样式 */
+        .navbar {
+            background: var(--card-bg) !important;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        /* 徽章样式 */
+        .badge {
+            padding: 0.5em 0.8em;
+            border-radius: 0.5rem;
+        }
+
+        /* 列表组样式 */
+        .list-group-item {
+            background: transparent;
+            border-color: var(--card-border);
+            transition: all 0.3s ease;
+        }
+
+        .list-group-item:hover {
+            background: var(--card-bg);
+            transform: translateX(4px);
+        }
+
+        /* Toast 样式 */
+        .toast {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+        }
+
+        /* 链接样式 */
+        a {
+            transition: all 0.3s ease;
+        }
+
+        a:hover {
+            text-decoration: none;
+            opacity: 0.8;
+        }
+
+        /* 暗色模式切换按钮 */
+        .form-check-input:checked {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .system-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .status-badge {
+            position: relative;
+            padding-left: 1.5rem;
+        }
+
+        .status-badge::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0.75rem;
+            height: 0.75rem;
+            border-radius: 50%;
+            background-color: currentColor;
+        }
+
+        .status-running::before {
+            background-color: #10b981;
+        }
+
+        .status-stopped::before {
+            background-color: #ef4444;
+        }
+
+        .chart-container {
+            height: 200px;
+            margin-top: 1rem;
+        }
+
+        .navbar .form-check.form-switch {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            margin: 0;
+        }
+
+        .navbar .form-check-label {
+            display: flex;
+            align-items: center;
+            margin: 0 0 0 8px;
+            line-height: 1;
+        }
+
+        .navbar .form-check-input {
+            margin: 0;
+            vertical-align: middle;
+        }
+
+        #updateStatus, #startStatus {
+            display: none;
+            margin-top: 1rem;
+        }
+
+        .loading-spinner {
+            width: 1rem;
+            height: 1rem;
+            margin-right: 0.5rem;
+        }
+
+        .log-container {
+            height: 400px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.9rem;
+            scroll-behavior: smooth;
+        }
+
+        .log-line {
+            padding: 4px 8px;
+            border-bottom: 1px solid var(--card-border);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .log-timestamp {
+            color: #f97316;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+
+        .log-level-info {
+            color: #3b82f6;
+        }
+
+        .log-level-success {
+            color: #10b981;
+        }
+
+        .log-level-warning {
+            color: #f59e0b;
+        }
+
+        .log-level-error {
+            color: #ef4444;
+        }
+
+        .log-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .log-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .log-container::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .log-container:hover::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.3);
+        }
+
+        /* 机器人控制按钮样式 */
+        .bot-controls .btn {
+            padding: 0.5rem 1.2rem;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            border: 1px solid var(--card-border);
+        }
+
+        /* 启动按钮样式 */
+        .bot-controls .btn.text-success {
+            background: rgba(25, 135, 84, 0.1);
+        }
+        
+        .bot-controls .btn.text-success:hover {
+            background: rgba(25, 135, 84, 0.2);
+            color: #198754 !important;
+        }
+
+        /* 停止按钮样式 */
+        .bot-controls .btn.text-danger {
+            background: rgba(220, 53, 69, 0.1);
+        }
+        
+        .bot-controls .btn.text-danger:hover {
+            background: rgba(220, 53, 69, 0.2);
+            color: #dc3545 !important;
+        }
+
+        /* 更新按钮样式 */
+        .bot-controls .btn.text-primary {
+            background: rgba(13, 110, 253, 0.1);
+        }
+        
+        .bot-controls .btn.text-primary:hover {
+            background: rgba(13, 110, 253, 0.2);
+            color: #0d6efd !important;
+        }
+
+        .bot-controls .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--card-shadow);
+        }
+
+        .bot-controls .btn:active {
+            transform: translateY(0);
+        }
+
+        /* 禁用状态样式 */
+        .bot-controls .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 加载状态指示器样式 */
+        #botLoadingStatus {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            margin-bottom: 1rem;
+        }
+
+        /* 改进日志容器样式 */
+        .log-container {
+            height: 400px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.9rem;
+            scroll-behavior: smooth;
+        }
+
+        /* 修改日志内容容器样式 */
+        .logs {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <!-- 替换原有的导航栏部分 -->
+    {% with active_page = 'dashboard' %}
+    {% include 'navbar.html' %}
+    {% endwith %}
+
+    <div class="container py-4">
+        <div class="glass-panel mb-4">
+            <div class="row align-items-center g-4">
+                <div class="col-md-8">
+                    <div class="d-flex align-items-center">
+                        <img src="https://github.com/umaru-233.png" 
+                             alt="umaru-233" 
+                             class="rounded-circle me-3" 
+                             style="width: 64px; height: 64px;">
+                        <div>
+                            <h4 class="mb-1">My Dream Moments</h4>
+                            <p class="text-muted mb-2">
+                                <small>by <a href="https://github.com/umaru-233" target="_blank" class="text-decoration-none">umaru-233</a></small>
+                            </p>
+                            <div class="d-flex gap-3">
+                                <a href="https://github.com/umaru-233/My-Dream-Moments" target="_blank" 
+                                   class="text-decoration-none text-muted">
+                                    <i class="bi bi-github me-1"></i>GitHub
+                                </a>
+                                <span class="text-muted">
+                                    <i class="bi bi-star-fill me-1 text-warning"></i>547
+                                </span>
+                                <span class="text-muted">
+                                    <i class="bi bi-git me-1"></i>81
+                                </span>
+                                <span class="text-muted">
+                                    <i class="bi bi-exclamation-circle me-1"></i>7
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-grid gap-2">
+                        <a href="https://github.com/umaru-233/My-Dream-Moments" target="_blank" 
+                           class="btn btn-primary">
+                            <i class="bi bi-github me-2"></i>访问项目
+                        </a>
+                        <a href="https://github.com/umaru-233/My-Dream-Moments/fork" target="_blank" 
+                           class="btn btn-outline-primary">
+                            <i class="bi bi-git me-2"></i>Fork 项目
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <hr class="my-4">
+            <div class="row g-4">
+                <div class="col-md-8">
+                    <h5 class="mb-3">项目介绍</h5>
+                    <p class="mb-3">
+                        推荐使用DeepSeekV3。可以接入微信、QQBot。基于LLM的更逼真的情感陪伴程序。
+                        内置了 Atri-My dear moments 的 prompt。
+                    </p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge bg-primary">WeChat</span>
+                        <span class="badge bg-success">QQBot</span>
+                        <span class="badge bg-info">LLM</span>
+                        <span class="badge bg-warning">AI</span>
+                        <span class="badge bg-secondary">Python</span>
+                        <span class="badge bg-danger">DeepSeek</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <h5 class="mb-3">快速链接</h5>
+                    <div class="list-group">
+                        <a href="https://github.com/umaru-233/My-Dream-Moments/issues" target="_blank" 
+                           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-exclamation-circle me-2"></i>问题反馈</span>
+                            <span class="badge bg-primary rounded-pill">7</span>
+                        </a>
+                        <a href="https://github.com/umaru-233/My-Dream-Moments/wiki" target="_blank" 
+                           class="list-group-item list-group-item-action">
+                            <i class="bi bi-book me-2"></i>使用文档
+                        </a>
+                        <a href="https://github.com/umaru-233/My-Dream-Moments/releases" target="_blank" 
+                           class="list-group-item list-group-item-action">
+                            <i class="bi bi-download me-2"></i>下载发布版
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-panel">
+            <h4 class="mb-4">
+                <i class="bi bi-pc-display me-2"></i>系统状态
+            </h4>
+            <div class="system-info">
+                <div class="info-card">
+                    <h6 class="d-flex justify-content-between">
+                        <span><i class="bi bi-cpu me-2"></i>CPU</span>
+                        <span id="cpuUsage">0%</span>
+                    </h6>
+                    <div class="progress">
+                        <div id="cpuProgress" class="progress-bar bg-primary" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <h6 class="d-flex justify-content-between">
+                        <span><i class="bi bi-memory me-2"></i>内存</span>
+                        <span id="memoryUsage">0/0 GB</span>
+                    </h6>
+                    <div class="progress">
+                        <div id="memoryProgress" class="progress-bar bg-success" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <h6 class="d-flex justify-content-between">
+                        <span><i class="bi bi-hdd me-2"></i>磁盘</span>
+                        <span id="diskUsage">0/0 GB</span>
+                    </h6>
+                    <div class="progress">
+                        <div id="diskProgress" class="progress-bar bg-info" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <h6 class="d-flex justify-content-between">
+                        <span><i class="bi bi-wifi me-2"></i>网络</span>
+                    </h6>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <div>
+                            <small class="text-muted d-block">上传</small>
+                            <span id="uploadSpeed" class="text-success">0 KB/s</span>
+                        </div>
+                        <div>
+                            <small class="text-muted d-block">下载</small>
+                            <span id="downloadSpeed" class="text-danger">0 KB/s</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-panel">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="mb-0">
+                        <i class="bi bi-robot me-2"></i>机器人状态
+                    </h4>
+                    <div class="bot-controls">
+                        <button class="btn btn-glass text-success me-2" onclick="startBot()" id="startBotBtn">
+                            <i class="bi bi-play-fill me-1"></i>启动
+                        </button>
+                        <button class="btn btn-glass text-danger me-2" onclick="stopBot()" id="stopBotBtn" disabled>
+                            <i class="bi bi-stop-fill me-1"></i>停止
+                        </button>
+                        <button class="btn btn-glass text-primary" onclick="checkUpdate()">
+                            <i class="bi bi-cloud-arrow-up me-1"></i>更新
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 添加加载状态指示器 -->
+                <div id="botLoadingStatus" class="alert alert-info d-none">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span id="botLoadingText">正在启动机器人...</span>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h6 class="status-badge" id="botStatus">
+                            <span class="status-stopped">已停止</span>
+                        </h6>
+                        <small class="text-muted" id="botUptime">运行时间: 0分钟</small>
+                    </div>
+                </div>
+                
+                <!-- 日志显示区域 -->
+                <div class="bot-logs mt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">运行日志</h6>
+                        <div>
+                            <button class="btn btn-glass me-2" onclick="scrollToBottom()">
+                                <i class="bi bi-arrow-down me-1"></i>滚动到底部
+                            </button>
+                            <button class="btn btn-glass" onclick="clearLogs()">
+                                <i class="bi bi-trash me-1"></i>清空日志
+                            </button>
+                        </div>
+                    </div>
+                    <div id="logContainer" class="log-container">
+                        <div class="logs"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-panel">
+                <h4 class="mb-4">
+                    <i class="bi bi-person-circle me-2"></i>用户信息
+                    <button class="btn btn-sm btn-outline-primary float-end" onclick="updateUserInfo()">
+                        <i class="bi bi-arrow-clockwise me-1"></i>刷新
+                    </button>
+                </h4>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="info-card">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted">账户状态</span>
+                                <span id="userStatus" class="badge rounded-pill">获取中...</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-muted">用户名</span>
+                                <span id="userName" class="text-primary">获取中...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-card">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted">邮箱</span>
+                                <span id="userEmail" class="text-secondary">获取中...</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-muted">账户类型</span>
+                                <span id="userRole" class="badge bg-info">普通用户</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="info-card">
+                            <h6 class="mb-3">账户余额</h6>
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <div class="p-3 rounded bg-primary bg-opacity-10">
+                                        <div class="text-primary mb-1">当前余额</div>
+                                        <div id="userBalance" class="h5 mb-0">获取中...</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="p-3 rounded bg-success bg-opacity-10">
+                                        <div class="text-success mb-1">充值金额</div>
+                                        <div id="chargeBalance" class="h5 mb-0">获取中...</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="p-3 rounded bg-info bg-opacity-10">
+                                        <div class="text-info mb-1">累计总额</div>
+                                        <div id="totalBalance" class="h5 mb-0">获取中...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="toast" class="toast align-items-center" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body"></div>
+                <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="glass-panel mt-5">
+        <div class="container">
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <h5 class="mb-3">关于 My Dream Moments</h5>
+                    <p class="mb-3">
+                        My Dream Moments 是一个基于 DeepSeek LLM 的情感陪伴程序，支持微信和 QQ 机器人接入。
+                        项目提供沉浸式角色扮演和多轮对话支持，让 AI 陪伴更加真实自然。
+                    </p>
+                    <div class="d-flex gap-3">
+                        <a href="https://github.com/umaru-233/My-Dream-Moments" target="_blank" 
+                           class="text-decoration-none text-muted">
+                            <i class="bi bi-github"></i> GitHub
+                        </a>
+                        <a href="https://github.com/umaru-233/My-Dream-Moments/wiki" target="_blank" 
+                           class="text-decoration-none text-muted">
+                            <i class="bi bi-book"></i> 文档
+                        </a>
+                        <a href="https://github.com/umaru-233/My-Dream-Moments/issues" target="_blank" 
+                           class="text-decoration-none text-muted">
+                            <i class="bi bi-bug"></i> 反馈
+                        </a>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <h5 class="mb-3">特色功能</h5>
+                    <ul class="list-unstyled">
+                        <li><i class="bi bi-check2-circle me-2"></i>微信/QQ 机器人接入</li>
+                        <li><i class="bi bi-check2-circle me-2"></i>DeepSeek LLM 支持</li>
+                        <li><i class="bi bi-check2-circle me-2"></i>角色扮演系统</li>
+                        <li><i class="bi bi-check2-circle me-2"></i>多轮对话支持</li>
+                        <li><i class="bi bi-check2-circle me-2"></i>情感表情系统</li>
+                    </ul>
+                </div>
+                <div class="col-md-3">
+                    <h5 class="mb-3">技术支持</h5>
+                    <ul class="list-unstyled">
+                        <li><i class="bi bi-envelope me-2"></i>yangchenglin2004@foxmail.com</li>
+                        <li><i class="bi bi-people me-2"></i>QQ群：715616260</li>
+                        <li><i class="bi bi-person me-2"></i>作者：umaru-233</li>
+                        <li><i class="bi bi-star me-2"></i>Stars：547</li>
+                        <li><i class="bi bi-git me-2"></i>Forks：81</li>
+                    </ul>
+                </div>
+            </div>
+            <hr class="my-4">
+            <div class="text-center text-muted">
+                <small>
+                    © 2024 My Dream Moments. Made with <i class="bi bi-heart-fill text-danger"></i> by 
+                    <a href="https://github.com/umaru-233" target="_blank" class="text-decoration-none">umaru-233</a>
+                </small>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 添加 showToast 函数
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastBody = toast.querySelector('.toast-body');
+            
+            // 移除所有已有的背景色类
+            toast.classList.remove('bg-success', 'bg-danger', 'bg-info', 'bg-warning');
+            
+            // 根据类型添加对应的背景色
+            switch(type) {
+                case 'success':
+                    toast.classList.add('bg-success', 'text-white');
+                    break;
+                case 'error':
+                    toast.classList.add('bg-danger', 'text-white');
+                    break;
+                case 'warning':
+                    toast.classList.add('bg-warning');
+                    break;
+                default:
+                    toast.classList.add('bg-info', 'text-white');
+            }
+            
+            toastBody.textContent = message;
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+        }
+
+        // 修改系统信息更新函数
+        function updateSystemInfo() {
+            fetch('/system_info')
+                .then(response => response.json())
+                .then(data => {
+                    try {
+                        // 更新其他系统信息
+                        document.getElementById('cpuUsage').textContent = `${data.cpu}%`;
+                        document.getElementById('cpuProgress').style.width = `${data.cpu}%`;
+                        
+                        document.getElementById('memoryUsage').textContent = 
+                            `${data.memory.used}/${data.memory.total} GB`;
+                        document.getElementById('memoryProgress').style.width = 
+                            `${(data.memory.used/data.memory.total)*100}%`;
+                        
+                        document.getElementById('diskUsage').textContent = 
+                            `${data.disk.used}/${data.disk.total} GB`;
+                        document.getElementById('diskProgress').style.width = 
+                            `${(data.disk.used/data.disk.total)*100}%`;
+                        
+                        // 格式化网络速度显示
+                        const formatSpeed = (speed) => {
+                            if (speed >= 1024) {
+                                return `${(speed/1024).toFixed(2)} MB/s`;
+                            }
+                            return `${speed.toFixed(2)} KB/s`;
+                        };
+                        
+                        document.getElementById('uploadSpeed').textContent = 
+                            formatSpeed(data.network.upload);
+                        document.getElementById('downloadSpeed').textContent = 
+                            formatSpeed(data.network.download);
+                        
+                    } catch (error) {
+                        console.error('更新系统信息失败:', error);
+                    }
+                })
+                .catch(error => {
+                    console.error('获取系统信息失败:', error);
+                });
+        }
+
+        let isPollingLogs = false;
+        
+        // 修改启动机器人函数
+        function startBot() {
+            const loadingStatus = document.getElementById('botLoadingStatus');
+            const loadingText = document.getElementById('botLoadingText');
+            const startBtn = document.getElementById('startBotBtn');
+            const stopBtn = document.getElementById('stopBotBtn');
+            
+            loadingStatus.classList.remove('d-none');
+            loadingText.textContent = '正在启动机器人...';
+            startBtn.disabled = true;
+            
+            fetch('/start_bot')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        document.getElementById('botStatus').innerHTML = 
+                            '<span class="status-running">运行中</span>';
+                        showToast('机器人启动成功', 'success');
+                        startPollingLogs();
+                        stopBtn.disabled = false;
+                        startBtn.disabled = true;
+                    } else {
+                        showToast('机器人启动失败: ' + data.message, 'error');
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                    }
+                    loadingStatus.classList.add('d-none');
+                })
+                .catch(error => {
+                    showToast('启动失败: ' + error, 'error');
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    loadingStatus.classList.add('d-none');
+                });
+        }
+
+        // 添加日志轮询函数
+        function startPollingLogs() {
+            if (!isPollingLogs) {
+                isPollingLogs = true;
+                pollLogs();
+            }
+        }
+
+        function formatLogLine(log) {
+            // 解析日志格式
+            const timestampMatch = log.match(/\[([\d:]+)\]/);
+            if (!timestampMatch) return log;
+
+            const timestamp = timestampMatch[1];
+            const content = log.replace(/\[[\d:]+\]\s*/, '');
+
+            // 确定日志级别
+            let levelClass = 'log-level-info';
+            if (content.includes('成功') || content.includes('完成')) {
+                levelClass = 'log-level-success';
+            } else if (content.includes('警告') || content.includes('warning')) {
+                levelClass = 'log-level-warning';
+            } else if (content.includes('错误') || content.includes('error') || content.includes('失败')) {
+                levelClass = 'log-level-error';
+            }
+
+            // 返回格式化的HTML
+            return `<span class="log-timestamp">[${timestamp}]</span><span class="${levelClass}">${content}</span>`;
+        }
+
+        function pollLogs() {
+            fetch('/get_bot_logs')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const logContainer = document.querySelector('.log-container');
+                        const logsElement = document.querySelector('.logs');
+                        const startBtn = document.getElementById('startBotBtn');
+                        const stopBtn = document.getElementById('stopBotBtn');
+                        
+                        // 添加新日志
+                        if (data.logs && data.logs.length > 0) {
+                            // 检查是否在底部
+                            const isAtBottom = logContainer.scrollHeight - logContainer.clientHeight <= logContainer.scrollTop + 1;
+                            
+                            data.logs.forEach(log => {
+                                const logLine = document.createElement('div');
+                                logLine.className = 'log-line';
+                                logLine.innerHTML = formatLogLine(log);
+                                logsElement.appendChild(logLine);
+                            });
+                            
+                            // 如果之前在底部，则滚动到新的底部
+                            if (isAtBottom) {
+                                logContainer.scrollTo({
+                                    top: logContainer.scrollHeight,
+                                    behavior: 'smooth'
+                                });
+                            }
+                        }
+                        
+                        // 更新运行时间
+                        if (data.uptime) {
+                            document.getElementById('botUptime').textContent = 
+                                '运行时间: ' + data.uptime;
+                        }
+                        
+                        // 更新状态和按钮
+                        if (data.is_running) {
+                            document.getElementById('botStatus').innerHTML = 
+                                '<span class="status-running">运行中</span>';
+                            startBtn.disabled = true;   // 禁用启动按钮
+                            stopBtn.disabled = false;   // 启用停止按钮
+                        } else {
+                            document.getElementById('botStatus').innerHTML = 
+                                '<span class="status-stopped">已停止</span>';
+                            startBtn.disabled = false;  // 启用启动按钮
+                            stopBtn.disabled = true;    // 禁用停止按钮
+                            isPollingLogs = false;
+                            return;
+                        }
+                        
+                        // 继续轮询
+                        if (isPollingLogs) {
+                            setTimeout(pollLogs, 1000);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('获取日志失败:', error);
+                    isPollingLogs = false;
+                    // 发生错误时重置按钮状态
+                    document.getElementById('startBotBtn').disabled = false;
+                    document.getElementById('stopBotBtn').disabled = true;
+                });
+        }
+
+        // 修改滚动到底部函数
+        function scrollToBottom() {
+            const logContainer = document.querySelector('.log-container');
+            if (logContainer) {
+                logContainer.scrollTo({
+                    top: logContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        }
+
+        // 修改清空日志函数
+        function clearLogs() {
+            if (confirm('确定要清空日志吗？')) {
+                const logsElement = document.querySelector('.logs');
+                if (logsElement) {
+                    logsElement.innerHTML = '';
+                }
+            }
+        }
+
+        // 修改停止机器人函数
+        function stopBot() {
+            const loadingStatus = document.getElementById('botLoadingStatus');
+            const loadingText = document.getElementById('botLoadingText');
+            const startBtn = document.getElementById('startBotBtn');
+            const stopBtn = document.getElementById('stopBotBtn');
+            
+            if (confirm('确定要停止机器人吗？')) {
+                loadingStatus.classList.remove('d-none');
+                loadingText.textContent = '正在停止机器人...';
+                stopBtn.disabled = true;
+                
+                fetch('/stop_bot')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            document.getElementById('botStatus').innerHTML = 
+                                '<span class="status-stopped">已停止</span>';
+                            document.getElementById('botUptime').textContent = 
+                                '运行时间: 0分钟';
+                            showToast('机器人已停止', 'success');
+                            isPollingLogs = false;
+                            startBtn.disabled = false;
+                            stopBtn.disabled = true;
+                        } else {
+                            showToast('停止失败: ' + data.message, 'error');
+                            stopBtn.disabled = false;
+                        }
+                        loadingStatus.classList.add('d-none');
+                    })
+                    .catch(error => {
+                        showToast('停止失败: ' + error, 'error');
+                        stopBtn.disabled = false;
+                        loadingStatus.classList.add('d-none');
+                    });
+            }
+        }
+
+        // 检查更新
+        function checkUpdate() {
+            document.getElementById('updateStatus').style.display = 'block';
+            fetch('/check_update')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.has_update) {
+                        if (confirm(`发现新版本 ${data.version}\n\n${data.description}\n\n是否现在更新？`)) {
+                            return fetch('/do_update');
+                        }
+                    } else {
+                        showToast('当前已是最新版本', 'info');
+                    }
+                    document.getElementById('updateStatus').style.display = 'none';
+                });
+        }
+
+        // 护眼模式切换
+        function toggleDarkMode() {
+            document.body.setAttribute('data-bs-theme', 
+                document.body.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark');
+        }
+
+        // 页面加载初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化按钮状态
+            const startBtn = document.getElementById('startBotBtn');
+            const stopBtn = document.getElementById('stopBotBtn');
+            
+            // 默认启用启动按钮，禁用停止按钮
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            // 检查机器人状态
+            fetch('/get_bot_logs')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.is_running) {
+                        document.getElementById('botStatus').innerHTML = 
+                            '<span class="status-running">运行中</span>';
+                        startBtn.disabled = true;
+                        stopBtn.disabled = false;
+                        startPollingLogs();
+                    } else {
+                        document.getElementById('botStatus').innerHTML = 
+                            '<span class="status-stopped">已停止</span>';
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                    }
+                });
+            
+            // 开始定时更新
+            updateSystemInfo();
+            setInterval(updateSystemInfo, 2000);
+            
+            // 初始化用户信息（只执行一次）
+            updateUserInfo();
+            
+            // 初始化背景
+            fetch('/get_background')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.path) {
+                        document.body.style.backgroundImage = `url('${data.path}')`;
+                    }
+                });
+        });
+
+        // 更新用户信息
+        function updateUserInfo() {
+            const elements = {
+                status: document.getElementById('userStatus'),
+                name: document.getElementById('userName'),
+                email: document.getElementById('userEmail'),
+                balance: document.getElementById('userBalance'),
+                chargeBalance: document.getElementById('chargeBalance'),
+                totalBalance: document.getElementById('totalBalance')
+            };
+            
+            // 设置加载状态
+            Object.values(elements).forEach(el => {
+                if (el) el.innerHTML = '<i class="bi bi-hourglass-split"></i> 获取中...';
+            });
+            
+            fetch('/user_info')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 更新状态标签
+                        elements.status.className = 'badge rounded-pill ' + 
+                            (data.data.status === 'normal' ? 'bg-success' : 'bg-warning');
+                        elements.status.innerHTML = data.data.status === 'normal' ? 
+                            '<i class="bi bi-check-circle"></i> 正常' : 
+                            '<i class="bi bi-exclamation-circle"></i> ' + data.data.status;
+                        
+                        // 更新用户信息
+                        elements.name.textContent = data.data.name;
+                        elements.email.textContent = data.data.email;
+                        
+                        // 更新余额信息（添加货币符号和格式化）
+                        elements.balance.innerHTML = `￥${parseFloat(data.data.balance).toFixed(2)}`;
+                        elements.chargeBalance.innerHTML = `￥${parseFloat(data.data.charge_balance).toFixed(2)}`;
+                        elements.totalBalance.innerHTML = `￥${parseFloat(data.data.total_balance).toFixed(2)}`;
+                        
+                        showToast('用户信息更新成功', 'success');
+                    } else {
+                        showToast(data.message, 'error');
+                        // 显示错误状态
+                        elements.status.className = 'badge rounded-pill bg-danger';
+                        elements.status.innerHTML = '<i class="bi bi-x-circle"></i> 获取失败';
+                        
+                        Object.values(elements).forEach(el => {
+                            if (el && el !== elements.status) el.textContent = '获取失败';
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('获取用户信息失败:', error);
+                    showToast('网络错误', 'error');
+                    
+                    // 显示错误状态
+                    elements.status.className = 'badge rounded-pill bg-danger';
+                    elements.status.innerHTML = '<i class="bi bi-x-circle"></i> 网络错误';
+                    
+                    Object.values(elements).forEach(el => {
+                        if (el && el !== elements.status) el.textContent = '网络错误';
+                    });
+                });
+        }
+
+        // 背景图片处理
+        document.getElementById('backgroundInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const formData = new FormData();
+                formData.append('background', file);
+                
+                fetch('/upload_background', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        document.body.style.backgroundImage = `url('${data.path}')`;
+                        showToast(data.message, 'success');
+                    } else {
+                        showToast(data.message, 'error');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html> 

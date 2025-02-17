@@ -12,3 +12,4 @@ openai>=1.0.0
 pyautogui
 colorama>=0.4.4
 tenacity>=8.0.0
+psutil   

@@ -8,15 +8,61 @@
 - 动态修改配置
 """
 
+"""
+配置管理Web界面启动文件
+提供Web配置界面功能，包括:
+- 初始化Python路径
+- 禁用字节码缓存
+- 清理缓存文件
+- 启动Web服务器
+- 动态修改配置
+"""
+
 import os
 import sys
 import json
 import logging
+from flask import Flask, render_template, jsonify, request, send_from_directory, redirect, url_for
 import importlib
 from typing import Dict, Any, List
-from flask import Flask, render_template, request, jsonify, send_from_directory
-from werkzeug.utils import secure_filename
-from colorama import init, Fore, Style
+import psutil
+import subprocess
+import threading
+from src.autoupdate.updater import Updater
+import requests
+import time
+from queue import Queue
+import datetime
+from logging.config import dictConfig
+
+# 配置日志
+dictConfig({
+    'version': 1,
+    'formatters': {
+        'default': {
+            'format': '[%(asctime)s] %(levelname)s: %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S'
+        }
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'default',
+            'level': 'INFO'
+        }
+    },
+    'root': {
+        'level': 'INFO',
+        'handlers': ['console']
+    },
+    'loggers': {
+        'werkzeug': {
+            'level': 'ERROR',  # 将 Werkzeug 的日志级别设置为 ERROR
+            'handlers': ['console'],
+            'propagate': False
+        }
+    }
+})
 
 # 获取项目根目录
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,12 +83,12 @@ app = Flask(__name__,
 app.config['UPLOAD_FOLDER'] = os.path.join(ROOT_DIR, 'src/webui/static/backgrounds')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# 配置日志
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# 初始化colorama
-init()
+# 添加全局变量存储日志
+bot_logs = Queue(maxsize=1000)  # 限制最大日志数量
+bot_process = None
+bot_start_time = None
 
 def print_status(message: str, status: str = "info", emoji: str = ""):
     """打印状态信息"""
@@ -515,9 +561,8 @@ def save_config(new_config: Dict[str, Any]) -> bool:
 
 @app.route('/')
 def index():
-    """渲染配置页面"""
-    config_groups = parse_config_groups()
-    return render_template('config.html', config_groups=config_groups)
+    """重定向到控制台"""
+    return redirect(url_for('dashboard'))
 
 @app.route('/save', methods=['POST'])
 def save():
@@ -587,6 +632,311 @@ def get_background():
             "message": str(e)
         })
 
+# 添加新的路由
+@app.route('/dashboard')
+def dashboard():
+    """渲染控制台页面"""
+    return render_template('dashboard.html', active_page='dashboard')
+
+@app.route('/system_info')
+def system_info():
+    """获取系统信息"""
+    try:
+        # 创建静态变量存储上次的值
+        if not hasattr(system_info, 'last_bytes'):
+            system_info.last_bytes = {
+                'sent': 0,
+                'recv': 0,
+                'time': time.time()
+            }
+
+        cpu_percent = psutil.cpu_percent()
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        net = psutil.net_io_counters()
+        
+        # 计算网络速度
+        current_time = time.time()
+        time_delta = current_time - system_info.last_bytes['time']
+        
+        # 计算每秒的字节数
+        upload_speed = (net.bytes_sent - system_info.last_bytes['sent']) / time_delta
+        download_speed = (net.bytes_recv - system_info.last_bytes['recv']) / time_delta
+        
+        # 更新上次的值
+        system_info.last_bytes = {
+            'sent': net.bytes_sent,
+            'recv': net.bytes_recv,
+            'time': current_time
+        }
+        
+        # 转换为 KB/s
+        upload_speed = upload_speed / 1024
+        download_speed = download_speed / 1024
+        
+        return jsonify({
+            'cpu': cpu_percent,
+            'memory': {
+                'total': round(memory.total / (1024**3), 2),
+                'used': round(memory.used / (1024**3), 2),
+                'percent': memory.percent
+            },
+            'disk': {
+                'total': round(disk.total / (1024**3), 2),
+                'used': round(disk.used / (1024**3), 2),
+                'percent': disk.percent
+            },
+            'network': {
+                'upload': round(upload_speed, 2),
+                'download': round(download_speed, 2)
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取系统信息失败: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/check_update')
+def check_update():
+    """检查更新"""
+    updater = Updater()
+    update_info = updater.check_for_updates()
+    return jsonify(update_info if update_info else {'has_update': False})
+
+@app.route('/do_update')
+def do_update():
+    """执行更新"""
+    updater = Updater()
+    success = updater.update()
+    return jsonify({
+        'status': 'success' if success else 'error',
+        'message': '更新成功，请重启程序' if success else '更新失败'
+    })
+
+@app.route('/start_bot')
+def start_bot():
+    """启动机器人"""
+    global bot_process, bot_start_time
+    try:
+        if bot_process and bot_process.poll() is None:
+            return jsonify({
+                'status': 'error',
+                'message': '机器人已在运行中'
+            })
+        
+        # 清空之前的日志
+        while not bot_logs.empty():
+            bot_logs.get()
+        
+        # 设置环境变量
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
+        
+        # 创建新的进程组
+        if sys.platform.startswith('win'):
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            DETACHED_PROCESS = 0x00000008
+            creationflags = CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
+        else:
+            creationflags = 0
+        
+        # 启动进程
+        bot_process = subprocess.Popen(
+            [sys.executable, 'run.py'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            bufsize=1,
+            env=env,
+            encoding='utf-8',
+            errors='replace',
+            creationflags=creationflags if sys.platform.startswith('win') else 0,
+            preexec_fn=os.setsid if not sys.platform.startswith('win') else None
+        )
+        
+        # 记录启动时间
+        bot_start_time = datetime.datetime.now()
+        
+        # 启动日志读取线程
+        def read_output():
+            try:
+                while bot_process and bot_process.poll() is None:
+                    line = bot_process.stdout.readline()
+                    if line:
+                        try:
+                            # 尝试解码并清理日志内容
+                            line = line.strip()
+                            if isinstance(line, bytes):
+                                line = line.decode('utf-8', errors='replace')
+                            timestamp = datetime.datetime.now().strftime('%H:%M:%S')
+                            bot_logs.put(f"[{timestamp}] {line}")
+                        except Exception as e:
+                            logger.error(f"日志处理错误: {str(e)}")
+                            continue
+            except Exception as e:
+                logger.error(f"读取日志失败: {str(e)}")
+                bot_logs.put(f"[ERROR] 读取日志失败: {str(e)}")
+        
+        thread = threading.Thread(target=read_output, daemon=True)
+        thread.start()
+        
+        return jsonify({
+            'status': 'success',
+            'message': '机器人启动成功'
+        })
+    except Exception as e:
+        logger.error(f"启动机器人失败: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
+
+@app.route('/get_bot_logs')
+def get_bot_logs():
+    """获取机器人日志"""
+    logs = []
+    while not bot_logs.empty():
+        logs.append(bot_logs.get())
+    
+    # 获取运行时间
+    uptime = '0分钟'
+    if bot_start_time and bot_process and bot_process.poll() is None:
+        delta = datetime.datetime.now() - bot_start_time
+        total_seconds = int(delta.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        
+        if hours > 0:
+            uptime = f"{hours}小时{minutes}分钟{seconds}秒"
+        elif minutes > 0:
+            uptime = f"{minutes}分钟{seconds}秒"
+        else:
+            uptime = f"{seconds}秒"
+    
+    return jsonify({
+        'status': 'success',
+        'logs': logs,
+        'uptime': uptime,
+        'is_running': bot_process is not None and bot_process.poll() is None
+    })
+
+@app.route('/stop_bot')
+def stop_bot():
+    """停止机器人"""
+    global bot_process
+    try:
+        if bot_process:
+            # 首先尝试正常终止进程
+            bot_process.terminate()
+            
+            # 等待进程结束
+            try:
+                bot_process.wait(timeout=5)  # 等待最多5秒
+            except subprocess.TimeoutExpired:
+                # 如果超时，强制结束进程
+                bot_process.kill()
+                bot_process.wait()
+            
+            # 确保所有子进程都被终止
+            if sys.platform.startswith('win'):
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(bot_process.pid)], 
+                             capture_output=True)
+            else:
+                import signal
+                os.killpg(os.getpgid(bot_process.pid), signal.SIGTERM)
+            
+            # 清理进程对象
+            bot_process = None
+            
+            # 添加日志记录
+            timestamp = datetime.datetime.now().strftime('%H:%M:%S')
+            bot_logs.put(f"[{timestamp}] 正在关闭监听线程...")
+            bot_logs.put(f"[{timestamp}] 正在关闭系统...")
+            bot_logs.put(f"[{timestamp}] 系统已退出")
+            
+            return jsonify({
+                'status': 'success',
+                'message': '机器人已停止'
+            })
+            
+        return jsonify({
+            'status': 'error',
+            'message': '机器人未在运行'
+        })
+    except Exception as e:
+        logger.error(f"停止机器人失败: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
+
+@app.route('/config')
+def config():
+    """渲染配置页面"""
+    config_groups = parse_config_groups()
+    return render_template('config.html', config_groups=config_groups, active_page='config')
+
+# 添加获取用户信息的路由
+@app.route('/user_info')
+def get_user_info():
+    """获取用户账户信息"""
+    try:
+        from src.config import config
+        api_key = config.llm.api_key
+        base_url = config.llm.base_url.rstrip('/')
+        
+        # 确保使用正确的API端点
+        if 'siliconflow.cn' in base_url:
+            api_url = f"{base_url}/user/info"
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': '当前API不支持查询用户信息'
+            })
+        
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.get(api_url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('status') is True and data.get('data'):  # 修改判断条件
+                user_data = data['data']
+                return jsonify({
+                    'status': 'success',
+                    'data': {
+                        'balance': user_data.get('balance', '0'),
+                        'total_balance': user_data.get('totalBalance', '0'),
+                        'charge_balance': user_data.get('chargeBalance', '0'),
+                        'name': user_data.get('name', 'Unknown'),
+                        'email': user_data.get('email', 'Unknown'),
+                        'status': user_data.get('status', 'Unknown')
+                    }
+                })
+            
+        return jsonify({
+            'status': 'error',
+            'message': f"API返回错误: {response.text}"
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f"获取用户信息失败: {str(e)}"
+        })
+
+# 在 app 初始化后添加
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """提供静态文件服务"""
+    return send_from_directory(app.static_folder, filename)
+
 def main():
     """主函数"""
     from src.config import config
@@ -619,16 +969,27 @@ def main():
         print_status(f"已清理 {cleanup_count} 个缓存目录", "success", "🗑️")
     else:
         print_status("没有需要清理的缓存", "info", "✨")
-
-    # 启动服务器
+        
+    # 修改启动 Web 服务器的部分
+    cli = sys.modules['flask.cli']
+    cli.show_server_banner = lambda *x: None # 禁用 Flask 启动横幅
+    
     print_status("正在启动Web服务...", "info", "🌐")
     print("-"*50)
     print_status("配置管理系统已就绪！", "success", "✨")
     print_status("请访问: http://localhost:8501", "info", "🔗")
     print("="*50 + "\n")
-
-    # 启动Web服务器
-    app.run(host='0.0.0.0', port=8501, debug=True)
+    
+    if sys.platform.startswith('win'):
+        import subprocess
+        subprocess.run(['chcp', '65001'], shell=True)
+    
+    app.run(
+        host='0.0.0.0', 
+        port=8501, 
+        debug=True,
+        use_reloader=True
+    )
 
 if __name__ == '__main__':
     try:

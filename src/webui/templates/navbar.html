@@ -1,0 +1,38 @@
+<nav class="navbar navbar-expand-lg bg-body-tertiary shadow-sm">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/dashboard">
+            <i class="bi bi-stars me-2"></i>My Dream Moments
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        
+        <div class="collapse navbar-collapse" id="navbarContent">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if active_page == 'dashboard' }}" href="/dashboard">
+                        <i class="bi bi-house-door me-1"></i>主页
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if active_page == 'config' }}" href="/config">
+                        <i class="bi bi-gear me-1"></i>配置中心
+                    </a>
+                </li>
+            </ul>
+            
+            <div class="d-flex align-items-center">
+                <div class="form-check form-switch me-3">
+                    <input class="form-check-input" type="checkbox" role="switch" id="darkModeToggle" onclick="toggleDarkMode()">
+                    <label class="form-check-label" for="darkModeToggle">护眼模式</label>
+                </div>
+                <div>
+                    <input type="file" class="d-none" id="backgroundInput" accept="image/*">
+                    <button class="btn btn-outline-primary" onclick="document.getElementById('backgroundInput').click()">
+                        <i class="bi bi-image me-2"></i>更换背景
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav> 

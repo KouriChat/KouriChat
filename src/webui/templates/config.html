@@ -5,71 +5,91 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="My Dream Moments - 配置中心">
     <meta name="keywords" content="AI,My Dream Moments">
+    <meta name="theme-color" content="#6366f1">
     <title>My Dream Moments - 配置中心</title>
     <link href="/static/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <style>
         :root {
             --primary-color: #6366f1;
             --secondary-color: #4f46e5;
-            --background-color: #f8fafc;
+            --background-color: #f0f4f8;  /* 更柔和的浅蓝灰色背景 */
             --text-color: #1e293b;
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --card-border: rgba(255, 255, 255, 0.5);
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
 
         [data-bs-theme="dark"] {
-            --primary-color: #818cf8;
-            --secondary-color: #6366f1;
-            --background-color: #1e293b;
+            --background-color: #1a1f2e;  /* 更柔和的深色背景 */
             --text-color: #f8fafc;
+            --card-bg: rgba(30, 41, 59, 0.9);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
         }
 
         body {
             background: var(--background-color);
+            background-image: linear-gradient(to bottom right, 
+                rgba(255, 255, 255, 0.1), 
+                rgba(255, 255, 255, 0));  /* 添加微妙的渐变效果 */
             color: var(--text-color);
             transition: background 0.3s, color 0.3s;
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }
-
-        /* 添加背景图片遮罩 */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: inherit;
-            filter: blur(5px);
-            z-index: -1;
         }
 
         .config-section {
-            max-width: 800px;
-            margin: 2rem auto;
-            padding: 2rem;
-            background: rgba(255, 255, 255, 0.05);
+            background: var(--card-bg);
+            backdrop-filter: blur(5px);
             border-radius: 1rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--card-border);
+            box-shadow: var(--card-shadow);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
         }
 
-        .form-control {
+        /* 添加卡片微妙的装饰效果 */
+        .config-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+            opacity: 0.5;
+        }
+
+        .form-control, .form-select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
             border-radius: 0.5rem;
-            padding: 0.75rem 1rem;
+            border: 1px solid var(--card-border) !important;
+            background: var(--card-bg);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary-color) !important;
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+            outline: none;
         }
 
         .form-switch .form-check-input {
             width: 3em;
             height: 1.5em;
+            margin-left: -3.5em;
         }
 
         .form-label {
-            font-weight: 600;
-            margin-bottom: 0.5rem;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
         }
 
         .badge-info {
@@ -85,8 +105,18 @@
         }
 
         .accordion-button {
-            background: rgba(var(--primary-color), 0.1);
-            font-weight: 600;
+            background: transparent;
+            border: none;
+        }
+
+        .accordion-button:not(.collapsed) {
+            background: rgba(var(--bs-primary-rgb), 0.1);
+            color: var(--primary-color);
+        }
+
+        .accordion-item {
+            background: transparent;
+            border-color: var(--card-border);
         }
 
         .toast {
@@ -124,28 +154,62 @@
             margin: 0;
             vertical-align: middle;
         }
+
+        /* 输入框组样式 */
+        .input-group {
+            border: 1px solid var(--card-border);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+
+        .input-group .form-control {
+            border: none !important;
+        }
+
+        /* 配置项容器样式 */
+        .config-item {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* 响应式布局 */
+        @media (max-width: 768px) {
+            .config-section {
+                padding: 1rem;
+            }
+        }
+
+        /* 密码输入框样式 */
+        .password-input-group {
+            position: relative;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-color);
+            opacity: 0.7;
+        }
+
+        .password-toggle:hover {
+            opacity: 1;
+        }
     </style>
+    <script defer src="http://umami.kourichat.com/script.js" data-website-id="319cc5bc-c057-4f6c-8bc4-4af5e110add1"></script>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg bg-body-tertiary shadow-sm">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="#">
-                <i class="bi bi-stars me-2"></i>My Dream Moments
-            </a>
-            <div class="d-flex align-items-center">
-                <div class="form-check form-switch me-3">
-                    <input class="form-check-input" type="checkbox" role="switch" id="darkModeToggle" onclick="toggleDarkMode()">
-                    <label class="form-check-label" for="darkModeToggle">护眼模式</label>
-                </div>
-                <div class="me-3">
-                    <input type="file" class="d-none" id="backgroundInput" accept="image/*">
-                    <button class="btn btn-outline-primary" onclick="document.getElementById('backgroundInput').click()">
-                        <i class="bi bi-image me-2"></i>更换背景
-                    </button>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <!-- 替换原有的导航栏部分 -->
+    {% with active_page = 'config' %}
+    {% include 'navbar.html' %}
+    {% endwith %}
 
     <main class="container-fluid py-4">
         <div class="row">
