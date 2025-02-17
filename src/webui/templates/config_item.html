@@ -188,13 +188,13 @@
         </div>
     {% else %}
         <input type="number" 
+            step="0.1"
+            min="0.1"
+            max="24"
             class="form-control" 
             id="{{ key }}" 
             name="{{ key }}" 
-            value="{{ config.value }}"
-            step="0.1"
-            {% if config.min is defined %}min="{{ config.min }}"{% endif %}
-            {% if config.max is defined %}max="{{ config.max }}"{% endif %}>
+            value="{{ config.value }}">
     {% endif %}
 {% elif key == 'MOONSHOT_API_KEY' %}
     <div class="mb-3">
@@ -207,6 +207,53 @@
             target="_blank">
             <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
         </a>
+    </div>
+{% elif key == 'WEATHER_API_KEY' %}
+    <div class="mb-3">
+        <input type="text" class="form-control mb-2" 
+            id="{{ key }}" name="{{ key }}" 
+            value="{{ config.value }}"
+            placeholder="请输入和风天气 API 密钥">
+        <a href="https://dev.qweather.com/docs/configuration/project-and-key/" 
+            class="btn btn-primary w-100"
+            target="_blank">
+            <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
+        </a>
+    </div>
+{% elif key == 'WEATHER_BASE_URL' %}
+    <div class="mb-3">
+        <select class="form-select mb-2" id="{{ key }}" name="{{ key }}" onchange="updateWeatherUrl(this.value)">
+            <option value="https://devapi.qweather.com/v7/weather/now" {% if 'devapi' in config.value %}selected{% endif %}>免费版</option>
+            <option value="https://api.qweather.com/v7/weather/now" {% if not 'devapi' in config.value %}selected{% endif %}>付费版</option>
+        </select>
+    </div>
+{% elif key == 'WEATHER_CITY_LIST' %}
+    <div class="mb-2">
+        <div class="input-group mb-2">
+            <input type="text" class="form-control" 
+                id="input_{{ key }}" 
+                placeholder="请输入要监听的城市">
+            <button class="btn btn-primary" type="button" 
+                onclick="addNewCity('{{ key }}')">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+        </div>
+        <div id="selected_cities_{{ key }}" class="list-group">
+            {% if config.value %}
+                {% for city in config.value %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        {{ city }}
+                        <button type="button" class="btn btn-danger btn-sm" onclick="removeCity('{{ key }}', '{{ city }}')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+        <input type="text" 
+            id="{{ key }}" 
+            name="{{ key }}" 
+            value="{{ config.value|join(',') if config.value else '' }}">
     </div>
 {% else %}
     <input type="text" class="form-control" 

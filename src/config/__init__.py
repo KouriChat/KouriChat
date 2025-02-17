@@ -3,6 +3,7 @@ import json
 import logging
 from dataclasses import dataclass
 from typing import List, Optional
+from services.Weather import init_weather_service
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +36,32 @@ class TextToSpeechSettings:
     voice_dir: str
 
 @dataclass
+class WeatherSettings:
+    api_key: str
+    base_url: str
+    city_list: List[str]
+
+    def get_city_location(self, city_name: str) -> Optional[str]:
+        """获取城市位置信息"""
+        from services.Weather import get_location_by_name
+        return get_location_by_name(city_name)
+
+@dataclass
 class MediaSettings:
     image_recognition: ImageRecognitionSettings
     image_generation: ImageGenerationSettings
     text_to_speech: TextToSpeechSettings
+    weather: WeatherSettings
+
+@dataclass
+class CountdownSettings:
+    min_hours: float
+    max_hours: float
 
 @dataclass
 class AutoMessageSettings:
     content: str
-    min_hours: float
-    max_hours: float
+    countdown: CountdownSettings
 
 @dataclass
 class QuietTimeSettings:
@@ -54,7 +71,7 @@ class QuietTimeSettings:
 @dataclass
 class ContextSettings:
     max_groups: int
-    avatar_dir: str  # 人设目录路径，prompt文件和表情包目录都将基于此路径
+    avatar_dir: str
 
 @dataclass
 class BehaviorSettings:
@@ -97,12 +114,9 @@ class Config:
             logger.error(f"保存配置失败: {str(e)}")
             return False
     
-    def load_config(self) -> None:
+    def load_config(self) -> bool:
         """加载配置文件"""
         try:
-            if not os.path.exists(self.config_path):
-                raise FileNotFoundError(f"配置文件不存在: {self.config_path}")
-                
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
@@ -139,6 +153,11 @@ class Config:
                 text_to_speech=TextToSpeechSettings(
                     tts_api_url=media_data['text_to_speech']['tts_api_url']['value'],
                     voice_dir=media_data['text_to_speech']['voice_dir']['value']
+                ),
+                weather=WeatherSettings(
+                    api_key=media_data['weather']['api_key']['value'],
+                    base_url=media_data['weather']['base_url']['value'],
+                    city_list=media_data['weather']['city_list']['value']
                 )
             )
             
@@ -147,8 +166,10 @@ class Config:
             self.behavior = BehaviorSettings(
                 auto_message=AutoMessageSettings(
                     content=behavior_data['auto_message']['content']['value'],
-                    min_hours=behavior_data['auto_message']['countdown']['min_hours']['value'],
-                    max_hours=behavior_data['auto_message']['countdown']['max_hours']['value']
+                    countdown=CountdownSettings(
+                        min_hours=behavior_data['auto_message']['countdown']['min_hours']['value'],
+                        max_hours=behavior_data['auto_message']['countdown']['max_hours']['value']
+                    )
                 ),
                 quiet_time=QuietTimeSettings(
                     start=behavior_data['quiet_time']['start']['value'],
@@ -160,9 +181,18 @@ class Config:
                 )
             )
             
+            # 初始化天气服务
+            init_weather_service(
+                api_key=self.media.weather.api_key,
+                base_url=self.media.weather.base_url
+            )
+            
+            logger.info(f"已加载城市列表: {self.media.weather.city_list}")
+            return True
+            
         except Exception as e:
-            logger.error(f"加载配置文件失败: {str(e)}")
-            raise
+            logger.error(f"加载配置失败: {str(e)}")
+            return False
 
 # 创建全局配置实例
 config = Config()
@@ -183,7 +213,7 @@ MAX_GROUPS = config.behavior.context.max_groups
 TTS_API_URL = config.media.text_to_speech.tts_api_url
 VOICE_DIR = config.media.text_to_speech.voice_dir
 AUTO_MESSAGE = config.behavior.auto_message.content
-MIN_COUNTDOWN_HOURS = config.behavior.auto_message.min_hours
-MAX_COUNTDOWN_HOURS = config.behavior.auto_message.max_hours
+MIN_COUNTDOWN_HOURS = config.behavior.auto_message.countdown.min_hours
+MAX_COUNTDOWN_HOURS = config.behavior.auto_message.countdown.max_hours
 QUIET_TIME_START = config.behavior.quiet_time.start
 QUIET_TIME_END = config.behavior.quiet_time.end 

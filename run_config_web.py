@@ -81,7 +81,35 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
         "时间配置": {},
         "语音配置": {},
         "Prompt配置": {},
+        "天气设置": {},
     }
+
+    # 天气设置
+    try:
+        # 从配置对象中获取天气设置
+        config_groups["天气设置"].update(
+            {
+                "WEATHER_API_KEY": {
+                    "value": config.media.weather.api_key,
+                    "description": "和风天气 API密钥",
+                    "is_secret": True
+                },
+                "WEATHER_BASE_URL": {
+                    "value": config.media.weather.base_url,
+                    "description": "和风天气 API基础URL",
+                    "type": "select",
+                    "options": ["free", "pro"]
+                },
+                "WEATHER_CITY_LIST": {
+                    "value": config.media.weather.city_list if isinstance(config.media.weather.city_list, list) else [],
+                    "description": "要监听的城市列表",
+                    "type": "array"
+                }
+            }
+        )
+    except Exception as e:
+        logger.error(f"读取天气配置失败: {str(e)}")
+        logger.exception(e)
 
     # 基础配置
     config_groups["基础配置"].update(
@@ -208,234 +236,195 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
 def save_config(new_config: Dict[str, Any]) -> bool:
     """保存新的配置到文件"""
     try:
-        from src.config import (
-            UserSettings,
-            LLMSettings,
-            ImageRecognitionSettings,
-            ImageGenerationSettings,
-            TextToSpeechSettings,
-            MediaSettings,
-            AutoMessageSettings,
-            QuietTimeSettings,
-            ContextSettings,
-            BehaviorSettings,
-            config
-        )
+        from src.config import config
 
-        # 添加调试日志
-        logger.debug(f"处理倒计时配置:")
-        logger.debug(f"MIN_COUNTDOWN_HOURS: {new_config.get('MIN_COUNTDOWN_HOURS')} ({type(new_config.get('MIN_COUNTDOWN_HOURS'))})")
-        logger.debug(f"MAX_COUNTDOWN_HOURS: {new_config.get('MAX_COUNTDOWN_HOURS')} ({type(new_config.get('MAX_COUNTDOWN_HOURS'))})")
+        # 处理城市列表
+        weather_city_list = new_config.get("WEATHER_CITY_LIST", "")
+        logger.debug(f"Received weather_city_list: {weather_city_list}")  # 添加调试日志
         
-        behavior_settings = BehaviorSettings(
-            auto_message=AutoMessageSettings(
-                content=new_config.get("AUTO_MESSAGE", ""),
-                min_hours=float(new_config.get("MIN_COUNTDOWN_HOURS", 1)),
-                max_hours=float(new_config.get("MAX_COUNTDOWN_HOURS", 3)),
-            ),
-            quiet_time=QuietTimeSettings(
-                start=new_config.get("QUIET_TIME_START", ""),
-                end=new_config.get("QUIET_TIME_END", ""),
-            ),
-            context=ContextSettings(
-                max_groups=int(new_config.get("MAX_GROUPS", 15)),
-                avatar_dir=new_config.get("AVATAR_DIR", ""),
-            ),
-        )
-        
-        # 再次检查转换后的值
-        logger.debug(f"转换后的值:")
-        logger.debug(f"min_hours: {behavior_settings.auto_message.min_hours} ({type(behavior_settings.auto_message.min_hours)})")
-        logger.debug(f"max_hours: {behavior_settings.auto_message.max_hours} ({type(behavior_settings.auto_message.max_hours)})")
-        
-        # 构建新的配置对象
-        user_settings = UserSettings(listen_list=new_config.get("LISTEN_LIST", []))
+        if isinstance(weather_city_list, str):
+            weather_city_list = [city.strip() for city in weather_city_list.split(',') if city.strip()]
+        elif isinstance(weather_city_list, list):
+            weather_city_list = [city for city in weather_city_list if city]
+        else:
+            weather_city_list = []
+            
+        logger.debug(f"Processed weather_city_list: {weather_city_list}")  # 添加调试日志
 
-        llm_settings = LLMSettings(
-            api_key=new_config.get("DEEPSEEK_API_KEY", ""),
-            base_url=new_config.get("DEEPSEEK_BASE_URL", ""),
-            model=new_config.get("MODEL", ""),
-            max_tokens=new_config.get("MAX_TOKEN", 2000),
-            temperature=float(new_config.get("TEMPERATURE", 1.1)),
-        )
-
-        media_settings = MediaSettings(
-            image_recognition=ImageRecognitionSettings(
-                api_key=new_config.get("MOONSHOT_API_KEY", ""),
-                base_url=new_config.get("MOONSHOT_BASE_URL", ""),
-                temperature=float(new_config.get("MOONSHOT_TEMPERATURE", 1.1)),
-            ),
-            image_generation=ImageGenerationSettings(
-                model=new_config.get("IMAGE_MODEL", ""),
-                temp_dir=new_config.get("TEMP_IMAGE_DIR", ""),
-            ),
-            text_to_speech=TextToSpeechSettings(
-                tts_api_url=new_config.get("TTS_API_URL", ""),
-                voice_dir=new_config.get("VOICE_DIR", ""),
-            )
-        )
-
-        # 构建JSON结构
+        # 构建配置数据
         config_data = {
             "categories": {
                 "user_settings": {
                     "title": "用户设置",
                     "settings": {
                         "listen_list": {
-                            "value": user_settings.listen_list,
+                            "value": new_config.get("LISTEN_LIST", []),
                             "type": "array",
-                            "description": "要监听的用户列表（请使用微信昵称，不要使用备注名）",
+                            "description": "要监听的用户列表"
                         }
-                    },
+                    }
                 },
                 "llm_settings": {
                     "title": "大语言模型配置",
                     "settings": {
                         "api_key": {
-                            "value": llm_settings.api_key,
+                            "value": new_config.get("DEEPSEEK_API_KEY", ""),
                             "type": "string",
                             "description": "DeepSeek API密钥",
-                            "is_secret": True,
+                            "is_secret": True
                         },
                         "base_url": {
-                            "value": llm_settings.base_url,
+                            "value": new_config.get("DEEPSEEK_BASE_URL", ""),
                             "type": "string",
-                            "description": "DeepSeek API基础URL",
+                            "description": "DeepSeek API基础URL"
                         },
                         "model": {
-                            "value": llm_settings.model,
+                            "value": new_config.get("MODEL", ""),
                             "type": "string",
-                            "description": "使用的AI模型名称",
-                            "options": [
-                                "deepseek-ai/DeepSeek-V3",
-                                "Pro/deepseek-ai/DeepSeek-V3",
-                                "Pro/deepseek-ai/DeepSeek-R1",
-                            ],
+                            "description": "AI模型"
                         },
                         "max_tokens": {
-                            "value": llm_settings.max_tokens,
+                            "value": int(new_config.get("MAX_TOKEN", 2000)),
                             "type": "number",
-                            "description": "回复最大token数量",
+                            "description": "最大token数"
                         },
                         "temperature": {
-                            "value": llm_settings.temperature,
+                            "value": float(new_config.get("TEMPERATURE", 1.1)),
                             "type": "number",
-                            "description": "AI回复的温度值",
-                            "min": 0,
-                            "max": 2,
-                        },
-                    },
+                            "description": "温度参数"
+                        }
+                    }
                 },
                 "media_settings": {
-                    "title": "媒体设置",
+                    "title": "高级设置",
                     "settings": {
                         "image_recognition": {
                             "api_key": {
-                                "value": media_settings.image_recognition.api_key,
+                                "value": new_config.get("MOONSHOT_API_KEY", ""),
                                 "type": "string",
-                                "description": "Moonshot AI API密钥（用于图片和表情包识别）",
-                                "is_secret": True,
+                                "description": "Moonshot API密钥"
                             },
                             "base_url": {
-                                "value": media_settings.image_recognition.base_url,
+                                "value": new_config.get("MOONSHOT_BASE_URL", ""),
                                 "type": "string",
-                                "description": "Moonshot API基础URL",
+                                "description": "Moonshot API基础URL"
                             },
                             "temperature": {
-                                "value": media_settings.image_recognition.temperature,
+                                "value": float(new_config.get("MOONSHOT_TEMPERATURE", 0.8)),
                                 "type": "number",
-                                "description": "Moonshot AI的温度值",
-                                "min": 0,
-                                "max": 2,
-                            },
+                                "description": "温度参数"
+                            }
                         },
                         "image_generation": {
                             "model": {
-                                "value": media_settings.image_generation.model,
+                                "value": new_config.get("IMAGE_MODEL", ""),
                                 "type": "string",
-                                "description": "图像生成模型",
+                                "description": "图像模型"
                             },
                             "temp_dir": {
-                                "value": media_settings.image_generation.temp_dir,
+                                "value": new_config.get("TEMP_IMAGE_DIR", ""),
                                 "type": "string",
-                                "description": "临时图片存储目录",
-                            },
+                                "description": "临时目录"
+                            }
                         },
                         "text_to_speech": {
                             "tts_api_url": {
-                                "value": media_settings.text_to_speech.tts_api_url,
+                                "value": new_config.get("TTS_API_URL", ""),
                                 "type": "string",
-                                "description": "TTS服务API地址",
+                                "description": "TTS API地址"
                             },
                             "voice_dir": {
-                                "value": media_settings.text_to_speech.voice_dir,
+                                "value": new_config.get("VOICE_DIR", ""),
                                 "type": "string",
-                                "description": "语音文件存储目录",
+                                "description": "语音目录"
+                            }
+                        },
+                        "weather": {
+                            "api_key": {
+                                "value": new_config.get("WEATHER_API_KEY", ""),
+                                "type": "string",
+                                "description": "和风天气 API密钥",
+                                "is_secret": True
                             },
+                            "base_url": {
+                                "value": new_config.get("WEATHER_BASE_URL", ""),
+                                "type": "string",
+                                "description": "和风天气 API基础URL"
+                            },
+                            "city_list": {
+                                "value": weather_city_list,
+                                "type": "array",
+                                "description": "要监听的城市列表"
+                            }
                         }
-                    },
+                    }
                 },
                 "behavior_settings": {
                     "title": "行为设置",
                     "settings": {
                         "auto_message": {
                             "content": {
-                                "value": behavior_settings.auto_message.content,
+                                "value": new_config.get("AUTO_MESSAGE", ""),
                                 "type": "string",
-                                "description": "自动消息内容",
+                                "description": "自动消息内容"
                             },
                             "countdown": {
                                 "min_hours": {
-                                    "value": behavior_settings.auto_message.min_hours,
+                                    "value": float(new_config.get("MIN_COUNTDOWN_HOURS", 1.2)),
                                     "type": "number",
-                                    "description": "最小倒计时时间（小时）",
+                                    "description": "最小倒计时时间"
                                 },
                                 "max_hours": {
-                                    "value": behavior_settings.auto_message.max_hours,
+                                    "value": float(new_config.get("MAX_COUNTDOWN_HOURS", 3.0)),
                                     "type": "number",
-                                    "description": "最大倒计时时间（小时）",
-                                },
-                            },
+                                    "description": "最大倒计时时间"
+                                }
+                            }
                         },
                         "quiet_time": {
                             "start": {
-                                "value": behavior_settings.quiet_time.start,
+                                "value": new_config.get("QUIET_TIME_START", "22:00"),
                                 "type": "string",
-                                "description": "安静时间开始",
+                                "description": "安静时间开始"
                             },
                             "end": {
-                                "value": behavior_settings.quiet_time.end,
+                                "value": new_config.get("QUIET_TIME_END", "08:00"),
                                 "type": "string",
-                                "description": "安静时间结束",
-                            },
+                                "description": "安静时间结束"
+                            }
                         },
                         "context": {
                             "max_groups": {
-                                "value": behavior_settings.context.max_groups,
+                                "value": int(new_config.get("MAX_GROUPS", 15)),
                                 "type": "number",
-                                "description": "最大上下文轮数",
+                                "description": "最大上下文轮数"
                             },
                             "avatar_dir": {
-                                "value": behavior_settings.context.avatar_dir,
+                                "value": new_config.get("AVATAR_DIR", ""),
                                 "type": "string",
-                                "description": "人设目录（自动包含 avatar.md 和 emojis 目录）",
-                            },
-                        },
-                    },
-                },
+                                "description": "人设目录"
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        # 使用 Config 类的方法保存配置
+        # 添加调试日志
+        logger.debug(f"Final config data: {json.dumps(config_data, indent=2, ensure_ascii=False)}")
+
+        # 保存配置
         if not config.save_config(config_data):
+            logger.error("Failed to save config")
             return False
 
-        # 重新加载配置模块
+        # 重新加载配置
         importlib.reload(sys.modules["src.config"])
-
         return True
+
     except Exception as e:
         logger.error(f"保存配置失败: {str(e)}")
+        logger.exception(e)
         return False
 
 

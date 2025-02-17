@@ -11,3 +11,8 @@ wxauto~=3.9.11.17.5
 openai~=1.61.0
 pyautogui
 colorama
+tenacity>=8.0.0
+requests>=2.25.1
+colorama>=0.4.4
+openai>=1.0.0
+sqlalchemy>=1.4.0

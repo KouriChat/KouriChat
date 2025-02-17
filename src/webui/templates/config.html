@@ -471,6 +471,100 @@
                 registerLink.href = 'https://platform.deepseek.com';
             }
         }
+
+        function updateWeatherUrl(value) {
+            const baseUrlInput = document.getElementById('WEATHER_BASE_URL');
+            if (value.includes('devapi')) {
+                baseUrlInput.value = 'https://devapi.qweather.com/v7/weather/now';
+            } else {
+                baseUrlInput.value = 'https://api.qweather.com/v7/weather/now';
+            }
+        }
+
+        function addNewCity(key) {
+            const inputElement = document.getElementById('input_' + key);
+            const newValue = inputElement.value.trim();
+            
+            if (newValue) {
+                const targetElement = document.getElementById(key);
+                const currentValues = targetElement.value ? targetElement.value.split(',') : [];
+                
+                if (!currentValues.includes(newValue)) {
+                    currentValues.push(newValue);
+                    targetElement.value = currentValues.join(',');
+                    
+                    const cityListElement = document.getElementById('selected_cities_' + key);
+                    const cityDiv = document.createElement('div');
+                    cityDiv.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    cityDiv.innerHTML = `
+                        ${newValue}
+                        <button type="button" class="btn btn-danger btn-sm" onclick="removeCity('${key}', '${newValue}')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    `;
+                    cityListElement.appendChild(cityDiv);
+                    
+                    inputElement.value = '';
+                }
+            }
+        }
+
+        function removeCity(key, cityToRemove) {
+            const targetElement = document.getElementById(key);
+            const cityListElement = document.getElementById('selected_cities_' + key);
+            
+            let currentValues = targetElement.value ? targetElement.value.split(',') : [];
+            currentValues = currentValues.filter(city => city !== cityToRemove);
+            targetElement.value = currentValues.join(',');
+            
+            const cityElements = cityListElement.getElementsByClassName('list-group-item');
+            for (let element of cityElements) {
+                if (element.textContent.trim() === cityToRemove) {
+                    element.remove();
+                    break;
+                }
+            }
+        }
+
+        // 页面加载时初始化城市列表
+        window.addEventListener('DOMContentLoaded', function() {
+            const cityListInput = document.getElementById('WEATHER_CITY_LIST');
+            console.log('City List Input:', cityListInput);
+            
+            if (cityListInput) {
+                // 尝试从 data-original-value 获取原始值
+                const originalValue = cityListInput.dataset.originalValue;
+                console.log('Original Value:', originalValue);
+                
+                let cities = [];
+                try {
+                    cities = JSON.parse(originalValue) || [];
+                } catch (e) {
+                    cities = cityListInput.value ? cityListInput.value.split(',').filter(city => city.trim()) : [];
+                }
+                console.log('Cities:', cities);
+                
+                if (cities.length > 0) {
+                    cityListInput.value = cities.join(',');
+                    
+                    const cityListElement = document.getElementById('selected_cities_WEATHER_CITY_LIST');
+                    if (cityListElement) {
+                        cityListElement.innerHTML = '';
+                        cities.forEach(city => {
+                            const cityDiv = document.createElement('div');
+                            cityDiv.className = 'list-group-item d-flex justify-content-between align-items-center';
+                            cityDiv.innerHTML = `
+                                ${city}
+                                <button type="button" class="btn btn-danger btn-sm" onclick="removeCity('WEATHER_CITY_LIST', '${city}')">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            `;
+                            cityListElement.appendChild(cityDiv);
+                        });
+                    }
+                }
+            }
+        });
     </script>
 </body>
 </html>
