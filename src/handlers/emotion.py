@@ -46,28 +46,19 @@ class SentimentAnalyzer:
     def __init__(self):
         self.emotion_dict = {}
         self.stopwords = set()
+        self.negation_words = set()  # 新增否定词集合
         self._load_emotion_dictionary()
         self._load_stopwords()
+        self._load_negation_words()  # 加载否定词表
 
-    def _load_stopwords(self):
-        """加载中文停用词表"""
-        with open('src/handlers/emodata/CNstopwords.txt', 'r', encoding='utf-8') as f:
+    def _load_negation_words(self):
+        """加载否定词表"""
+        with open('src/handlers/emodata/否定词.txt', 'r', encoding='utf-8') as f:
             for line in f:
                 word = line.strip()
                 if word:
-                    self.stopwords.add(word)
-        print('中文停用词表加载完成')
-
-    def _load_emotion_dictionary(self):
-        """加载情感词典并构建快速查询结构"""
-        df = pd.read_excel('src/handlers/emodata/大连理工大学中文情感词汇本体.xlsx')
-        for _, row in df.iterrows():
-            word = row['词语']
-            category = row['情感分类']
-            if category in CATEGORY_MAPPING:
-                emotion_type, polarity = CATEGORY_MAPPING[category]
-                self.emotion_dict[word] = (emotion_type, polarity)
-        print('情感词典加载完成')
+                    self.negation_words.add(word)
+        print('否定词表加载完成')
 
     def _analyze_emotion(self, text):
         """核心情感分析方法"""
@@ -85,19 +76,25 @@ class SentimentAnalyzer:
 
         # 分词并过滤停用词
         words = [word for word in jieba.lcut(text) if word not in self.stopwords]
-        word_counts = Counter(words)
 
         # 情感计数处理
-        for word, count in word_counts.items():
-            if word in self.emotion_dict:
+        negation_flag = False
+        for word in words:
+            if word in self.negation_words:
+                negation_flag = True
+            elif word in self.emotion_dict:
                 emotion_type, polarity = self.emotion_dict[word]
-                
+                if negation_flag:
+                    # 反转极性
+                    polarity = 'positive' if polarity == 'negative' else 'negative'
+                    negation_flag = False
+
                 # 更新极性计数
-                counters[polarity] += count
-                
+                counters[polarity] += 1
+
                 # 更新具体情感计数
                 if emotion_type in counters:
-                    counters[emotion_type] += count
+                    counters[emotion_type] += 1
 
         # 确定情感极性
         if counters['positive'] > counters['negative']:
@@ -111,7 +108,7 @@ class SentimentAnalyzer:
         emotion_fields = ['anger', 'dislike', 'fear', 'depress', 'surprise', 'like', 'joy']
         emotion_values = [(field, counters[field]) for field in emotion_fields]
         main_emotion, max_count = max(emotion_values, key=lambda x: x[1])
-        
+
         return {
             'sentiment_type': main_emotion.capitalize() if max_count > 0 else 'None',
             'polarity': polarity,
@@ -130,9 +127,19 @@ class SentimentAnalyzer:
     def analyze(self, text):
         """综合分析方法"""
         emotion_result = self._analyze_emotion(text)
+        raw_score = self._get_sentiment_score(text)
+        
+        # 根据极性调整符号位
+        polarity = emotion_result['polarity']
+        adjusted_score = raw_score
+        if polarity == '正面':
+            adjusted_score += 1
+        elif polarity == '负面':
+            adjusted_score -= 1
+        
         return {
             **emotion_result,
-            'sentiment_score': self._get_sentiment_score(text)
+            'sentiment_score': adjusted_score
         }
 
 
