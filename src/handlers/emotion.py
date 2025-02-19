@@ -10,6 +10,38 @@ import jieba
 from snownlp import SnowNLP
 from collections import Counter
 
+# 情感分类到情感类型和极性的映射关系
+CATEGORY_MAPPING = {
+    # 喜悦（正面）
+    'PA': ('joy', 'positive'),
+    'PE': ('joy', 'positive'),
+    # 喜好（正面）
+    'PD': ('like', 'positive'),
+    'PH': ('like', 'positive'),
+    'PG': ('like', 'positive'),
+    'PB': ('like', 'positive'),
+    'PK': ('like', 'positive'),
+    # 惊讶（正面）
+    'PC': ('surprise', 'positive'),
+    # 愤怒（负面）
+    'NA': ('anger', 'negative'),
+    # 低落（负面）
+    'NB': ('depress', 'negative'),
+    'NJ': ('depress', 'negative'),
+    'NH': ('depress', 'negative'),
+    'PF': ('depress', 'negative'),
+    # 恐惧（负面）
+    'NI': ('fear', 'negative'),
+    'NC': ('fear', 'negative'),
+    'NG': ('fear', 'negative'),
+    # 厌恶（负面）
+    'NE': ('dislike', 'negative'),
+    'ND': ('dislike', 'negative'),
+    'NN': ('dislike', 'negative'),
+    'NK': ('dislike', 'negative'),
+    'NL': ('dislike', 'negative')
+}
+
 class SentimentAnalyzer:
     def __init__(self):
         self.emotion_dict = {}
@@ -103,11 +135,10 @@ class SentimentAnalyzer:
             'sentiment_score': self._get_sentiment_score(text)
         }
 
-''''
+
 # 使用示例
 if __name__ == "__main__":
     analyzer = SentimentAnalyzer()
-    test_text = "我非常开心的讨厌你"
+    test_text = "今天打英雄联盟被sb队友气死了，但是晚上跟原p对线好爽"
     result = analyzer.analyze(test_text)
     print(result)
-'''
