@@ -10,46 +10,25 @@ import jieba
 from snownlp import SnowNLP
 from collections import Counter
 
-# 情感分类到情感类型和极性的映射关系
-CATEGORY_MAPPING = {
-    # 喜悦（正面）
-    'PA': ('joy', 'positive'),
-    'PE': ('joy', 'positive'),
-    # 喜好（正面）
-    'PD': ('like', 'positive'),
-    'PH': ('like', 'positive'),
-    'PG': ('like', 'positive'),
-    'PB': ('like', 'positive'),
-    'PK': ('like', 'positive'),
-    # 惊讶（正面）
-    'PC': ('surprise', 'positive'),
-    # 愤怒（负面）
-    'NA': ('anger', 'negative'),
-    # 低落（负面）
-    'NB': ('depress', 'negative'),
-    'NJ': ('depress', 'negative'),
-    'NH': ('depress', 'negative'),
-    'PF': ('depress', 'negative'),
-    # 恐惧（负面）
-    'NI': ('fear', 'negative'),
-    'NC': ('fear', 'negative'),
-    'NG': ('fear', 'negative'),
-    # 厌恶（负面）
-    'NE': ('dislike', 'negative'),
-    'ND': ('dislike', 'negative'),
-    'NN': ('dislike', 'negative'),
-    'NK': ('dislike', 'negative'),
-    'NL': ('dislike', 'negative')
-}
-
 class SentimentAnalyzer:
     def __init__(self):
         self.emotion_dict = {}
+        self.stopwords = set()
         self._load_emotion_dictionary()
+        self._load_stopwords()
+
+    def _load_stopwords(self):
+        """加载中文停用词表"""
+        with open('src/handlers/emodata/CNstopwords.txt', 'r', encoding='utf-8') as f:
+            for line in f:
+                word = line.strip()
+                if word:
+                    self.stopwords.add(word)
+        print('中文停用词表加载完成')
 
     def _load_emotion_dictionary(self):
         """加载情感词典并构建快速查询结构"""
-        df = pd.read_excel('src\handlers\emodata\大连理工大学中文情感词汇本体.xlsx')
+        df = pd.read_excel('src/handlers/emodata/大连理工大学中文情感词汇本体.xlsx')
         for _, row in df.iterrows():
             word = row['词语']
             category = row['情感分类']
@@ -72,8 +51,8 @@ class SentimentAnalyzer:
             'joy': 0
         }
 
-        # 分词并统计词频
-        words = jieba.lcut(text)
+        # 分词并过滤停用词
+        words = [word for word in jieba.lcut(text) if word not in self.stopwords]
         word_counts = Counter(words)
 
         # 情感计数处理
