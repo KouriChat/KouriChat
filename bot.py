@@ -874,7 +874,7 @@ def clean_up_screenshot ():
     if os.path.isdir("screenshot"):
         # 递归删除目录及其内容
         shutil.rmtree("screenshot")
-        print(f"目录 creenshot 已成功删除")
+        print(f"目录 screenshot 已成功删除")
     else:
         print(f"目录 screenshot 不存在，无需删除")
 
