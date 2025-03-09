@@ -14,4 +14,3 @@ Werkzeug
 wxauto==3.9.11.17.5
 apscheduler
 schedule
-textblob==0.17.1

@@ -53,6 +53,7 @@
     {{ config.description }}
 </label>
 {% if key == 'LISTEN_LIST' %}
+    <!-- LISTEN_LIST 相关代码 -->
     <div class="mb-2">
         <div class="input-group mb-2">
             <input type="text" class="form-control" 
@@ -89,6 +90,7 @@
     <div class="mb-3">
         <select class="form-select mb-2" id="api_provider_select" onchange="updateApiProvider(this.value)" aria-label="选择API提供商">
             <option value="">请选择API提供商</option>
+            <option value="custom">自定义API提供商</option>
         </select>
 
         <!-- 添加自定义 API 输入框 -->
@@ -132,6 +134,7 @@
         // 初始化API提供商选择框
         const apiSelect = document.getElementById('api_provider_select');
         apiSelect.innerHTML = '<option value="">请选择API提供商</option>';
+        apiSelect.innerHTML += '<option value="custom">自定义API提供商</option>';
         
         // 按优先级排序并添加选项
         modelConfigs.api_providers
@@ -162,69 +165,21 @@
     function showCustomApiInput(value = '') {
         const customApiInput = document.getElementById('customApiInput');
         customApiInput.style.display = 'block';
+        const inputElement = customApiInput.querySelector('input');
+
         if (value) {
-            customApiInput.querySelector('input').value = value;
-        }
-    }
-
-    // 更新API提供商
-    function updateApiProvider(value) {
-        const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
-        const customApiInput = document.getElementById('customApiInput');
-        const registerLinks = document.getElementById('register_links');
-        const modelSelect = document.getElementById('model_select');
-
-        // 重置所有状态
-        customApiInput.style.display = 'none';
-        registerLinks.classList.add('d-none');
-        registerLinks.innerHTML = '';
-
-        // 处理自定义选项
-        if (value === 'custom') {
-            showCustomApiInput();
-            updateModelSelect('custom');
-            return;
-        }
-
-        // 处理未选择情况
-        if (!value) {
-            updateModelSelect('');
-            return;
-        }
-
-        // 获取选中的提供商配置
-        const selectedOption = document.querySelector(`#api_provider_select option[value="${value}"]`);
-        if (!selectedOption) return;
-
-        // 更新API URL
-        const apiUrl = selectedOption.dataset.url;
-        baseUrlInput.value = apiUrl;
-        
-        // 添加标记是否为 Ollama
-        if (value === 'ollama') {
-            baseUrlInput.dataset.isOllama = 'true';
+            inputElement.value = value;
         } else {
-            baseUrlInput.dataset.isOllama = 'false';
+            // 清空输入框内容
+            inputElement.value = ''; 
         }
 
-        // 创建注册按钮
-        const registerUrl = selectedOption.dataset.register;
-        if (registerUrl) {
-            const link = document.createElement('a');
-            link.href = registerUrl;
-            link.className = 'btn btn-outline-primary w-100';
-            link.target = '_blank';
-            link.innerHTML = `<i class="bi bi-box-arrow-up-right me-1"></i>前往${selectedOption.textContent.replace(' API', '')}注册`;
-            registerLinks.innerHTML = '';
-            registerLinks.appendChild(link);
-            registerLinks.classList.remove('d-none');
-        }
-
-        // 更新模型选择框
-        updateModelSelect(value);
+        // 绑定输入框的 change 事件
+        inputElement.onchange = function() {
+            updateCustomApi(inputElement.value);
+        };
     }
-
-    // 更新模型选择框
+        // 更新模型选择框
     async function updateModelSelect(providerId) {
         const modelSelect = document.getElementById('model_select');
         modelSelect.innerHTML = '<option value="">请选择模型</option>';
@@ -297,11 +252,6 @@
         }
     }
 
-    // 更新自定义API
-    function updateCustomApi(value) {
-        document.getElementById('DEEPSEEK_BASE_URL').value = value;
-    }
-
     // 更新模型
     function updateModel(value) {
         const modelInput = document.getElementById('MODEL');
@@ -319,16 +269,82 @@
     function updateCustomModel(value) {
         document.getElementById('MODEL').value = value;
     }
+    // 更新API提供商
+    function updateApiProvider(value) {
+        const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+        const customApiInput = document.getElementById('customApiInput');
+        const registerLinks = document.getElementById('register_links');
+        const modelSelect = document.getElementById('model_select');
+
+        // 重置所有状态
+        customApiInput.style.display = 'none';
+        registerLinks.classList.add('d-none');
+        registerLinks.innerHTML = '';
+
+        // 处理自定义选项
+        if (value === 'custom') {
+            showCustomApiInput();
+            updateModelSelect('custom');
+            // 当选择自定义时，清空API URL输入框
+            baseUrlInput.value = ''; 
+            return;
+        }
+
+        // 处理未选择情况
+        if (!value) {
+            updateModelSelect('');
+            return;
+        }
+
+        // 获取选中的提供商配置
+        const selectedOption = document.querySelector(`#api_provider_select option[value="${value}"]`);
+        if (!selectedOption) return;
+
+        // 更新API URL
+        const apiUrl = selectedOption.dataset.url;
+        baseUrlInput.value = apiUrl;
+        
+        // 添加标记是否为 Ollama
+        if (value === 'ollama') {
+            baseUrlInput.dataset.isOllama = 'true';
+        } else {
+            baseUrlInput.dataset.isOllama = 'false';
+        }
+
+        // 创建注册按钮
+        const registerUrl = selectedOption.dataset.register;
+        if (registerUrl) {
+            const link = document.createElement('a');
+            link.href = registerUrl;
+            link.className = 'btn btn-outline-primary w-100';
+            link.target = '_blank';
+            link.innerHTML = `<i class="bi bi-box-arrow-up-right me-1"></i>前往${selectedOption.textContent.replace(' API', '')}注册`;
+            registerLinks.innerHTML = '';
+            registerLinks.appendChild(link);
+            registerLinks.classList.remove('d-none');
+        }
+
+        // 更新模型选择框
+        updateModelSelect(value);
+    }
+
+    // 更新自定义API
+    function updateCustomApi(value) {
+        const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+        baseUrlInput.value = value;
+    }
 
     // 页面加载时获取配置
     document.addEventListener('DOMContentLoaded', fetchModelConfigs);
     </script>
 {% elif key == 'PROMPT_ENHANCEMENT' %}
+    <!-- PROMPT_ENHANCEMENT 相关代码 -->
     <select class="form-select" id="{{ key }}" name="{{ key }}">
         <option value="True" {% if config.value %}selected{% endif %}>启用</option>
         <option value="False" {% if not config.value %}selected{% endif %}>停用</option>
     </select>
 {% elif key == 'AVATAR_DIR' %}
+    <!-- AVATAR_DIR 相关代码 -->
     <select class="form-select" id="{{ key }}" name="{{ key }}">
         {% for option in config.options %}
         <option value="{{ option }}" {% if option == config.value %}selected{% endif %}>
@@ -336,6 +352,7 @@
         </option>
         {% endfor %}
     </select>
+
 {% elif config.value is boolean %}
     <div class="form-check form-switch d-flex align-items-center" style="padding: 6px 0; min-height: 38px;">
         <input class="form-check-input me-2" type="checkbox" role="switch" 
@@ -355,9 +372,9 @@
         <!-- 添加自定义模型输入框 -->
         <div id="customModelInput" class="mb-2" style="display: none;">
             <input type="text" class="form-control" 
-                   placeholder="请输入自定义模型名称"
-                   onchange="updateCustomModel(this.value)"
-                   value="{{ config.value if not config.value in ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Pro/deepseek-ai/DeepSeek-V3', 'Pro/deepseek-ai/DeepSeek-R1', 'deepseek-chat', 'deepseek-reasoner'] else '' }}">
+                    placeholder="请输入自定义模型名称"
+                    onchange="updateCustomModel(this.value)"
+                    value="{{ config.value if not config.value in ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Pro/deepseek-ai/DeepSeek-V3', 'Pro/deepseek-ai/DeepSeek-R1', 'deepseek-chat', 'deepseek-reasoner'] else '' }}">
         </div>
 
         <input type="text" class="form-control" 

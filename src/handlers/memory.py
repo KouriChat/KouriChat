@@ -4,7 +4,7 @@ import random
 from typing import List
 from datetime import datetime
 from src.services.ai.llm_service import LLMService
-from textblob import TextBlob
+import jieba
 
 logger = logging.getLogger('main')
 
@@ -117,31 +117,73 @@ class MemoryHandler:
         except Exception as e:
             logger.error(f"写入高优先级记忆文件失败: {str(e)}", exc_info=True)
 
-    def _detect_emotion(self, text: str) -> str: # 新增
-        """情感分析"""
-        # 这里只是简单示例, 实际应用中需要更强大的情感分析模型
-        analysis = TextBlob(text)
-        # 使用 TextBlob 的情感极性 (polarity) 和主观性 (subjectivity)
-        polarity = analysis.sentiment.polarity
-        subjectivity = analysis.sentiment.subjectivity
+    def _detect_emotion(self, text: str) -> str:
+        """基于词典的情感分析"""
 
-        # 根据极性和主观性判断情感
-        if polarity > 0.5 and subjectivity > 0.5:
+        # 加载情感词典
+        positive_words = self._load_wordlist('src/handlers/emodata/正面情绪词.txt')
+        negative_words = self._load_wordlist('src/handlers/emodata/负面情绪词.txt')
+        negation_words = self._load_wordlist('src/handlers/emodata/否定词表.txt')
+        degree_words = self._load_wordlist('src/handlers/emodata/程度副词.txt')
+        
+        # 修正程度副词
+        degree_dict = {}
+        for word in degree_words:
+            parts = word.strip().split(',')  # 假设格式为 "词语,权重"
+            if len(parts) == 2:
+                degree_dict[parts[0].strip()] = float(parts[1].strip())
+
+        # 分词
+        words = list(jieba.cut(text))
+
+        # 情感计算
+        score = 0
+        negation_count = 0  # 否定词计数
+        for i, word in enumerate(words):
+            if word in positive_words:
+                # 考虑程度副词
+                degree = 1.0
+                for j in range(i - 1, max(-1, i - 4), -1):  # 向前查找最多3个词
+                    if words[j] in degree_dict:
+                        degree *= degree_dict[words[j]]
+                        break
+                # 考虑否定词
+                if negation_count % 2 == 1:
+                    degree *= -1.0
+                score += degree
+
+            elif word in negative_words:
+                degree = 1.0
+                for j in range(i - 1, max(-1, i - 4), -1):
+                    if words[j] in degree_dict:
+                        degree *= degree_dict[words[j]]
+                        break
+
+                if negation_count % 2 == 1:
+                    degree *= -1.0
+                score -= degree
+
+            elif word in negation_words:
+                negation_count += 1
+
+        # 情感分类
+        if score > 0.5:
             return 'happy'
-        elif polarity > 0 and subjectivity > 0.5:
-            return 'happy'
-        elif polarity < -0.5 and subjectivity > 0.5:
-            return 'anger'  # 强烈的负面情感
-        elif polarity < 0 and subjectivity > 0.5:
-            return 'sad'
-        elif -0.5 <= polarity <= 0.5 and subjectivity > 0.5:
-            return 'surprise'
-        elif polarity < -0.3 and subjectivity < 0.5:  # 区分 fear 和 disgust
-            return 'fear'
-        elif polarity < 0 and subjectivity < 0.5:
-            return 'disgust'
-        else:
+        elif score < -0.5:
+            return 'anger' # 负面情绪比较强烈
+        elif -0.5 <= score <= 0.5:
             return 'neutral'
+        else:
+            return 'sad' # 负面情绪
+
+    def _load_wordlist(self, filepath: str) -> List[str]:
+        """加载词表文件"""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return [line.strip() for line in f if line.strip()]
+        except Exception as e:
+            logger.error(f"加载词表文件失败: {filepath} - {str(e)}")
+            return []
 
     def summarize_memories(self):
         """总结短期记忆到长期记忆（保持原有逻辑）"""
@@ -291,3 +333,150 @@ class MemoryHandler:
                 logger.info("已完成长期记忆维护")
             except Exception as e:
                 logger.error(f"长期记忆维护失败: {str(e)}", exc_info=True)
+
+# 测试模块
+if __name__ == "__main__":
+    # 配置日志格式
+    logging.basicConfig(
+        level=logging.DEBUG,  # 调整为 DEBUG 级别，以便查看调试信息
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    # 测试配置
+    test_config = {
+        "root_dir": os.path.dirname(os.path.abspath(".")),  # 测试数据目录，往上一个根目录寻址
+        "api_key": "",  # 测试用的API Key
+        "base_url": "https://api.siliconflow.cn/v1",
+        "model": "deepseek-ai/DeepSeek-V3",
+        "max_token": 512,
+        "temperature": 0.7,
+        "max_groups": 5
+    }
+
+    # 增强的清理函数
+    def clean_test_files():
+        files_to_clean = [
+            os.path.join(test_config["root_dir"], "data", "memory", f)
+            for f in ['short_memory.txt',
+                      'long_memory_buffer.txt',
+                      'instant_memory.txt',
+                      'working_memory.txt',
+                      'high_priority_memory.txt']
+        ]
+
+        for path in files_to_clean:
+            if os.path.exists(path):
+                try:
+                    if path.endswith('working_memory.txt'):
+                        # 保留工作记忆模板
+                        with open(path, 'w', encoding='utf-8') as f:
+                            f.write("初始工作记忆内容...\n")
+                    else:
+                        os.remove(path)
+                    logger.info(f"清理文件: {os.path.basename(path)}")
+                except Exception as e:
+                    logger.error(f"清理文件失败: {path} - {str(e)}")
+
+
+    clean_test_files()  # 替换原有的单个清理操作
+
+    # 初始化 MemoryHandler
+    logger.info("初始化 MemoryHandler...")
+    handler = MemoryHandler(**test_config)
+
+    # 测试情感分析函数
+    logger.info("测试情感分析函数...")
+    test_cases = {
+        "今天天气真好！": "happy",
+        "我非常生气！": "anger",
+        "这部电影很无聊。": "sad",
+        "一切都还好。": "neutral",
+        "我好难过，但是又有一点开心。": "neutral",  # 复杂情感
+        "我不太喜欢这个。": "sad", # 否定+轻微负面
+        "超级开心！": "happy", # 程度副词
+        "不是很好": "sad", # 否定
+        "非常非常非常好！": "happy" # 多个程度副词
+    }
+    for text, expected_emotion in test_cases.items():
+        detected_emotion = handler._detect_emotion(text)
+        if detected_emotion == expected_emotion:
+            logger.info(f"测试通过：'{text}' -> 预期: {expected_emotion}, 实际: {detected_emotion}")
+        else:
+            logger.error(f"测试失败：'{text}' -> 预期: {expected_emotion}, 实际: {detected_emotion}")
+
+    # 测试添加短期记忆
+    logger.info("测试添加短期记忆...")
+    handler.add_short_memory("记住我喜欢吃巧克力蛋糕", "好的，我记住了！")
+    handler.add_short_memory("今天工作好累！", "要注意休息哦~")
+    handler.add_short_memory("我生气了！", "冷静一下~")
+    handler.add_short_memory("今天很开心！", "太好了！")
+    handler.add_short_memory("明天要去旅行，好期待！", "祝您旅途愉快！")
+    handler.add_short_memory("最近在学习编程，感觉有点难", "慢慢来，编程需要耐心和练习。")
+    handler.add_short_memory("我养了一只小猫，它很可爱", "小猫确实很可爱，记得照顾好它哦~")
+    handler.add_short_memory("最近天气变冷了", "记得多穿点衣服，别感冒了。")
+    handler.add_short_memory("我喜欢看电影，尤其是科幻片", "科幻片很有趣，您最近看了什么好片？")
+    handler.add_short_memory("我有点饿了", "要不要吃点东西？记得选择健康的食物。")
+
+    # 测试总结记忆
+    logger.info("测试总结记忆...")
+    handler.summarize_memories()
+
+    # 测试获取相关记忆
+    logger.info("测试获取相关记忆...")
+    relevant_memories = handler.get_relevant_memories("工作")
+    logger.info(f"获取到的相关记忆: {relevant_memories}")
+
+    # 手动验证长期记忆缓冲区文件内容
+    long_memory_buffer_path = os.path.join(test_config["root_dir"], "data", "memory", "long_memory_buffer.txt")
+    with open(long_memory_buffer_path, "r", encoding="utf-8") as f:
+        logger.info("长期记忆缓冲区文件内容:")
+        logger.info(f.read())
+
+    # 测试瞬时记忆（如果存在）
+    # logger.info("测试瞬时记忆功能...")
+    # handler.add_short_memory("我生气了！", "冷静一下~")
+    # handler.add_short_memory("今天很开心！", "太好了！")
+
+    # 打印瞬时记忆文件内容（如果存在）
+    # instant_memory_path = os.path.join(test_config["root_dir"], "data", "memory", "instant_memory.txt")
+    # with open(instant_memory_path, "r", encoding="utf-8") as f:
+    #     logger.info("瞬时记忆文件内容:")
+    #     logger.info(f.read())
+
+    # 添加工作记忆 (如果存在)
+    working_memory_path = os.path.join(test_config["root_dir"], "data", "memory", "working_memory.txt")
+    logger.info("测试工作记忆功能...")
+    try:
+        logger.debug(f"开始写入工作记忆文件: {working_memory_path}")
+        with open(working_memory_path, "w", encoding="utf-8") as f:
+            f.write("2025-03-08 19:30:00 - 今日小结：\n")
+            f.write("1. 用户多次表达工作疲劳，建议其注意休息。\n")
+            # 接上段代码
+            f.write("2. 用户喜欢巧克力蛋糕，已经记住这一偏好。\n")
+            f.write("3. 用户在情绪波动时，提醒用户保持冷静。\n")
+            f.write("4. 用户计划去旅行，祝其旅途愉快。\n")
+            f.write("5. 用户在学习编程，鼓励其保持耐心。\n")
+            f.write("6. 用户养了一只小猫，提醒其照顾好宠物。\n")
+            f.write("7. 用户提到天气变冷，建议其注意保暖。\n")
+            f.write("8. 用户喜欢看电影，尤其是科幻片。\n")
+            f.write("9. 用户感到饿了，建议其选择健康食物。\n\n")
+            f.write("关键记忆标签：\n")
+            f.write("- 用户过敏史：无\n")
+            f.write("- 用户喜好：巧克力蛋糕、科幻电影\n")
+            f.write("- 用户宠物：小猫\n")
+            f.write("- 用户近期计划：旅行\n")
+        logger.info("成功写入工作记忆文件")
+    except Exception as e:
+        logger.error(f"写入工作记忆文件失败: {str(e)}")
+
+    # 打印工作记忆文件内容
+    with open(working_memory_path, "r", encoding="utf-8") as f:
+        logger.info("工作记忆文件内容:")
+        logger.info(f.read())
+
+        # 打印高优先级记忆文件内容
+    high_priority_path = os.path.join(test_config["root_dir"], "data", "memory", "high_priority_memory.txt")
+    if os.path.exists(high_priority_path):
+        with open(high_priority_path, "r", encoding="utf-8") as f:
+            logger.info("高优先级记忆文件内容:")
+            logger.info(f.read())

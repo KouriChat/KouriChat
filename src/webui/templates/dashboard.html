@@ -1566,48 +1566,43 @@
                     return response.json();
                 })
                 .then(data => {
-                    const output = data.output || '';
-                    const isSuccess = data.status === 'success' || 
-                        output.toLowerCase().includes('already satisfied') || 
-                        output.toLowerCase().includes('successfully installed');
-                    
-                    if (isSuccess) {
-                        statusDiv.classList.remove('alert-info');
-                        statusDiv.classList.add('alert-success');
-                        spinnerDiv.classList.add('d-none');
-                        statusText.innerHTML = '<i class="bi bi-check-circle-fill me-2"></i>依赖安装成功！';
-                        
-                        // 延迟200ms后检查依赖
-                        setTimeout(checkDependencies, 200);
-                        
-                        // 3秒后自动隐藏成功提示
-                        setTimeout(() => {
-                            statusDiv.classList.add('d-none');
-                        }, 3000);
-                    } else {
-                        throw new Error(output || '安装依赖失败');
-                    }
-                })
-                .catch(error => {
-                    statusDiv.classList.remove('alert-info');
-                    statusDiv.classList.add('alert-danger');
-                    spinnerDiv.classList.add('d-none');
-                    statusText.innerHTML = `<i class="bi bi-x-circle-fill me-2"></i>错误: ${error.message}`;
-                    
-                    // 在日志区域显示错误
-                    const logsElement = document.querySelector('.logs');
-                    if (logsElement) {
-                        const logLine = document.createElement('div');
-                        logLine.className = 'log-line';
-                        logLine.innerHTML = `<span class="command-error">依赖安装失败: ${error.message}</span>`;
-                        logsElement.appendChild(logLine);
-                        scrollToBottom();
-                    }
-                })
-                .finally(() => {
-                    isCheckingDependencies = false;
-                });
-        }
+            const isSuccess = data.status === 'success';
+
+            if (isSuccess) {
+                statusDiv.classList.remove('alert-info');
+                statusDiv.classList.add('alert-success');
+                spinnerDiv.classList.add('d-none');
+                statusText.innerHTML = '<i class="bi bi-check-circle-fill me-2"></i>依赖安装成功！';
+
+                // 延迟200ms后检查依赖
+                setTimeout(checkDependencies, 200);
+
+                // 3秒后自动隐藏成功提示
+                setTimeout(() => {
+                    statusDiv.classList.add('d-none');
+                }, 3000);
+            } else {
+              const errorMessage = data.message || '安装依赖失败';
+              statusDiv.classList.remove('alert-info');
+              statusDiv.classList.add('alert-danger');
+              spinnerDiv.classList.add('d-none');
+              statusText.innerHTML = `<i class="bi bi-x-circle-fill me-2"></i>错误: ${errorMessage}`;
+
+              // 在日志区域显示错误
+              const logsElement = document.querySelector('.logs');
+              if (logsElement) {
+                  const logLine = document.createElement('div');
+                  logLine.className = 'log-line';
+                  logLine.innerHTML = `<span class="command-error">依赖安装失败: ${errorMessage}</span>`;
+                  logsElement.appendChild(logLine);
+                  scrollToBottom();
+              }
+            }
+        })
+        .finally(() => {
+            isCheckingDependencies = false;
+        });
+}
 
         // 检查依赖函数
         function checkDependencies() {
@@ -1625,26 +1620,22 @@
                 .then(data => {
                     if (data.status === 'success') {
                         updateDependencyStatus(data);
-                        // 修改这里：不再隐藏状态div，而是显示成功信息
                         statusDiv.classList.remove('alert-info');
                         statusDiv.classList.add('alert-success');
                         spinnerDiv.classList.add('d-none');
                         statusText.innerHTML = '<i class="bi bi-check-circle-fill me-2"></i>依赖检查完成！';
-                        
+
                         // 3秒后自动隐藏成功提示
                         setTimeout(() => {
                             statusDiv.classList.add('d-none');
                         }, 3000);
                     } else {
-                        throw new Error(data.message);
+                      statusDiv.classList.remove('alert-info');
+                      statusDiv.classList.add('alert-danger');
+                      spinnerDiv.classList.add('d-none');
+                      statusText.innerHTML = `<i class="bi bi-x-circle-fill me-2"></i>错误: ${data.message}`;
                     }
                 })
-                .catch(error => {
-                    statusDiv.classList.remove('alert-info');
-                    statusDiv.classList.add('alert-danger');
-                    spinnerDiv.classList.add('d-none');
-                    statusText.innerHTML = `<i class="bi bi-x-circle-fill me-2"></i>错误: ${error.message}`;
-                });
         }
 
         // 更新依赖状态显示函数
@@ -1725,4 +1716,4 @@
         });
     </script>
 </body>
-</html> 
+</html>
