@@ -168,6 +168,17 @@ class Config:
             logger.error(f"保存配置失败: {str(e)}")
             return False
 
+    def _save_config_without_reload(self, config_data: dict) -> bool:
+        """保存配置但不重新加载，用于内部同步操作"""
+        try:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=4, ensure_ascii=False)
+            logger.info("配置已保存（无重载）")
+            return True
+        except Exception as e:
+            logger.error(f"保存配置失败（无重载）: {str(e)}")
+            return False
+
     def load_config(self) -> None:
         try:
             if not os.path.exists(self.config_path):
@@ -199,24 +210,100 @@ class Config:
                 # 处理 rag_settings，如果不存在则使用默认值
                 if 'rag_settings' in categories and 'settings' in categories['rag_settings']:
                     rag_data = categories['rag_settings']['settings']
+                    
+                    # 检查RAG设置中的API密钥和基础URL是否为空
+                    rag_api_key = rag_data['api_key']['value']
+                    rag_base_url = rag_data['base_url']['value']
+                    
+                    # 如果RAG的API密钥为空但LLM的不为空，自动同步
+                    if (not rag_api_key or rag_api_key.strip() == "") and self.llm.api_key and self.llm.api_key.strip() != "":
+                        logger.info("RAG API密钥为空，自动同步LLM API密钥")
+                        rag_data['api_key']['value'] = self.llm.api_key
+                        rag_api_key = self.llm.api_key
+                        # 保存更新后的配置
+                        self._save_config_without_reload(config_data)
+                    
+                    # 如果RAG的基础URL为空但LLM的不为空，自动同步
+                    if (not rag_base_url or rag_base_url.strip() == "") and self.llm.base_url and self.llm.base_url.strip() != "":
+                        logger.info("RAG基础URL为空，自动同步LLM基础URL")
+                        rag_data['base_url']['value'] = self.llm.base_url
+                        rag_base_url = self.llm.base_url
+                        # 保存更新后的配置
+                        self._save_config_without_reload(config_data)
+                    
                     self.rag = RagSettings(
-                        base_url=rag_data['base_url']['value'],
-                        api_key=rag_data['api_key']['value'],
+                        base_url=rag_base_url,
+                        api_key=rag_api_key,
                         is_rerank=rag_data['is_rerank']['value'],
                         reranker_model=rag_data['reranker_model']['value'],
                         embedding_model=rag_data['embedding_model']['value'],
                         top_k=rag_data['top_k']['value']
                     )
                 else:
-                    # 使用默认值
+                    # 使用默认值，如果LLM设置有值则使用LLM的值
                     self.rag = RagSettings(
-                        base_url="",
-                        api_key="",
+                        base_url=self.llm.base_url if self.llm.base_url else "",
+                        api_key=self.llm.api_key if self.llm.api_key else "",
                         is_rerank=False,
                         reranker_model="",
                         embedding_model="",
                         top_k=5
                     )
+                    
+                    # 如果LLM有值，创建RAG设置
+                    if self.llm.api_key or self.llm.base_url:
+                        logger.info("创建RAG设置并同步LLM设置")
+                        if 'rag_settings' not in categories:
+                            categories['rag_settings'] = {
+                                "title": "rag记忆配置",
+                                "settings": {}
+                            }
+                        
+                        if 'settings' not in categories['rag_settings']:
+                            categories['rag_settings']['settings'] = {}
+                            
+                        rag_settings = categories['rag_settings']['settings']
+                        
+                        # 设置基础字段
+                        rag_settings['base_url'] = {
+                            "value": self.llm.base_url,
+                            "type": "string",
+                            "description": "RAG服务基础URL"
+                        }
+                        
+                        rag_settings['api_key'] = {
+                            "value": self.llm.api_key,
+                            "type": "string",
+                            "description": "RAG服务API密钥",
+                            "is_secret": True
+                        }
+                        
+                        rag_settings['is_rerank'] = {
+                            "value": False,
+                            "type": "boolean",
+                            "description": "是否启用重排序"
+                        }
+                        
+                        rag_settings['reranker_model'] = {
+                            "value": "",
+                            "type": "string",
+                            "description": "重排序模型"
+                        }
+                        
+                        rag_settings['embedding_model'] = {
+                            "value": "text-embedding-3-large",
+                            "type": "string",
+                            "description": "嵌入模型"
+                        }
+                        
+                        rag_settings['top_k'] = {
+                            "value": 5,
+                            "type": "number",
+                            "description": "返回结果数量"
+                        }
+                        
+                        # 保存更新后的配置
+                        self._save_config_without_reload(config_data)
                 
                 media_data = categories['media_settings']['settings']
                 self.media = MediaSettings(
