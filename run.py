@@ -35,6 +35,11 @@ def initialize_system():
         from src.utils.cleanup import cleanup_pycache
         from src.main import main
 
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--debug', action='store_true', help='启用调试模式')
+        args = parser.parse_args()
+
         print_banner()
         print_status("系统初始化中...", "info", "LAUNCH")
         print("-" * 50)
@@ -54,13 +59,13 @@ def initialize_system():
         print_status("清理系统缓存...", "info", "CLEAN")
         try:
             cleanup_pycache()
-            
+
             from src.utils.logger import LoggerConfig
             from src.utils.cleanup import CleanupUtils
             from src.handlers.image import ImageHandler
             from src.handlers.voice import VoiceHandler
             from src.config import config
-            
+
             root_dir = os.path.dirname(src_path)
             logger_config = LoggerConfig(root_dir)
             cleanup_utils = CleanupUtils(root_dir)
@@ -100,7 +105,7 @@ def initialize_system():
         # 启动主程序
         print_status("启动主程序...", "info", "LAUNCH")
         print("=" * 50)
-        main()
+        main(debug_mode=args.debug)
 
     except ImportError as e:
         print_status(f"导入模块失败: {str(e)}", "error", "CROSS")

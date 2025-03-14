@@ -22,14 +22,16 @@ from services.ai.llm_service import LLMService
 from handlers.memory import MemoryHandler
 from config import config
 import re
-import jieba 
+import jieba
 
 # 修改logger获取方式，确保与main模块一致
 logger = logging.getLogger('main')
 
+
 class MessageHandler:
-    def __init__(self, root_dir, api_key, base_url, model, max_token, temperature, 
-                 max_groups, robot_name, prompt_content, image_handler, emoji_handler, voice_handler, memory_handler, is_qq=False):
+    def __init__(self, root_dir, api_key, base_url, model, max_token, temperature,
+                 max_groups, robot_name, prompt_content, image_handler, emoji_handler, voice_handler, memory_handler,
+                 is_qq=False, is_debug=False):
         self.root_dir = root_dir
         self.api_key = api_key
         self.model = model
@@ -38,7 +40,7 @@ class MessageHandler:
         self.max_groups = max_groups
         self.robot_name = robot_name
         self.prompt_content = prompt_content
-         # 添加消息缓存相关属性
+        # 添加消息缓存相关属性
         self.message_cache = {}  # 用户消息缓存
         self.last_message_time = {}  # 用户最后发送消息的时间
         self.message_timer = {}  # 用户消息处理定时器
@@ -51,15 +53,19 @@ class MessageHandler:
             temperature=temperature,
             max_groups=max_groups
         )
-        
+
         # 消息队列相关
         self.user_queues = {}
         self.queue_lock = threading.Lock()
         self.chat_contexts = {}
-        
+
         # 微信实例
         if not is_qq:
-            self.wx = WeChat()
+            if is_debug:
+                self.wx = None
+                logger.info("调试模式跳过微信初始化")
+            else:
+                self.wx = WeChat()
 
         # 添加 handlers
         self.image_handler = image_handler
@@ -82,7 +88,7 @@ class MessageHandler:
                     else:
                         # 使用默认值或其他标识
                         sender_id = "FileHelper"
-            
+
             session = Session()
             chat_message = ChatMessage(
                 sender_id=sender_id,
@@ -93,9 +99,10 @@ class MessageHandler:
             session.add(chat_message)
             session.commit()
             session.close()
-            
+
             # 保存到记忆 - 移除这一行，避免重复保存
-            # self.memory_handler.add_short_memory(message, reply, sender_id)
+            # 修改（2025/3/14 by Elimir) 打开了记忆这一行，进行测试
+            self.memory_handler.add_short_memory(message, reply, sender_id)
             logger.info(f"已保存消息到数据库 - 用户ID: {sender_id}")
         except Exception as e:
             logger.error(f"保存消息失败: {str(e)}", exc_info=True)
@@ -105,33 +112,33 @@ class MessageHandler:
         avatar_dir = os.path.join(self.root_dir, config.behavior.context.avatar_dir)
         prompt_path = os.path.join(avatar_dir, "avatar.md")
         original_content = ""
-    
+
         try:
             # 读取原始提示内容（人设内容）
             with open(prompt_path, "r", encoding="utf-8") as f:
                 original_content = f.read()
                 logger.debug(f"原始人设提示文件大小: {len(original_content)} bytes")
-            
+
             # 获取最近的对话历史
             recent_history = self.memory_handler.get_recent_memory(user_id, max_count=5)  # 获取最近5轮对话
-            
+
             # 构建带有历史记录的上下文
             context = original_content + "\n\n最近的对话记录：\n"
             for hist in recent_history:
                 context += f"用户: {hist['message']}\n"
                 context += f"AI: {hist['reply']}\n"
-            
+
             # 添加当前用户的输入
             context += f"\n用户: {message}\n"
             logger.debug(f"完整上下文大小: {len(context)} bytes")
-            
+
             # 调用API获取回复
             return self.deepseek.get_response(message, user_id, context)
-    
+
         except Exception as e:
             logger.error(f"获取API回复失败: {str(e)}")
             return self.deepseek.get_response(message, user_id, original_content)  # 降级处理
-    
+
         finally:
             # 恢复原始内容
             try:
@@ -140,8 +147,8 @@ class MessageHandler:
             except Exception as restore_error:
                 logger.error(f"恢复提示文件失败: {str(restore_error)}")
 
-    def handle_user_message(self, content: str, chat_id: str, sender_name: str, 
-                    username: str, is_group: bool = False, is_image_recognition: bool = False):
+    def handle_user_message(self, content: str, chat_id: str, sender_name: str,
+                            username: str, is_group: bool = False, is_image_recognition: bool = False):
         """统一的消息处理入口"""
         try:
             # 验证并修正用户ID
@@ -152,14 +159,14 @@ class MessageHandler:
                 if username == "filehelper":
                     username = "FileHelper"
                 sender_name = sender_name or username
-                
+
             logger.info(f"处理消息 - 发送者: {sender_name}, 聊天ID: {chat_id}, 是否群聊: {is_group}")
             logger.info(f"消息内容: {content}")
-            
+
             # 增加重复消息检测
             message_key = f"{chat_id}_{username}_{hash(content)}"
             current_time = time.time()
-            
+
             # 检查是否需要缓存消息
             if username in self.last_message_time and current_time - self.last_message_time[username] < 5:
                 logger.info(f"检测到用户 {username} 在5秒内发送了多条消息，启用消息缓存机制")
@@ -168,6 +175,7 @@ class MessageHandler:
                     self.message_timer[username].cancel()
                     logger.info(f"已取消用户 {username} 的旧定时器")
                 
+
                 # 添加到消息缓存
                 if username not in self.message_cache:
                     self.message_cache[username] = []
@@ -181,6 +189,7 @@ class MessageHandler:
                 })
                 logger.info(f"已将消息添加到用户 {username} 的缓存中，当前缓存消息数: {len(self.message_cache[username])}")
                 
+
                 # 设置新的定时器
                 timer = threading.Timer(5.0, self._process_cached_messages, args=[username])
                 timer.start()
@@ -193,7 +202,7 @@ class MessageHandler:
             
             # 更新最后消息时间
             self.last_message_time[username] = current_time
-            
+
             # 如果没有需要缓存的消息，直接处理
             if username not in self.message_cache or not self.message_cache[username]:
                 logger.info(f"用户 {username} 没有缓存消息，直接处理当前消息")
@@ -206,7 +215,7 @@ class MessageHandler:
                 'is_image_recognition': is_image_recognition
             })
             return self._process_cached_messages(username)
-            
+
         except Exception as e:
             logger.error(f"处理消息失败: {str(e)}", exc_info=True)
             return None
@@ -226,8 +235,9 @@ class MessageHandler:
             if recent_history:
                 context = f"{recent_history[0]['message']}(上次的对话内容，只是提醒，无需进行互动，处理重点请放在后面的新内容)\n"
                 logger.info(f"加载了用户 {username} 的最近一轮对话记录作为上下文")
-            
-            # 合并所有缓存的消息，优先处理图片识别消息
+
+
+            # 合并所有缓存的消息，但优先处理新消息
             messages = self.message_cache[username]
             image_messages = [msg for msg in messages if msg.get('is_image_recognition', False)]
             text_messages = [msg for msg in messages if not msg.get('is_image_recognition', False)]
@@ -240,7 +250,7 @@ class MessageHandler:
             
             # 使用最后一条消息的参数
             last_message = messages[-1]
-            
+
             # 处理合并后的消息
             logger.info(f"开始处理用户 {username} 的合并消息")
             result = self._handle_text_message(
@@ -251,7 +261,7 @@ class MessageHandler:
                 last_message['is_group'],
                 any(msg.get('is_image_recognition', False) for msg in messages)
             )
-            
+
             # 清理缓存
             self.message_cache[username] = []
             if username in self.message_timer:
@@ -259,7 +269,7 @@ class MessageHandler:
             logger.info(f"已清理用户 {username} 的消息缓存")
             
             return result
-            
+
         except Exception as e:
             logger.error(f"处理缓存消息失败: {str(e)}", exc_info=True)
             return None
@@ -292,7 +302,7 @@ class MessageHandler:
 
         # 异步保存消息记录
         threading.Thread(target=self.save_message,
-                       args=(username, sender_name, content, reply)).start()
+                         args=(username, sender_name, content, reply)).start()
         return reply
 
     def _handle_random_image_request(self, content, chat_id, sender_name, username, is_group):
@@ -319,7 +329,7 @@ class MessageHandler:
 
             # 异步保存消息记录
             threading.Thread(target=self.save_message,
-                           args=(username, sender_name, content, reply)).start()
+                             args=(username, sender_name, content, reply)).start()
             return reply
         return None
 
@@ -347,42 +357,42 @@ class MessageHandler:
 
             # 异步保存消息记录
             threading.Thread(target=self.save_message,
-                           args=(username, sender_name, content, reply)).start()
+                             args=(username, sender_name, content, reply)).start()
             return reply
         return None
 
-
     def _filter_action_emotion(self, text):
         """智能过滤括号内的动作和情感描述，保留颜文字"""
-        
+
         def is_emoticon(text):
             """判断是否为颜文字"""
             # 定义颜文字常用字符
-            emoticon_chars = set('（()）~～‿⁀∀︿⌒▽△□◇○●ˇ＾∇＿゜◕ω・ノ丿╯╰つ⊂＼／┌┐┘└°△▲▽▼◇◆○●◎■□▢▣▤▥▦▧▨▩♡♥ღ☆★✡⁂✧✦❈❇✴✺✹✸✷✶✵✳✲✱✰✯✮✭✬✫✪✩✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁✀✿✾✽✼✻✺✹✸✷✶✵✴✳✲✱✰✯✮✭✬✫✪✩✨✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁❤♪♫♬♩♭♮♯°○◎●◯◐◑◒◓◔◕◖◗¤☼☀☁☂☃☄★☆☎☏⊙◎☺☻☯☭♠♣♧♡♥❤❥❣♂♀☿❀❁❃❈❉❊❋❖☠☢☣☤☥☦☧☨☩☪☫☬☭☮☯☸☹☺☻☼☽☾☿♀♁♂♃♄♆♇♈♉♊♋♌♍♎♏♐♑♒♓♔♕♖♗♘♙♚♛♜♝♞♟♠♡♢♣♤♥♦♧♨♩♪♫♬♭♮♯♰♱♲♳♴♵♶♷♸♹♺♻♼♽♾♿⚀⚁⚂⚃⚄⚆⚇⚈⚉⚊⚋⚌⚍⚎⚏⚐⚑⚒⚓⚔⚕⚖⚗⚘⚙⚚⚛⚜⚝⚞⚟')
+            emoticon_chars = set(
+                '（()）~～‿⁀∀︿⌒▽△□◇○●ˇ＾∇＿゜◕ω・ノ丿╯╰つ⊂＼／┌┐┘└°△▲▽▼◇◆○●◎■□▢▣▤▥▦▧▨▩♡♥ღ☆★✡⁂✧✦❈❇✴✺✹✸✷✶✵✳✲✱✰✯✮✭✬✫✪✩✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁✀✿✾✽✼✻✺✹✸✷✶✵✴✳✲✱✰✯✮✭✬✫✪✩✨✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁❤♪♫♬♩♭♮♯°○◎●◯◐◑◒◓◔◕◖◗¤☼☀☁☂☃☄★☆☎☏⊙◎☺☻☯☭♠♣♧♡♥❤❥❣♂♀☿❀❁❃❈❉❊❋❖☠☢☣☤☥☦☧☨☩☪☫☬☭☮☯☸☹☺☻☼☽☾☿♀♁♂♃♄♆♇♈♉♊♋♌♍♎♏♐♑♒♓♔♕♖♗♘♙♚♛♜♝♞♟♠♡♢♣♤♥♦♧♨♩♪♫♬♭♮♯♰♱♲♳♴♵♶♷♸♹♺♻♼♽♾♿⚀⚁⚂⚃⚄⚆⚇⚈⚉⚊⚋⚌⚍⚎⚏⚐⚑⚒⚓⚔⚕⚖⚗⚘⚙⚚⚛⚜⚝⚞⚟')
             # 检查是否主要由颜文字字符组成
             text = text.strip('（()）')  # 去除外围括号
             if not text:  # 如果去除括号后为空，返回False
                 return False
             emoticon_char_count = sum(1 for c in text if c in emoticon_chars)
             return emoticon_char_count / len(text) > 0.5  # 如果超过50%是颜文字字符则认为是颜文字
-        
+
         def contains_action_keywords(text):
             """检查是否包含动作或情感描述关键词"""
             action_keywords = {'微笑', '笑', '哭', '叹气', '摇头', '点头', '皱眉', '思考',
-                             '无奈', '开心', '生气', '害羞', '紧张', '兴奋', '疑惑', '惊讶',
-                             '叹息', '沉思', '撇嘴', '歪头', '摊手', '耸肩', '抱抱', '拍拍',
-                             '摸摸头', '握手', '挥手', '鼓掌', '捂脸', '捂嘴', '翻白眼',
-                             '叉腰', '双手合十', '竖起大拇指', '比心', '摸摸', '拍肩', '戳戳',
-                             '摇晃', '蹦跳', '转圈', '倒地', '趴下', '站起', '坐下'}
+                               '无奈', '开心', '生气', '害羞', '紧张', '兴奋', '疑惑', '惊讶',
+                               '叹息', '沉思', '撇嘴', '歪头', '摊手', '耸肩', '抱抱', '拍拍',
+                               '摸摸头', '握手', '挥手', '鼓掌', '捂脸', '捂嘴', '翻白眼',
+                               '叉腰', '双手合十', '竖起大拇指', '比心', '摸摸', '拍肩', '戳戳',
+                               '摇晃', '蹦跳', '转圈', '倒地', '趴下', '站起', '坐下'}
             text = text.strip('（()）')  # 去除外围括号
             # 使用jieba分词，检查是否包含动作关键词
             words = set(jieba.cut(text))
             return bool(words & action_keywords)
-        
+
         # 分别处理中文括号和英文括号
         cn_pattern = r'（[^）]*）'
         en_pattern = r'\([^\)]*\)'
-        
+
         def smart_filter(match):
             content = match.group(0)
             # 如果是颜文字，保留
@@ -393,38 +403,36 @@ class MessageHandler:
                 return ''
             # 如果无法判断，保留原文
             return content
-        
+
         # 处理中文括号
         text = re.sub(cn_pattern, smart_filter, text)
         # 处理英文括号
         text = re.sub(en_pattern, smart_filter, text)
-        
+
         return text
 
     def _handle_file_request(self, file_path, chat_id, sender_name, username, is_group):
         """处理文件请求"""
         logger.info(f"处理文件请求: {file_path}")
-        
+
         try:
-            
+
             from handlers.file import FileHandler
             files_handler = FileHandler(self.root_dir)
-            
-            
+
             target_path = files_handler.move_to_files_dir(file_path)
             logger.info(f"文件已转存至: {target_path}")
-            
+
             # 获取文件类型
             file_type = files_handler.get_file_type(target_path)
             logger.info(f"文件类型: {file_type}")
-            
+
             # 读取文件内容
             file_content = files_handler.read_file_content(target_path)
             logger.info(f"成功读取文件内容，长度: {len(file_content)} 字符")
-            
-            
+
             prompt = f"你收到了一个{file_type}文件，文件内容如下:\n\n{file_content}\n\n请帮我分析这个文件的内容，提取关键信息，根据角色设定，给出你的回答。"
-            
+
             # 获取 AI 回复
             reply = self.get_api_response(prompt, chat_id)
             if "</think>" in reply:
@@ -432,20 +440,20 @@ class MessageHandler:
                 logger.info("\n思考过程:")
                 logger.info(think_content.strip())
                 reply = reply.strip()
-            
+
             # 在群聊中添加@
             if is_group:
                 reply = f"@{sender_name} \n{reply}"
             else:
                 reply = f"{reply}"
-            
+
             # 发送回复
             try:
                 # 增强型智能分割器
                 delayed_reply = []
                 current_sentence = []
                 ending_punctuations = {'。', '！', '？', '!', '?', '…', '……'}
-                split_symbols = {'\\', '|', '￤','\n','\\n'}  # 支持多种手动分割符
+                split_symbols = {'\\', '|', '￤', '\n', '\\n'}  # 支持多种手动分割符
 
                 for idx, char in enumerate(reply):
                     # 处理手动分割符号（优先级最高）
@@ -481,22 +489,22 @@ class MessageHandler:
                 for part in delayed_reply:
                     self.wx.SendMsg(msg=part, who=chat_id)
                     time.sleep(random.uniform(0.5, 1.5))  # 稍微增加一点随机性
-                    
+
             except Exception as e:
                 logger.error(f"发送文件分析结果失败: {str(e)}")
                 self.wx.SendMsg(msg="抱歉，文件分析结果发送失败", who=chat_id)
-            
+
             # 异步保存消息记录
             threading.Thread(target=self.save_message,
-                           args=(username, sender_name, prompt, reply)).start()
-            
+                             args=(username, sender_name, prompt, reply)).start()
+
             # 重置计数器（如果大于0）
             if self.unanswered_counters.get(username, 0) > 0:
                 self.unanswered_counters[username] = 0
                 logger.info(f"用户 {username} 的未回复计数器已重置")
-            
+
             return reply
-            
+
         except Exception as e:
             logger.error(f"处理文件失败: {str(e)}", exc_info=True)
             error_msg = f"抱歉，文件处理过程中出现错误: {str(e)}"
@@ -505,17 +513,16 @@ class MessageHandler:
             self.wx.SendMsg(msg=error_msg, who=chat_id)
             return None
 
-
     def _handle_text_message(self, content, chat_id, sender_name, username, is_group, is_image_recognition=False):
         """处理普通文本消息"""
         # 添加正则表达式过滤时间戳
         time_pattern = r'\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\]'
         content = re.sub(time_pattern, '', content)
-        
+
         # 更通用的模式
         general_pattern = r'\[\d[^\]]*\]|\[\d+\]'
         content = re.sub(general_pattern, '', content)
-        
+
         logger.info("处理普通文本回复")
 
         # 获取或初始化未回复计数器
@@ -530,12 +537,19 @@ class MessageHandler:
 
         # 检查消息中是否包含结束关键词
         is_end_of_conversation = any(keyword in content for keyword in end_keywords)
+        raw_content = content
+        # 记录一个raw_content用于存到记忆中
         if is_end_of_conversation:
             # 如果检测到结束关键词，在消息末尾添加提示
             content += "\n请你回应用户的结束语"
             logger.info(f"检测到对话结束关键词，尝试生成更自然的结束语")
+        else:
+            # 此处修改(2025/03/14 by eliver) 不是结束时则添加记忆到内容中
+            memories = self.memory_handler.get_rag_memories(content)
+            content += f"\n以上是用户的沟通内容；以下是记忆中检索的内容：{';'.join(memories)}\n请你根据以上内容回复用户的消息。"
 
         # 获取 API 回复
+        # logger.info(f"生成依据内容 {content}")
         reply = self.get_api_response(content, chat_id)
         if "</think>" in reply:
             think_content, reply = reply.split("</think>", 1)
@@ -543,10 +557,10 @@ class MessageHandler:
             logger.info(think_content.strip())
             logger.info(reply.strip())
         else:
-            logger.info("\nAI回复:") 
-            logger.info(reply) 
-            
-        # 过滤括号内的动作和情感描述 - 移除重复调用
+            logger.info("\nAI回复:")
+            logger.info(reply)
+
+            # 过滤括号内的动作和情感描述 - 移除重复调用
         reply = self._filter_action_emotion(reply)
 
         if is_group:
@@ -557,7 +571,7 @@ class MessageHandler:
             delayed_reply = []
             current_sentence = []
             ending_punctuations = {'。', '！', '？', '!', '?', '…', '……'}
-            split_symbols = {'\\', '|', '￤','\n','\\n'}  # 支持多种手动分割符
+            split_symbols = {'\\', '|', '￤', '\n', '\\n'}  # 支持多种手动分割符
             last_split_idx = -1  # 记录上一次分割的位置，防止重复分割
 
             for idx, char in enumerate(reply):
@@ -591,17 +605,17 @@ class MessageHandler:
             # 处理剩余内容
             if current_sentence:
                 delayed_reply.append(''.join(current_sentence).strip())
-            
+
             # 过滤空内容和去重
             delayed_reply = [s for s in delayed_reply if s]  # 过滤空内容
             # 去除完全相同的相邻句子
             if len(delayed_reply) > 1:
                 unique_reply = [delayed_reply[0]]
                 for i in range(1, len(delayed_reply)):
-                    if delayed_reply[i] != delayed_reply[i-1]:
+                    if delayed_reply[i] != delayed_reply[i - 1]:
                         unique_reply.append(delayed_reply[i])
                 delayed_reply = unique_reply
-            
+
             # 记录已发送的消息，防止重复发送
             sent_messages = set()
 
@@ -614,7 +628,7 @@ class MessageHandler:
                     time.sleep(0.2)  # 粘贴操作时间
                     # 模拟阅读和点击发送按钮的时间
                     time.sleep(input_time + random.uniform(1, 2))  # 阅读和点击发送按钮的时间
-                    
+
                     self.wx.SendMsg(msg=part, who=chat_id)
                     sent_messages.add(part)
                 else:
@@ -624,7 +638,6 @@ class MessageHandler:
             logger.info("开始检查AI回复的情感关键词")
             emotion_detected = False
 
-        
             if not hasattr(self.emoji_handler, 'emotion_map'):
                 logger.error("emoji_handler 缺少 emotion_map 属性")
                 return reply
@@ -656,12 +669,11 @@ class MessageHandler:
 
         # 异步保存消息记录
         threading.Thread(target=self.save_message,
-                         args=(username, sender_name, content, reply)).start()
-         # 重置计数器（如果大于0）
+                         args=(username, sender_name, raw_content, reply)).start()
+        # 重置计数器（如果大于0）
         if self.unanswered_counters.get(username, 0) > 0:
             self.unanswered_counters[username] = 0
             logger.info(f"用户 {username} 的未回复计数器: {self.unanswered_counters[username]}")
-
 
         return reply
 
@@ -669,28 +681,27 @@ class MessageHandler:
         """增加未回复计数器"""
         with self.queue_lock:
             current_time = time.time()
-            
+
             # 获取上次回复时间
             last_reply_time = getattr(self, '_last_reply_times', {}).get(username, 0)
-            
+
             # 如果没有_last_reply_times属性，创建它
             if not hasattr(self, '_last_reply_times'):
                 self._last_reply_times = {}
-                
+
             # 检查是否超过30分钟未回复
             if current_time - last_reply_time > 1800:  # 1800秒 = 30分钟
                 if username in self.unanswered_counters:
                     self.unanswered_counters[username] += 1
                 else:
                     self.unanswered_counters[username] = 1
-                    
+
                 # 更新最后回复时间
                 self._last_reply_times[username] = current_time
                 logger.info(f"用户 {username} 超过30分钟未回复，计数器增加到: {self.unanswered_counters[username]}")
 
-
     def add_to_queue(self, chat_id: str, content: str, sender_name: str,
-                    username: str, is_group: bool = False):
+                     username: str, is_group: bool = False):
         """添加消息到队列（已废弃，保留兼容）"""
         logger.info("直接处理消息，跳过队列")
         return self.handle_user_message(content, chat_id, sender_name, username, is_group)
@@ -701,7 +712,7 @@ class MessageHandler:
         pass
 
     #以下是onebot QQ方法实现
-    def QQ_handle_voice_request(self,content,qqid,sender_name) :
+    def QQ_handle_voice_request(self, content, qqid, sender_name):
         """处理QQ来源的语音请求"""
         logger.info("处理语音请求")
         reply = self.get_api_response(content, qqid)
@@ -711,55 +722,57 @@ class MessageHandler:
         voice_path = self.voice_handler.generate_voice(reply)
         # 异步保存消息记录
         threading.Thread(target=self.save_message,
-                       args=(qqid, sender_name, content, reply)).start()
+                         args=(qqid, sender_name, content, reply)).start()
         if voice_path:
             return voice_path
         else:
             return reply
-    
-    def QQ_handle_random_image_request(self,content,qqid,sender_name):
+
+    def QQ_handle_random_image_request(self, content, qqid, sender_name):
         """处理随机图片请求"""
         logger.info("处理随机图片请求")
         image_path = self.image_handler.get_random_image()
         if image_path:
-            reply= "给主人你找了一张好看的图片哦~"
-            threading.Thread(target=self.save_message,args=(qqid, sender_name,content,reply)).start()
+            reply = "给主人你找了一张好看的图片哦~"
+            threading.Thread(target=self.save_message, args=(qqid, sender_name, content, reply)).start()
 
             return image_path
             # 异步保存消息记录
         return None
-    def QQ_handle_image_generation_request(self,content,qqid,sender_name):
+
+    def QQ_handle_image_generation_request(self, content, qqid, sender_name):
         """处理图像生成请求"""
         logger.info("处理画图请求")
         try:
             image_path = self.image_handler.generate_image(content)
             if image_path:
-                reply= "这是按照主人您的要求生成的图片\\(^o^)/~"
+                reply = "这是按照主人您的要求生成的图片\\(^o^)/~"
                 threading.Thread(target=self.save_message,
-                            args=(qqid, sender_name, content,reply)).start()
-                
+                                 args=(qqid, sender_name, content, reply)).start()
+
                 return image_path
                 # 异步保存消息记录
             else:
                 reply = "抱歉主人，图片生成失败了..."
                 threading.Thread(target=self.save_message,
-                            args=(qqid, sender_name, content,reply)).start()
+                                 args=(qqid, sender_name, content, reply)).start()
             return None
         except:
             reply = "抱歉主人，图片生成失败了..."
             threading.Thread(target=self.save_message,
-                            args=(qqid, sender_name, content,reply)).start()
+                             args=(qqid, sender_name, content, reply)).start()
             return None
-    def QQ_handle_text_message(self,content,qqid,sender_name):
+
+    def QQ_handle_text_message(self, content, qqid, sender_name):
         """处理普通文本消息"""
         # 添加正则表达式过滤时间戳
         time_pattern = r'\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\]'
         content = re.sub(time_pattern, '', content)
-        
+
         # 更通用的模式
         general_pattern = r'\[\d[^\]]*\]|\[\d+\]'
         content = re.sub(general_pattern, '', content)
-        
+
         logger.info("处理普通文本回复")
 
         # 定义结束关键词
@@ -784,18 +797,18 @@ class MessageHandler:
             logger.info(think_content.strip())
             logger.info(reply.strip())
         else:
-            logger.info("\nAI回复:") 
-            logger.info(reply) 
-            
-        # 过滤括号内的动作和情感描述
-        reply = self._filter_action_emotion(reply) 
+            logger.info("\nAI回复:")
+            logger.info(reply)
+
+            # 过滤括号内的动作和情感描述
+        reply = self._filter_action_emotion(reply)
 
         try:
             # 增强型智能分割器 - 优化版
             delayed_reply = []
             current_sentence = []
             ending_punctuations = {'。', '！', '？', '!', '?', '…', '……'}
-            split_symbols = {'\\', '|', '￤','\n','\\n'}  # 支持多种手动分割符
+            split_symbols = {'\\', '|', '￤', '\n', '\\n'}  # 支持多种手动分割符
             last_split_idx = -1  # 记录上一次分割的位置，防止重复分割
 
             for idx, char in enumerate(reply):
@@ -829,14 +842,14 @@ class MessageHandler:
             # 处理剩余内容
             if current_sentence:
                 delayed_reply.append(''.join(current_sentence).strip())
-            
+
             # 过滤空内容和去重
             delayed_reply = [s for s in delayed_reply if s]  # 过滤空内容
             # 去除完全相同的相邻句子
             if len(delayed_reply) > 1:
                 unique_reply = [delayed_reply[0]]
                 for i in range(1, len(delayed_reply)):
-                    if delayed_reply[i] != delayed_reply[i-1]:
+                    if delayed_reply[i] != delayed_reply[i - 1]:
                         unique_reply.append(delayed_reply[i])
                 delayed_reply = unique_reply
 
@@ -844,10 +857,9 @@ class MessageHandler:
             logger.info("开始检查AI回复的情感关键词")
             emotion_detected = False
 
-        
             if not hasattr(self.emoji_handler, 'emotion_map'):
                 logger.error("emoji_handler 缺少 emotion_map 属性")
-                return delayed_reply # 直接返回分割后的文本，在控制台打印error
+                return delayed_reply  # 直接返回分割后的文本，在控制台打印error
 
             for emotion, keywords in self.emoji_handler.emotion_map.items():
                 if not keywords:  # 跳过空的关键词列表
@@ -864,7 +876,7 @@ class MessageHandler:
                         #     logger.info(f"已发送情感表情包: {emoji_path}")
                         # except Exception as e:
                         #     logger.error(f"发送表情包失败: {str(e)}")
-                        delayed_reply.append(emoji_path) #在发送消息队列后增加path，由响应器处理
+                        delayed_reply.append(emoji_path)  #在发送消息队列后增加path，由响应器处理
                     else:
                         logger.warning(f"未找到对应情感 {emotion} 的表情包")
                     break
@@ -878,8 +890,6 @@ class MessageHandler:
                          args=(qqid, sender_name, content, reply)).start()
         return delayed_reply
         
-
-
     def auto_send_message(self, listen_list, robot_wx_name, get_personality_summary, is_quiet_time, start_countdown):
         """自动发送消息的方法"""
         try:
@@ -971,3 +981,4 @@ class MessageHandler:
             logger.error(f"自动发送消息失败: {str(e)}")
         finally:
             start_countdown()
+

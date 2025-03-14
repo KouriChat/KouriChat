@@ -83,18 +83,26 @@ class AuthSettings:
     admin_password: str
 
 @dataclass
+class RagSettings:
+    base_url: str
+    api_key: str
+    is_rerank: bool
+    reranker_model: str
+    embedding_model: str
+    top_k: int
+
+@dataclass
 class Config:
     def __init__(self):
-        # 先初始化所有属性为 None
-        self.user = None
-        self.llm = None
-        self.media = None
-        self.behavior = None
-        self.auth = None
-        self._robot_wx_name = ""
-        # 然后加载配置
+        self.user: UserSettings
+        self.llm: LLMSettings
+        self.media: MediaSettings
+        self.behavior: BehaviorSettings
+        self.auth: AuthSettings
+        self._robot_wx_name: str = ""
+        self.rag: RagSettings
         self.load_config()
-    
+
     @property
     def robot_wx_name(self) -> str:
         try:
@@ -108,20 +116,20 @@ class Config:
     @property
     def config_dir(self) -> str:
         return os.path.dirname(__file__)
-    
+
     @property
     def config_path(self) -> str:
         return os.path.join(self.config_dir, 'config.json')
-    
+
     @property
     def config_template_path(self) -> str:
         return os.path.join(self.config_dir, 'config.json.template')
-    
+
     def save_config(self, config_data: dict) -> bool:
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 current_config = json.load(f)
-            
+
             def merge_config(current: dict, new: dict):
                 for key, value in new.items():
                     if key in current and isinstance(current[key], dict) and isinstance(value, dict):
@@ -133,41 +141,33 @@ class Config:
             if 'categories' not in current_config:
                 current_config['categories'] = {}
             
-            # 确保 auth_settings 存在
-            if 'auth_settings' not in current_config['categories']:
-                current_config['categories']['auth_settings'] = {
-                    'title': '认证设置',
-                    'settings': {
-                        'admin_password': {
-                            'value': '',
-                            'type': 'string',
-                            'description': '管理员密码',
-                            'is_secret': True
-                        }
-                    }
-                }
-            
-            # 保存当前的 admin_password
-            current_admin_password = current_config['categories']['auth_settings']['settings']['admin_password']['value']
+            # 保存当前的敏感配置
+            sensitive_values = {}
+            if 'categories' in current_config:
+                if 'auth_settings' in current_config['categories']:
+                    if 'settings' in current_config['categories']['auth_settings']:
+                        if 'admin_password' in current_config['categories']['auth_settings']['settings']:
+                            sensitive_values['admin_password'] = current_config['categories']['auth_settings']['settings']['admin_password']['value']
             
             # 合并新的配置
             merge_config(current_config, config_data)
             
-            # 如果新的配置中没有 admin_password，恢复原来的值
-            if 'categories' in config_data and 'auth_settings' in config_data['categories']:
-                if 'settings' in config_data['categories']['auth_settings']:
-                    if 'admin_password' in config_data['categories']['auth_settings']['settings']:
-                        if not config_data['categories']['auth_settings']['settings']['admin_password'].get('value'):
-                            current_config['categories']['auth_settings']['settings']['admin_password']['value'] = current_admin_password
+            # 恢复敏感配置
+            if 'categories' in current_config:
+                if 'auth_settings' in current_config['categories']:
+                    if 'settings' in current_config['categories']['auth_settings']:
+                        if 'admin_password' in current_config['categories']['auth_settings']['settings']:
+                            if not current_config['categories']['auth_settings']['settings']['admin_password'].get('value'):
+                                current_config['categories']['auth_settings']['settings']['admin_password']['value'] = sensitive_values.get('admin_password', '')
             
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(current_config, f, indent=4, ensure_ascii=False)
-            
+
             return True
         except Exception as e:
             logger.error(f"保存配置失败: {str(e)}")
             return False
-    
+
     def load_config(self) -> None:
         try:
             if not os.path.exists(self.config_path):
@@ -181,12 +181,12 @@ class Config:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
                 categories = config_data['categories']
-                
+
                 user_data = categories['user_settings']['settings']
                 self.user = UserSettings(
                     listen_list=user_data['listen_list']['value']
                 )
-                
+
                 llm_data = categories['llm_settings']['settings']
                 self.llm = LLMSettings(
                     api_key=llm_data['api_key']['value'],
@@ -194,6 +194,16 @@ class Config:
                     model=llm_data['model']['value'],
                     max_tokens=llm_data['max_tokens']['value'],
                     temperature=llm_data['temperature']['value']
+                )
+
+                rag_data = categories['rag_settings']['settings']
+                self.rag = RagSettings(
+                    base_url=rag_data['base_url'],
+                    api_key=rag_data['api_key'],
+                    is_rerank=rag_data['is_rerank'],
+                    reranker_model=rag_data['reranker_model'],
+                    embedding_model=rag_data['embedding_model'],
+                    top_k=rag_data['top_k']
                 )
                 
                 media_data = categories['media_settings']['settings']

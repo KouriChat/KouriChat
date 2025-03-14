@@ -10,10 +10,10 @@ echo ====================================
 echo       My Dream Moments 启动器
 echo ====================================
 echo.
-echo +--------------------------------+
-echo ^|   My Dream Moments - AI Chat   ^|
-echo ^|   Created with Heart by umaru  ^|
-echo +--------------------------------+
+echo ╭──────────────────────────────────╮
+echo │      My Dream Moments - AI Chat   │
+echo │      Created with Heart by umaru  │
+echo ╰──────────────────────────────────╯
 echo.
 
 :: 检查 Python 是否已安装
@@ -67,9 +67,7 @@ if not exist %VENV_DIR%\Scripts\activate.bat (
         set "mirrors[2]=https://pypi.mirrors.ustc.edu.cn/simple/"
         set "mirrors[3]=https://mirrors.cloud.tencent.com/pypi/simple"
         set "mirrors[4]=https://pypi.org/simple"
-
-        set success=0
-        set mirror_count=5
+        set "success=0"
 
         :: 尝试每个镜像源
         for /L %%i in (0,1,4) do (
@@ -107,10 +105,15 @@ if not exist %VENV_DIR%\Scripts\activate.bat (
     echo 正在启动程序喵...
 )
 
+:: 运行程序
+echo 正在启动程序...
 python run_config_web.py
 
-:: 如果发生异常退出则暂停显示错误信息
+:: 异常退出处理
 if errorlevel 1 (
-    echo 程序运行出错喵
+    echo 程序异常退出
     pause
 )
+
+:: 退出虚拟环境
+deactivate

@@ -1255,61 +1255,60 @@ def check_dependencies():
     try:
         # 检查Python版本
         python_version = sys.version.split()[0]
+        logger.info(f"当前Python版本: {python_version}")
 
         # 检查pip是否安装
         pip_path = shutil.which('pip')
         has_pip = pip_path is not None
+        logger.info(f"pip是否安装: {has_pip}")
 
         # 检查requirements.txt是否存在
         requirements_path = os.path.join(ROOT_DIR, 'requirements.txt')
         has_requirements = os.path.exists(requirements_path)
+        logger.info(f"requirements.txt是否存在: {has_requirements}")
 
         # 如果requirements.txt存在，检查是否所有依赖都已安装
         dependencies_status = "unknown"
         missing_deps = []
         if has_requirements and has_pip:
             try:
-                # 首先使用阿里云镜像源安装依赖
-                logger.info('正在使用阿里云镜像源安装依赖...')
-                process = subprocess.Popen(
-                    [sys.executable, '-m', 'pip', 'install', '-r', requirements_path, '--index-url',
-                     'https://mirrors.aliyun.com/pypi/simple'],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding='utf-8',
-                    errors='replace'
-                )
-                stdout, stderr = process.communicate()
+                # 定义镜像源列表
+                mirrors = [
+                    'https://mirrors.aliyun.com/pypi/simple',
+                    'https://pypi.tuna.tsinghua.edu.cn/simple',
+                    'https://mirrors.cloud.tencent.com/pypi/simple',
+                    'https://mirrors.bfsu.edu.cn/pypi/web/simple',
+                    'https://pypi.org/simple'
+                ]
                 
-                if process.returncode != 0:
-                    # 如果阿里云镜像源失败，尝试使用其他镜像源
-                    mirrors = [
-                        'https://pypi.tuna.tsinghua.edu.cn/simple',
-                        'https://mirrors.cloud.tencent.com/pypi/simple',
-                        'https://mirrors.bfsu.edu.cn/pypi/web/simple',
-                        'https://pypi.org/simple'
-                    ]
+                # 尝试使用不同的镜像源安装依赖
+                install_success = False
+                for mirror in mirrors:
+                    logger.info(f'正在使用镜像源 ({mirror}) 安装依赖...')
+                    process = subprocess.Popen(
+                        [sys.executable, '-m', 'pip', 'install', '-r', requirements_path, '--index-url', mirror],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        encoding='utf-8',
+                        errors='replace'
+                    )
+                    stdout, stderr = process.communicate()
                     
-                    for mirror in mirrors:
-                        logger.info(f'阿里云镜像源安装失败，正在切换到镜像源 ({mirror}) 重试...')
-                        process = subprocess.Popen(
-                            [sys.executable, '-m', 'pip', 'install', '-r', requirements_path, '--index-url', mirror],
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True,
-                            encoding='utf-8',
-                            errors='replace'
-                        )
-                        stdout, stderr = process.communicate()
-                        
-                        if process.returncode == 0:
-                            logger.info(f'使用镜像源 ({mirror}) 安装依赖成功')
-                            break
-                        else:
-                            logger.warning(f'使用镜像源 ({mirror}) 安装依赖失败')
-                else:
-                    logger.info('使用阿里云镜像源安装依赖成功')
+                    if process.returncode == 0:
+                        logger.info(f'使用镜像源 ({mirror}) 安装依赖成功')
+                        install_success = True
+                        break
+                    else:
+                        logger.warning(f'使用镜像源 ({mirror}) 安装依赖失败: {stderr}')
+
+                if not install_success:
+                    logger.error('所有镜像源安装依赖都失败了')
+                    dependencies_status = "error"
+                    return jsonify({
+                        'status': 'error',
+                        'message': '依赖安装失败，请检查网络连接或手动安装依赖'
+                    })
 
                 # 检查安装结果
                 process = subprocess.Popen(
@@ -1321,6 +1320,14 @@ def check_dependencies():
                     errors='replace'
                 )
                 stdout, stderr = process.communicate()
+
+                if process.returncode != 0:
+                    logger.error(f'获取已安装包列表失败: {stderr}')
+                    dependencies_status = "error"
+                    return jsonify({
+                        'status': 'error',
+                        'message': '获取已安装包列表失败'
+                    })
 
                 # 解析pip list的输出，只获取包名
                 installed_packages = {
@@ -1371,7 +1378,7 @@ def check_dependencies():
                 if missing_deps:
                     logger.warning(f"缺失的依赖库: [{', '.join(sorted(missing_deps))}]")
                 else:
-                    logger.info("缺失的依赖库: []")
+                    logger.info("所有依赖库已安装完成")
 
             except Exception as e:
                 logger.error(f"检查依赖时出错: {str(e)}")
