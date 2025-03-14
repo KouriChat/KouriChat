@@ -1,0 +1,124 @@
+{
+    "categories": {
+        "user_settings": {
+            "title": "用户设置",
+            "settings": {
+                "listen_list": {
+                    "value": [
+                        "雾未开"
+                    ]
+                }
+            }
+        },
+        "llm_settings": {
+            "title": "大语言模型配置",
+            "settings": {
+                "base_url": {
+                    "value": "https://aiproxy.bja.sealos.run/v1"
+                },
+                "model": {
+                    "value": "deepseek-chat"
+                },
+                "api_key": {
+                    "value": "sk-8HgqJuIRsv7br3MJ300b14232d084a6c82089d660122F5F2"
+                },
+                "max_tokens": {
+                    "value": 1000
+                },
+                "temperature": {
+                    "value": 1.2
+                }
+            }
+        },
+        "media_settings": {
+            "title": "媒体配置",
+            "settings": {
+                "image_recognition": {
+                    "api_key": {
+                        "value": ""
+                    },
+                    "base_url": {
+                        "value": "https://api.moonshot.cn/v1"
+                    },
+                    "temperature": {
+                        "value": 0.7
+                    },
+                    "model": {
+                        "value": "moonshot-v1-8k-vision-preview"
+                    }
+                },
+                "image_generation": {
+                    "model": {
+                        "value": "deepseek-ai/Janus-Pro-7B"
+                    },
+                    "temp_dir": {
+                        "value": "data/images/temp"
+                    }
+                },
+                "text_to_speech": {
+                    "tts_api_url": {
+                        "value": "http://127.0.0.1:5000/tts"
+                    },
+                    "voice_dir": {
+                        "value": "data/voices"
+                    }
+                }
+            }
+        },
+        "behavior_settings": {
+            "title": "行为配置",
+            "settings": {
+                "auto_message": {
+                    "content": {
+                        "value": "请你模拟系统设置的角色，在微信上找对方聊天"
+                    },
+                    "countdown": {
+                        "min_hours": {
+                            "value": 0.01
+                        },
+                        "max_hours": {
+                            "value": 0.03
+                        }
+                    }
+                },
+                "quiet_time": {
+                    "start": {
+                        "value": "22:00"
+                    },
+                    "end": {
+                        "value": "08:00"
+                    }
+                },
+                "context": {
+                    "max_groups": {
+                        "value": 30
+                    },
+                    "avatar_dir": {
+                        "value": "data/avatars/ATRI"
+                    }
+                }
+            }
+        },
+        "schedule_settings": {
+            "title": "定时任务配置",
+            "settings": {
+                "tasks": {
+                    "value": [],
+                    "type": "array",
+                    "description": "定时任务列表"
+                }
+            }
+        },
+        "auth_settings": {
+            "title": "认证设置",
+            "settings": {
+                "admin_password": {
+                    "value": "123456",
+                    "type": "string",
+                    "description": "管理员密码",
+                    "is_secret": true
+                }
+            }
+        }
+    }
+}

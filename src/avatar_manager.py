@@ -8,7 +8,7 @@ avatar_manager = Blueprint('avatar_manager', __name__)
 @avatar_manager.route('/load_avatar', methods=['GET'])
 def load_avatar():
     """加载 avatar.md 内容"""
-    avatar_path = os.path.join(config.behavior.context.avatar_dir, 'avatar.md')
+    avatar_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), config.behavior.context.avatar_dir, 'avatar.md')
     if not os.path.exists(avatar_path):
         return jsonify({'status': 'error', 'message': '文件不存在'})
 

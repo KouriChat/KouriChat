@@ -1,13 +1,13 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: è®¾ç½®ä»£ç é¡µä¸º UTF-8
-chcp 65001 >nul
-title My Dream Moments å¯åŠ¨å™¨
+:: ÉèÖÃ´úÂëÒ³Îª GBK
+chcp 936 >nul
+title My Dream Moments Æô¶¯Æ÷
 
 cls
 echo ====================================
-echo       My Dream Moments å¯åŠ¨å™¨
+echo       My Dream Moments Æô¶¯Æ÷
 echo ====================================
 echo.
 echo +--------------------------------+
@@ -16,49 +16,54 @@ echo ^|   Created with Heart by umaru  ^|
 echo +--------------------------------+
 echo.
 
-:: è®¾ç½® Python ç¯å¢ƒå˜é‡
-set "PYTHONIOENCODING=utf-8"
-set "PYTHONUTF8=1"
-
-:: ç¡®ä¿ pip å·²å®‰è£…
-echo cheking pip ...
-python -m ensurepip --upgrade >nul 2>&1
+:: ¼ì²é Python ÊÇ·ñÒÑ°²×°
+python --version >nul 2>&1
 if errorlevel 1 (
-    echo pip å®‰è£…å¤±è´¥å–µ
+    echo PythonÎ´°²×°£¬ÇëÏÈ°²×°Python
     pause
     exit /b 1
 )
 
-:: æ£€æŸ¥ä¾èµ–æ˜¯å¦éœ€è¦æ›´æ–°
-@echo off
-setlocal enabledelayedexpansion
+:: ¼ì²é Python °æ±¾
+for /f "tokens=2" %%I in ('python -V 2^>^&1') do set PYTHON_VERSION=%%I
+for /f "tokens=2 delims=." %%I in ("!PYTHON_VERSION!") do set MINOR_VERSION=%%I
+if !MINOR_VERSION! GEQ 13 (
+    echo ²»Ö§³Ö Python 3.13 ¼°ÒÔÉÏ°æ±¾ß÷
+    echo µ±Ç°Python°æ±¾: !PYTHON_VERSION!
+    echo ÇëÊ¹ÓÃ Python 3.12 »ò¸üÔç°æ±¾ß÷
+    pause
+    exit /b 1
+)
 
-:: è®¾ç½®ä»£ç é¡µä¸º UTF-8
-chcp 65001 >nul
-title My Dream Moments å¯åŠ¨å™¨
+:: ÉèÖÃ Python »·¾³±äÁ¿
+set "PYTHONIOENCODING=gbk"
+set "PYTHONUTF8=0"
 
-:: ... å‰é¢çš„ä»£ç ä¿æŒä¸å˜ ...
+:: ÉèÖÃĞéÄâ»·¾³Ä¿Â¼
+set VENV_DIR=.venv
 
-:: æ£€æŸ¥ä¾èµ–æ˜¯å¦éœ€è¦æ›´æ–°
-set "NEEDS_UPDATE=0"
-set "req_hash_file=%TEMP%\requirements_hash.txt"
-if exist requirements.txt (
-    if not exist "%req_hash_file%" set "NEEDS_UPDATE=1"
-    if exist "%req_hash_file%" (
-        for /f "usebackq" %%a in (`certutil -hashfile requirements.txt SHA256 ^| find /v "hash"`) do (
-            set "current_hash=%%a"
-        )
-        set /p stored_hash=<"%req_hash_file%" 2>nul
-        if not "!current_hash!"=="!stored_hash!" set "NEEDS_UPDATE=1"
+:: ¼ì²éĞéÄâ»·¾³ÊÇ·ñ´æÔÚ
+if not exist %VENV_DIR%\Scripts\activate.bat (
+    echo Ê×´ÎÔËĞĞ£¬ÕıÔÚ´´½¨ĞéÄâ»·¾³ß÷...
+    python -m venv %VENV_DIR%
+    if errorlevel 1 (
+        echo ´´½¨ĞéÄâ»·¾³Ê§°Üß÷
+        pause
+        exit /b 1
     )
+    :: ¼¤»îĞéÄâ»·¾³
+    call %VENV_DIR%\Scripts\activate.bat
     
-    if "!NEEDS_UPDATE!"=="1" (
-        echo æ­£åœ¨å®‰è£…/æ›´æ–°ä¾èµ–å–µ...
-        python -m pip install --upgrade pip >nul 2>&1
-
-        :: å®šä¹‰é•œåƒæºåˆ—è¡¨
-        set "mirrors[0]=https://pypi.tuna.tsinghua.edu.cn/simple"
-        set "mirrors[1]=https://mirrors.aliyun.com/pypi/simple/"
+    :: È·±£ pip ÒÑ°²×°²¢¸üĞÂ
+    echo ÕıÔÚ¸üĞÂ pip...
+    python -m pip install --upgrade pip >nul 2>&1
+    
+    :: Ê×´Î°²×°ÒÀÀµ
+    if exist requirements.txt (
+        echo ÕıÔÚ°²×°ÒÀÀµß÷...
+        :: ¶¨Òå¾µÏñÔ´ÁĞ±í
+        set "mirrors[0]=https://mirrors.aliyun.com/pypi/simple/"
+        set "mirrors[1]=https://pypi.tuna.tsinghua.edu.cn/simple"
         set "mirrors[2]=https://pypi.mirrors.ustc.edu.cn/simple/"
         set "mirrors[3]=https://mirrors.cloud.tencent.com/pypi/simple"
         set "mirrors[4]=https://pypi.org/simple"
@@ -66,41 +71,46 @@ if exist requirements.txt (
         set success=0
         set mirror_count=5
 
-        :: å°è¯•æ¯ä¸ªé•œåƒæº
+        :: ³¢ÊÔÃ¿¸ö¾µÏñÔ´
         for /L %%i in (0,1,4) do (
             if !success!==0 (
-                echo å°è¯•ä½¿ç”¨é•œåƒæº: !mirrors[%%i]!
-                python -m pip install --no-cache-dir -i !mirrors[%%i]! -r requirements.txt
+                echo ³¢ÊÔÊ¹ÓÃ¾µÏñÔ´: !mirrors[%%i]!
+                pip install --no-cache-dir -i !mirrors[%%i]! -r requirements.txt
                 if !errorlevel!==0 (
                     set success=1
-                    echo ä¾èµ–å®‰è£…æˆåŠŸå–µ~
-                    echo !current_hash!>"%req_hash_file%"
+                    echo ÒÀÀµ°²×°³É¹¦ß÷~
                 ) else (
-                    echo å½“å‰é•œåƒæºå®‰è£…å¤±è´¥ï¼Œå°è¯•ä¸‹ä¸€ä¸ª...
+                    echo µ±Ç°¾µÏñÔ´°²×°Ê§°Ü£¬³¢ÊÔÏÂÒ»¸öß÷...
                 )
             )
         )
 
-        :: æ£€æŸ¥æ˜¯å¦æ‰€æœ‰é•œåƒæºéƒ½å¤±è´¥
+        :: ¼ì²éÊÇ·ñËùÓĞ¾µÏñÔ´¶¼Ê§°Ü
         if !success!==0 (
-            echo æ‰€æœ‰é•œåƒæºéƒ½å®‰è£…å¤±è´¥äº†å–µ...
-            echo è¯·æ£€æŸ¥ç½‘ç»œè¿æ¥æˆ–æ‰‹åŠ¨å®‰è£…ä¾èµ–å–µ
+            echo ËùÓĞ¾µÏñÔ´¶¼°²×°Ê§°Üß÷...
+            echo Çë¼ì²é£º
+            echo 1. ÍøÂçÁ¬½ÓÊÇ·ñÕı³£
+            echo 2. ÊÖ¶¯°²×°ÃüÁî£ºpip install -r requirements.txtß÷
+            echo 3. ÊÇ·ñ´æÔÚÌØÊâÒÀÀµ°ü
+            echo 4. ³¢ÊÔÁÙÊ±¹Ø±Õ·À»ğÇ½/´úÀí
             pause
             exit /b 1
         )
     ) else (
-        echo ä¾èµ–å·²æ˜¯æœ€æ–°ç‰ˆæœ¬ï¼Œè·³è¿‡å®‰è£…å–µ...
+        echo Î´ÕÒµ½ requirements.txt ÎÄ¼şß÷
+        pause
+        exit /b 1
     )
+) else (
+    :: ĞéÄâ»·¾³ÒÑ´æÔÚ£¬Ö±½Ó¼¤»î
+    call %VENV_DIR%\Scripts\activate.bat
+    echo ÕıÔÚÆô¶¯³ÌĞòß÷...
 )
 
-
-:: è¿è¡Œç¨‹åº
-echo æ­£åœ¨å¯åŠ¨ç¨‹åºå–µ...
-cd /d "%~dp0"
 python run_config_web.py
 
-:: å¦‚æœå‘ç”Ÿå¼‚å¸¸é€€å‡ºåˆ™æš‚åœæ˜¾ç¤ºé”™è¯¯ä¿¡æ¯
+:: Èç¹û·¢ÉúÒì³£ÍË³öÔòÔİÍ£ÏÔÊ¾´íÎóĞÅÏ¢
 if errorlevel 1 (
-    echo ç¨‹åºè¿è¡Œå‡ºé”™å–µ
+    echo ³ÌĞòÔËĞĞ³ö´íß÷
     pause
 )

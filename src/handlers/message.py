@@ -162,13 +162,16 @@ class MessageHandler:
             
             # 检查是否需要缓存消息
             if username in self.last_message_time and current_time - self.last_message_time[username] < 5:
+                logger.info(f"检测到用户 {username} 在5秒内发送了多条消息，启用消息缓存机制")
                 # 取消之前的定时器
                 if username in self.message_timer and self.message_timer[username]:
                     self.message_timer[username].cancel()
+                    logger.info(f"已取消用户 {username} 的旧定时器")
                 
                 # 添加到消息缓存
                 if username not in self.message_cache:
                     self.message_cache[username] = []
+                    logger.info(f"为用户 {username} 创建新的消息缓存")
                 self.message_cache[username].append({
                     'content': content,
                     'chat_id': chat_id,
@@ -176,24 +179,28 @@ class MessageHandler:
                     'is_group': is_group,
                     'is_image_recognition': is_image_recognition
                 })
+                logger.info(f"已将消息添加到用户 {username} 的缓存中，当前缓存消息数: {len(self.message_cache[username])}")
                 
                 # 设置新的定时器
                 timer = threading.Timer(5.0, self._process_cached_messages, args=[username])
                 timer.start()
                 self.message_timer[username] = timer
+                logger.info(f"已为用户 {username} 设置新的5秒定时器")
                 
                 # 更新最后消息时间
                 self.last_message_time[username] = current_time
                 return None
             
-             # 更新最后消息时间
+            # 更新最后消息时间
             self.last_message_time[username] = current_time
             
             # 如果没有需要缓存的消息，直接处理
             if username not in self.message_cache or not self.message_cache[username]:
+                logger.info(f"用户 {username} 没有缓存消息，直接处理当前消息")
                 return self._handle_text_message(content, chat_id, sender_name, username, is_group, is_image_recognition)
             
             # 如果有缓存的消息，添加当前消息并一起处理
+            logger.info(f"用户 {username} 有缓存消息，将当前消息添加到缓存并一起处理")
             self.message_cache[username].append({
                 'content': content,
                 'is_image_recognition': is_image_recognition
@@ -203,56 +210,15 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"处理消息失败: {str(e)}", exc_info=True)
             return None
-            # 检查是否是短时间内的重复消息
-            if hasattr(self, '_handled_messages'):
-                # 清理超过60秒的旧记录
-                self._handled_messages = {k: v for k, v in self._handled_messages.items() 
-                                     if current_time - v < 60}
-                
-                if message_key in self._handled_messages:
-                    if current_time - self._handled_messages[message_key] < 5:  # 5秒内的重复消息
-                        logger.warning(f"MessageHandler检测到短时间内重复消息，已忽略: {content[:20]}...")
-                        return None
-            
-            else:
-                self._handled_messages = {}
-            # 更新用户最后回复时间
-            if not hasattr(self, '_last_reply_times'):
-                self._last_reply_times = {}
-            self._last_reply_times[username] = time.time()
-
-            # 记录当前消息处理时间
-            self._handled_messages[message_key] = current_time
-            
-            # 检查是否为语音请求
-            if self.voice_handler.is_voice_request(content):
-                return self._handle_voice_request(content, chat_id, sender_name, username, is_group)
-                
-            # 检查是否为随机图片请求
-            elif self.image_handler.is_random_image_request(content):
-                return self._handle_random_image_request(content, chat_id, sender_name, username, is_group)
-                
-            # 检查是否为图像生成请求，但跳过图片识别结果
-            elif not is_image_recognition and self.image_handler.is_image_generation_request(content):
-                return self._handle_image_generation_request(content, chat_id, sender_name, username, is_group)
-                
-            # 检查是否为文件处理请求
-            elif content and content.lower().endswith(('.txt', '.docx', '.doc', '.ppt', '.pptx', '.xlsx', '.xls')):
-                return self._handle_file_request(content, chat_id, sender_name, username, is_group)
-                
-            # 处理普通文本回复
-            else:
-                return self._handle_text_message(content, chat_id, sender_name, username, is_group)
-                
-        except Exception as e:
-            logger.error(f"处理消息失败: {str(e)}", exc_info=True)
-            return None
 
     def _process_cached_messages(self, username: str):
         """处理缓存的消息"""
         try:
             if not self.message_cache.get(username):
+                logger.info(f"用户 {username} 没有需要处理的缓存消息")
                 return None
+            
+            logger.info(f"开始处理用户 {username} 的缓存消息，共 {len(self.message_cache[username])} 条")
             
             # 获取最近的对话记录作为上下文
             recent_history = self.memory_handler.get_recent_memory(username, max_count=1)
@@ -266,6 +232,8 @@ class MessageHandler:
             image_messages = [msg for msg in messages if msg.get('is_image_recognition', False)]
             text_messages = [msg for msg in messages if not msg.get('is_image_recognition', False)]
             
+            logger.info(f"用户 {username} 的缓存消息分类 - 图片消息: {len(image_messages)} 条, 文本消息: {len(text_messages)} 条")
+            
             # 按照图片识别消息优先的顺序合并内容
             combined_messages = image_messages + text_messages
             combined_content = context + "\n".join([msg['content'] for msg in combined_messages])
@@ -274,6 +242,7 @@ class MessageHandler:
             last_message = messages[-1]
             
             # 处理合并后的消息
+            logger.info(f"开始处理用户 {username} 的合并消息")
             result = self._handle_text_message(
                 combined_content,
                 last_message['chat_id'],
@@ -287,6 +256,7 @@ class MessageHandler:
             self.message_cache[username] = []
             if username in self.message_timer:
                 self.message_timer[username] = None
+            logger.info(f"已清理用户 {username} 的消息缓存")
             
             return result
             

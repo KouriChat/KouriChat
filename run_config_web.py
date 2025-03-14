@@ -60,24 +60,29 @@ dictConfig({
     'version': 1,
     'formatters': {
         'default': {
-            'format': '[%(asctime)s] %(levelname)s: %(message)s',
-            'datefmt': '%Y-%m-%d %H:%M:%S'
+            'format': '%(message)s',  # 简化日志格式，只显示消息
+            'datefmt': '%H:%M:%S'  # 只显示时分秒
         }
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'default',
-            'level': 'DEBUG'
+            'level': 'INFO'  # 提高日志级别，减少不必要的输出
         }
     },
     'root': {
-        'level': 'DEBUG',
+        'level': 'INFO',  # 提高根日志级别
         'handlers': ['console']
     },
     'loggers': {
         'werkzeug': {
             'level': 'ERROR',  # 将 Werkzeug 的日志级别设置为 ERROR
+            'handlers': ['console'],
+            'propagate': False
+        },
+        'pip': {  # 添加 pip 的日志配置
+            'level': 'ERROR',
             'handlers': ['console'],
             'propagate': False
         }
@@ -96,6 +101,10 @@ sys.path.append(ROOT_DIR)
 
 # 禁用Python的字节码缓存
 sys.dont_write_bytecode = True
+
+# 禁用 pip 的进度条输出
+os.environ['PIP_NO_PROGRESS_BAR'] = '1'
+os.environ['PIP_DISABLE_PIP_VERSION_CHECK'] = '1'
 
 app = Flask(__name__,
             template_folder=os.path.join(ROOT_DIR, 'src/webui/templates'),
@@ -318,47 +327,58 @@ def save_config():
 
         # 读取当前配置
         config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
-        with open(config_path, 'r', encoding='utf-8') as f:
-            current_config = json.load(f)
+        
+        # 创建配置备份
+        backup_path = os.path.join(ROOT_DIR, 'src/config/config.backup.json')
+        if os.path.exists(config_path):
+            shutil.copy2(config_path, backup_path)
+            logger.info("已创建配置备份")
 
-        # 确保 categories 和 schedule_settings 存在
-        if 'categories' not in current_config:
-            current_config['categories'] = {}
+        # 读取现有配置
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                current_config = json.load(f)
+        except:
+            current_config = {"categories": {}}
 
-        if 'schedule_settings' not in current_config['categories']:
-            current_config['categories']['schedule_settings'] = {
-                "title": "定时任务配置",
+        # 确保基本结构存在
+        if "categories" not in current_config:
+            current_config["categories"] = {}
+
+        # 确保 auth_settings 存在
+        if "auth_settings" not in current_config["categories"]:
+            current_config["categories"]["auth_settings"] = {
+                "title": "认证设置",
                 "settings": {
-                    "tasks": {
-                        "value": [],
-                        "type": "array",
-                        "description": "定时任务列表"
+                    "admin_password": {
+                        "value": "",
+                        "type": "string",
+                        "description": "管理员密码",
+                        "is_secret": True
                     }
                 }
             }
-        elif 'settings' not in current_config['categories']['schedule_settings']:
-            current_config['categories']['schedule_settings']['settings'] = {
-                "tasks": {
-                    "value": [],
-                    "type": "array",
-                    "description": "定时任务列表"
-                }
-            }
-        elif 'tasks' not in current_config['categories']['schedule_settings']['settings']:
-            current_config['categories']['schedule_settings']['settings']['tasks'] = {
-                "value": [],
-                "type": "array",
-                "description": "定时任务列表"
-            }
 
-        # 更新配置
+        # 更新配置 - 确保新配置优先
         for key, value in data.items():
             # 特殊处理定时任务配置
             if key == 'TASKS':
                 try:
                     tasks = value if isinstance(value, list) else (json.loads(value) if isinstance(value, str) else [])
                     logger.debug(f"处理任务数据: {tasks}")
-                    current_config['categories']['schedule_settings']['settings']['tasks']['value'] = tasks
+                    if "schedule_settings" not in current_config["categories"]:
+                        current_config["categories"]["schedule_settings"] = {
+                            "title": "定时任务配置",
+                            "settings": {}
+                        }
+                    if "tasks" not in current_config["categories"]["schedule_settings"]["settings"]:
+                        current_config["categories"]["schedule_settings"]["settings"]["tasks"] = {
+                            "value": [],
+                            "type": "array",
+                            "description": "定时任务列表"
+                        }
+                    current_config["categories"]["schedule_settings"]["settings"]["tasks"]["value"] = tasks
+                    logger.info(f"已更新定时任务配置，新任务数: {len(tasks)}")
                 except Exception as e:
                     logger.error(f"处理定时任务配置失败: {str(e)}")
             # 处理其他配置项
@@ -366,10 +386,10 @@ def save_config():
                          'MOONSHOT_API_KEY', 'MOONSHOT_BASE_URL', 'MOONSHOT_TEMPERATURE', 'MOONSHOT_MODEL',
                          'IMAGE_MODEL', 'TEMP_IMAGE_DIR', 'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
                          'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR']:
-                # 这里可以添加更多的配置项映射
                 update_config_value(current_config, key, value)
+                logger.info(f"已更新配置项 {key} 为新值: {value}")
 
-        # 保存配置
+        # 保存新配置
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(current_config, f, ensure_ascii=False, indent=4)
 
@@ -400,6 +420,13 @@ def save_config():
 
     except Exception as e:
         logger.error(f"保存配置失败: {str(e)}")
+        # 如果保存失败，尝试恢复备份
+        if os.path.exists(backup_path):
+            try:
+                shutil.copy2(backup_path, config_path)
+                logger.info("已恢复配置备份")
+            except Exception as backup_error:
+                logger.error(f"恢复配置备份失败: {str(backup_error)}")
         return jsonify({
             "status": "error",
             "message": f"保存失败: {str(e)}",
@@ -1233,25 +1260,6 @@ def check_dependencies():
         pip_path = shutil.which('pip')
         has_pip = pip_path is not None
 
-        # 检查并更新pip
-        try:
-            if pip_path:
-                process = subprocess.Popen(
-                    [sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                stdout, stderr = process.communicate()
-                if process.returncode == 0:
-                    logger.info('pip已成功更新到最新版本')
-                else:
-                    logger.warning('pip更新失败')
-        except Exception as e:
-            logger.warning(f'pip更新过程中发生错误: {str(e)}')
-
-        pip_path = shutil.which('pip')
-        has_pip = pip_path is not None
-
         # 检查requirements.txt是否存在
         requirements_path = os.path.join(ROOT_DIR, 'requirements.txt')
         has_requirements = os.path.exists(requirements_path)
@@ -1261,104 +1269,109 @@ def check_dependencies():
         missing_deps = []
         if has_requirements and has_pip:
             try:
-                # 尝试使用默认镜像源安装依赖
+                # 首先使用阿里云镜像源安装依赖
+                logger.info('正在使用阿里云镜像源安装依赖...')
                 process = subprocess.Popen(
-                    [sys.executable, '-m', 'pip', 'install', '-r', requirements_path],
+                    [sys.executable, '-m', 'pip', 'install', '-r', requirements_path, '--index-url',
+                     'https://mirrors.aliyun.com/pypi/simple'],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace'
                 )
                 stdout, stderr = process.communicate()
+                
                 if process.returncode != 0:
-                    # 如果默认镜像源失败，尝试使用阿里云镜像源
-                    logger.info('默认镜像源安装失败，尝试使用阿里云镜像源...')
-                    process = subprocess.Popen(
-                        [sys.executable, '-m', 'pip', 'install', '-r', requirements_path, '--index-url',
-                         'https://mirrors.aliyun.com/pypi/simple'],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
-                    stdout, stderr = process.communicate()
-
-                if process.returncode == 0:
-                    process = subprocess.Popen(
-                        [sys.executable, '-m', 'pip', 'list'],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
-                    stdout, stderr = process.communicate()
-
-                    # 解码字节数据为字符串，添加错误处理
-                    try:
-                        stdout = stdout.decode('utf-8', errors='replace')
-                    except Exception:
-                        stdout = str(stdout)
-
-                    try:
-                        stderr = stderr.decode('utf-8', errors='replace')
-                    except Exception:
-                        stderr = str(stderr)
-
-                    # 解析pip list的输出，只获取包名
-                    installed_packages = {
-                        line.split()[0].lower()
-                        for line in stdout.split('\n')[2:]
-                        if line.strip()
-                    }
-
-                    logger.debug(f"已安装的包: {installed_packages}")
-
-                    # 读取requirements.txt，只获取有效的包名
-                    required_packages = set()
-                    # 尝试多种编码读取requirements.txt文件
-                    encodings_to_try = ['utf-8', 'gbk', 'latin-1', 'cp1252']
-                    requirements_content = None
-
-                    for encoding in encodings_to_try:
-                        try:
-                            with open(requirements_path, 'r', encoding=encoding) as f:
-                                requirements_content = f.read()
-                            logger.debug(f"成功使用{encoding}编码读取requirements.txt")
-                            break
-                        except UnicodeDecodeError:
-                            continue
-                        except Exception as e:
-                            logger.error(f"读取requirements.txt时出错: {str(e)}")
-                            break
-
-                    if requirements_content is None:
-                        raise Exception("无法读取requirements.txt文件，尝试了多种编码均失败")
-
-                    # 解析requirements.txt内容
-                    for line in requirements_content.splitlines():
-                        line = line.strip()
-                        # 跳过无效行：空行、注释、镜像源配置、-r 开头的文件包含
-                        if (not line or
-                                line.startswith('#') or
-                                line.startswith('-i ') or
-                                line.startswith('-r ') or
-                                line.startswith('--')):
-                            continue
-
-                        # 只取包名，忽略版本信息和其他选项
-                        pkg = line.split('=')[0].split('>')[0].split('<')[0].split('~')[0].split('[')[0]
-                        pkg = pkg.strip().lower()
-                        if pkg:  # 确保包名不为空
-                            required_packages.add(pkg)
-
-                    logger.debug(f"需要的包: {required_packages}")
-
-                    # 检查缺失的依赖
-                    missing_deps = [
-                        pkg for pkg in required_packages
-                        if pkg not in installed_packages and not (
-                                pkg == 'wxauto' and 'wxauto-py' in installed_packages
-                        )
+                    # 如果阿里云镜像源失败，尝试使用其他镜像源
+                    mirrors = [
+                        'https://pypi.tuna.tsinghua.edu.cn/simple',
+                        'https://mirrors.cloud.tencent.com/pypi/simple',
+                        'https://mirrors.bfsu.edu.cn/pypi/web/simple',
+                        'https://pypi.org/simple'
                     ]
+                    
+                    for mirror in mirrors:
+                        logger.info(f'阿里云镜像源安装失败，正在切换到镜像源 ({mirror}) 重试...')
+                        process = subprocess.Popen(
+                            [sys.executable, '-m', 'pip', 'install', '-r', requirements_path, '--index-url', mirror],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            encoding='utf-8',
+                            errors='replace'
+                        )
+                        stdout, stderr = process.communicate()
+                        
+                        if process.returncode == 0:
+                            logger.info(f'使用镜像源 ({mirror}) 安装依赖成功')
+                            break
+                        else:
+                            logger.warning(f'使用镜像源 ({mirror}) 安装依赖失败')
+                else:
+                    logger.info('使用阿里云镜像源安装依赖成功')
 
-                    logger.debug(f"缺失的包: {missing_deps}")
+                # 检查安装结果
+                process = subprocess.Popen(
+                    [sys.executable, '-m', 'pip', 'list'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace'
+                )
+                stdout, stderr = process.communicate()
 
-                    # 根据是否有缺失依赖设置状态
-                    dependencies_status = "complete" if not missing_deps else "incomplete"
+                # 解析pip list的输出，只获取包名
+                installed_packages = {
+                    line.split()[0].lower()
+                    for line in stdout.split('\n')[2:]
+                    if line.strip()
+                }
+
+                # 读取requirements.txt，只获取有效的包名
+                required_packages = set()
+                try:
+                    with open(requirements_path, 'r', encoding='utf-8') as f:
+                        requirements_content = f.read()
+                except UnicodeDecodeError:
+                    with open(requirements_path, 'r', encoding='gbk') as f:
+                        requirements_content = f.read()
+
+                # 解析requirements.txt内容
+                for line in requirements_content.splitlines():
+                    line = line.strip()
+                    # 跳过无效行：空行、注释、镜像源配置、-r 开头的文件包含
+                    if (not line or
+                            line.startswith('#') or
+                            line.startswith('-i ') or
+                            line.startswith('-r ') or
+                            line.startswith('--')):
+                        continue
+
+                    # 只取包名，忽略版本信息和其他选项
+                    pkg = line.split('=')[0].split('>')[0].split('<')[0].split('~')[0].split('[')[0]
+                    pkg = pkg.strip().lower()
+                    if pkg:  # 确保包名不为空
+                        required_packages.add(pkg)
+
+                # 检查缺失的依赖
+                missing_deps = [
+                    pkg for pkg in required_packages
+                    if pkg not in installed_packages and not (
+                            pkg == 'wxauto' and 'wxauto-py' in installed_packages
+                    )
+                ]
+
+                # 根据是否有缺失依赖设置状态
+                dependencies_status = "complete" if not missing_deps else "incomplete"
+
+                # 输出简洁的依赖状态
+                logger.info(f"已安装的依赖库: [{', '.join(sorted(installed_packages))}]")
+                if missing_deps:
+                    logger.warning(f"缺失的依赖库: [{', '.join(sorted(missing_deps))}]")
+                else:
+                    logger.info("缺失的依赖库: []")
 
             except Exception as e:
                 logger.error(f"检查依赖时出错: {str(e)}")
@@ -1539,7 +1552,7 @@ def create_job_object():
             current_process = win32process.GetCurrentProcess()
             win32job.AssignProcessToJobObject(job_object, current_process)
 
-            logger.info("已创建作业对象并将当前进程添加到作业中")
+            logger.debug("已创建作业对象并将当前进程添加到作业中")  # 改为 debug 级别
             return True
     except Exception as e:
         logger.error(f"创建作业对象失败: {str(e)}")

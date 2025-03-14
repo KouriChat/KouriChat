@@ -85,12 +85,14 @@ class AuthSettings:
 @dataclass
 class Config:
     def __init__(self):
-        self.user: UserSettings
-        self.llm: LLMSettings
-        self.media: MediaSettings
-        self.behavior: BehaviorSettings
-        self.auth: AuthSettings
-        self._robot_wx_name: str = ""
+        # 先初始化所有属性为 None
+        self.user = None
+        self.llm = None
+        self.media = None
+        self.behavior = None
+        self.auth = None
+        self._robot_wx_name = ""
+        # 然后加载配置
         self.load_config()
     
     @property
@@ -127,7 +129,36 @@ class Config:
                     else:
                         current[key] = value
             
+            # 确保 categories 存在
+            if 'categories' not in current_config:
+                current_config['categories'] = {}
+            
+            # 确保 auth_settings 存在
+            if 'auth_settings' not in current_config['categories']:
+                current_config['categories']['auth_settings'] = {
+                    'title': '认证设置',
+                    'settings': {
+                        'admin_password': {
+                            'value': '',
+                            'type': 'string',
+                            'description': '管理员密码',
+                            'is_secret': True
+                        }
+                    }
+                }
+            
+            # 保存当前的 admin_password
+            current_admin_password = current_config['categories']['auth_settings']['settings']['admin_password']['value']
+            
+            # 合并新的配置
             merge_config(current_config, config_data)
+            
+            # 如果新的配置中没有 admin_password，恢复原来的值
+            if 'categories' in config_data and 'auth_settings' in config_data['categories']:
+                if 'settings' in config_data['categories']['auth_settings']:
+                    if 'admin_password' in config_data['categories']['auth_settings']['settings']:
+                        if not config_data['categories']['auth_settings']['settings']['admin_password'].get('value'):
+                            current_config['categories']['auth_settings']['settings']['admin_password']['value'] = current_admin_password
             
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(current_config, f, indent=4, ensure_ascii=False)
@@ -200,6 +231,14 @@ class Config:
                                 is_active=task.get('is_active', True)
                             ))
                 
+                avatar_dir = behavior_data['context']['avatar_dir']['value']
+                if avatar_dir:
+                    avatar_dir = os.path.normpath(avatar_dir)
+                    if not os.path.isabs(avatar_dir):
+                        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(self.config_path)))
+                        avatar_dir = os.path.join(root_dir, avatar_dir)
+                    logger.info(f"已规范化头像目录路径: {avatar_dir}")
+                
                 self.behavior = BehaviorSettings(
                     auto_message=AutoMessageSettings(
                         content=behavior_data['auto_message']['content']['value'],
@@ -212,7 +251,7 @@ class Config:
                     ),
                     context=ContextSettings(
                         max_groups=behavior_data['context']['max_groups']['value'],
-                        avatar_dir=behavior_data['context']['avatar_dir']['value']
+                        avatar_dir=avatar_dir
                     ),
                     schedule_settings=ScheduleSettings(
                         tasks=schedule_tasks

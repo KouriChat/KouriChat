@@ -461,6 +461,7 @@ def message_listener():
     max_reconnect_attempts = 3
     reconnect_delay = 10  # 重连等待时间（秒）
     last_reconnect_time = 0
+    has_added_listeners = False  # 新增：标记是否已添加监听
     
     while not stop_event.is_set():
         try:
@@ -489,23 +490,26 @@ def message_listener():
                         time.sleep(5)
                         continue
                     
-                    # 重新添加监听
-                    for chat_name in listen_list:
-                        try:
-                            if wx.ChatWith(chat_name):
-                                wx.AddListenChat(who=chat_name, savepic=True, savefile=True)
-                                logger.info(f"重新添加监听: {chat_name}")
-                        except Exception as e:
-                            logger.error(f"重新添加监听失败 {chat_name}: {str(e)}")
+                    # 只在首次初始化或重连后添加监听
+                    if not has_added_listeners:
+                        for chat_name in listen_list:
+                            try:
+                                if wx.ChatWith(chat_name):
+                                    wx.AddListenChat(who=chat_name, savepic=True, savefile=True)
+                                    logger.info(f"添加监听: {chat_name}")
+                            except Exception as e:
+                                logger.error(f"添加监听失败 {chat_name}: {str(e)}")
+                        has_added_listeners = True
                     
                     # 成功初始化，重置计数
                     reconnect_attempts = 0
                     last_window_check = current_time
-                    logger.info("微信监听恢复正常")
+                    logger.info("微信监听正常运行")
                     
                 except Exception as e:
                     logger.error(f"微信初始化失败: {str(e)}")
                     wx = None
+                    has_added_listeners = False  # 重置监听状态
                     reconnect_attempts += 1
                     last_reconnect_time = current_time
                     time.sleep(5)

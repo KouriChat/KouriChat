@@ -953,7 +953,7 @@
                 historyConfigs.pop(); // 移除最旧的配置
             }
             
-            // 添加新配置到历史记录开头
+            // 添加新配置到历史记录开头，确保新配置优先
             historyConfigs.unshift(keyConfigs);
             
             // 保存到cookie，有效期30天
@@ -1032,126 +1032,41 @@
             }).join('');
         }
 
-        // 修改应用历史配置函数
+        // 修改应用历史配置的函数
         function applyHistoryConfig(index) {
-            const historyConfigs = getCookieConfigs();
-            if (index >= historyConfigs.length) return;
+            // 获取现有的历史配置
+            let historyConfigs = getCookieConfigs();
             
-            const config = historyConfigs[index];
-            
-            // 应用监听用户列表
-            if (config.LISTEN_LIST && Array.isArray(config.LISTEN_LIST)) {
-                const userListElement = document.getElementById('selected_users_LISTEN_LIST');
-                const listenListInput = document.getElementById('LISTEN_LIST');
+            if (index >= 0 && index < historyConfigs.length) {
+                const config = historyConfigs[index];
                 
-                if (userListElement && listenListInput) {
-                    // 清空现有用户
-                    userListElement.innerHTML = '';
-                    
-                    // 添加历史用户
-                    config.LISTEN_LIST.forEach(user => {
-                        if (user) {
-                            const userDiv = document.createElement('div');
-                            userDiv.className = 'list-group-item d-flex justify-content-between align-items-center';
-                            userDiv.innerHTML = `
-                                ${user}
-                                <button type="button" class="btn btn-danger btn-sm" onclick="removeUser('LISTEN_LIST', '${user}')">
-                                    <i class="bi bi-x-lg"></i>
-                                </button>
-                            `;
-                            userListElement.appendChild(userDiv);
-                        }
-                    });
-                    
-                    // 更新隐藏输入框
-                    listenListInput.value = config.LISTEN_LIST.join(',');
-                }
-            }
-            
-            // 应用DeepSeek API密钥
-            if (config.DEEPSEEK_API_KEY) {
-                const apiKeyInput = document.getElementById('DEEPSEEK_API_KEY') || 
-                                   document.querySelector('input[name="DEEPSEEK_API_KEY"]');
-                if (apiKeyInput) {
-                    apiKeyInput.value = config.DEEPSEEK_API_KEY;
-                }
-            }
-            
-            // 应用DeepSeek Base URL
-            if (config.DEEPSEEK_BASE_URL) {
-                const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
-                const apiProviderSelect = document.getElementById('api_provider_select');
-                const customApiInput = document.getElementById('customApiInput');
+                // 更新表单值
+                document.getElementById('LISTEN_LIST').value = config.LISTEN_LIST.join(',');
+                document.getElementById('DEEPSEEK_API_KEY').value = config.DEEPSEEK_API_KEY || '';
+                document.getElementById('DEEPSEEK_BASE_URL').value = config.DEEPSEEK_BASE_URL || '';
+                document.getElementById('MODEL').value = config.MODEL || '';
+                document.getElementById('MOONSHOT_API_KEY').value = config.MOONSHOT_API_KEY || '';
                 
-                if (baseUrlInput && apiProviderSelect) {
-                    baseUrlInput.value = config.DEEPSEEK_BASE_URL;
-                    
-                    // 检查是否是预定义的URL
-                    const matchingOption = Array.from(apiProviderSelect.options).find(opt => {
-                        return opt.dataset.url === config.DEEPSEEK_BASE_URL;
-                    });
-                    
-                    if (matchingOption) {
-                        apiProviderSelect.value = matchingOption.value;
-                        if (customApiInput) {
-                            customApiInput.style.display = 'none';
-                        }
-                    } else {
-                        apiProviderSelect.value = 'custom';
-                        if (customApiInput) {
-                            customApiInput.style.display = 'block';
-                            const input = customApiInput.querySelector('input');
-                            if (input) {
-                                input.value = config.DEEPSEEK_BASE_URL;
-                            }
-                        }
-                    }
-                }
+                // 保存新配置，确保新配置优先
+                saveConfigToCookie({
+                    LISTEN_LIST: config.LISTEN_LIST,
+                    DEEPSEEK_API_KEY: config.DEEPSEEK_API_KEY,
+                    DEEPSEEK_BASE_URL: config.DEEPSEEK_BASE_URL,
+                    MODEL: config.MODEL,
+                    MOONSHOT_API_KEY: config.MOONSHOT_API_KEY
+                });
+                
+                // 显示提示
+                showSaveNotification('已应用历史配置');
+                
+                // 关闭模态框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('historyConfigModal'));
+                modal.hide();
             }
-            
-            // 应用模型
-            if (config.MODEL) {
-                const modelInput = document.getElementById('MODEL');
-                const modelSelect = document.getElementById('model_select');
-                if (modelInput) {
-                    modelInput.value = config.MODEL;
-                    if (modelSelect) {
-                        modelSelect.value = config.MODEL;
-                        if (!Array.from(modelSelect.options).some(opt => opt.value === config.MODEL)) {
-                            modelSelect.value = 'custom';
-                            const customModelInput = document.getElementById('customModelInput');
-                            if (customModelInput) {
-                                customModelInput.style.display = 'block';
-                                const input = customModelInput.querySelector('input');
-                                if (input) input.value = config.MODEL;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // 应用Moonshot API密钥
-            if (config.MOONSHOT_API_KEY) {
-                const imgApiKeyInput = document.getElementById('MOONSHOT_API_KEY') || 
-                                      document.querySelector('input[name="MOONSHOT_API_KEY"]');
-                if (imgApiKeyInput) {
-                    imgApiKeyInput.value = config.MOONSHOT_API_KEY;
-                }
-            }
-            
-            // 关闭模态框
-            const modal = bootstrap.Modal.getInstance(document.getElementById('historyConfigModal'));
-            if (modal) modal.hide();
-            
-            // 显示提示
-            showSaveNotification('已应用历史配置，请点击保存按钮保存更改');
-            
-            // 更新任务对话框中的发送对象选项
-            updateTaskChatIdOptions();
         }
 
-                // 修改保存配置的函数，添加保存到cookie的功能
-                function saveConfig(config) {
+        // 修改保存配置的函数，添加保存到cookie的功能
+        function saveConfig(config) {
             // 确保角色设定值被正确处理
             const avatarDirSelect = document.getElementById('AVATAR_DIR');
             if (avatarDirSelect && avatarDirSelect.value) {
