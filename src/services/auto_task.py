@@ -2,8 +2,26 @@ import logging
 import schedule
 import threading
 import time
-from typing import Dict, Optional
-from src.config import config  # 修改导入路径
+from typing import Dict, Optional, Any
+from dataclasses import dataclass
+
+# 添加try-except块来处理可能的导入错误
+try:
+    from src.config import config
+except ImportError:
+    # 如果导入失败，创建一个空的配置对象
+    @dataclass
+    class EmptyConfig:
+        pass
+    
+    class Config:
+        def __init__(self):
+            self.behavior = EmptyConfig()
+            self.behavior.schedule_settings = EmptyConfig()
+            self.behavior.schedule_settings.tasks = []
+    
+    config = Config()
+    logging.warning("无法导入config模块，使用空配置对象替代")
 
 logger = logging.getLogger(__name__)
 
@@ -88,4 +106,8 @@ class AutoTasker:
             # 从调度器中移除所有任务并重新添加其他任务
             self.scheduler.clear()
             del self.tasks[task_id]
-            logger.info(f"已移除任务: {task_id}") 
+            logger.info(f"已移除任务: {task_id}")
+
+    def get_all_tasks(self):
+        """获取所有任务"""
+        return self.tasks 

@@ -155,6 +155,7 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             "主动消息配置": {},
             "语音配置": {},
             "Prompt配置": {},
+            "RAG记忆配置": {},  # 暂时隐藏RAG记忆配置组
         }
 
         # 基础配置
@@ -280,6 +281,40 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
                 }
             }
         )
+        
+        # RAG记忆配置
+        config_groups["RAG记忆配置"] = {}
+        config_groups["RAG记忆配置"].update(
+            {
+                "RAG_BASE_URL": {
+                    "value": config.rag.base_url,
+                    "description": "RAG服务基础URL",
+                },
+                "RAG_API_KEY": {
+                    "value": config.rag.api_key,
+                    "description": "RAG服务API密钥",
+                    "is_secret": True,
+                },
+                "RAG_EMBEDDING_MODEL": {
+                    "value": config.rag.embedding_model,
+                    "description": "嵌入模型名称",
+                },
+                "RAG_IS_RERANK": {
+                    "value": config.rag.is_rerank,
+                    "description": "是否启用重排序",
+                    "type": "boolean",
+                },
+                "RAG_RERANKER_MODEL": {
+                    "value": config.rag.reranker_model,
+                    "description": "重排序模型名称",
+                },
+                "RAG_TOP_K": {
+                    "value": config.rag.top_k,
+                    "description": "返回结果数量",
+                    "type": "number",
+                }
+            }
+        )
 
         # 直接从配置文件读取定时任务数据
         tasks = []
@@ -385,7 +420,8 @@ def save_config():
             elif key in ['LISTEN_LIST', 'DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY', 'MAX_TOKEN', 'TEMPERATURE',
                          'MOONSHOT_API_KEY', 'MOONSHOT_BASE_URL', 'MOONSHOT_TEMPERATURE', 'MOONSHOT_MODEL',
                          'IMAGE_MODEL', 'TEMP_IMAGE_DIR', 'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
-                         'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR']:
+                         'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR',
+                         'RAG_BASE_URL', 'RAG_API_KEY', 'RAG_EMBEDDING_MODEL', 'RAG_IS_RERANK', 'RAG_RERANKER_MODEL', 'RAG_TOP_K']:
                 update_config_value(current_config, key, value)
                 logger.info(f"已更新配置项 {key} 为新值: {value}")
 
@@ -395,22 +431,37 @@ def save_config():
 
         # 立即重新加载配置
         g.config_data = current_config
+        
+        # 重新加载全局配置对象
+        try:
+            from src.config import reload_config
+            reload_config()
+            logger.info("已重新加载全局配置对象")
+        except Exception as e:
+            logger.error(f"重新加载全局配置对象失败: {str(e)}")
 
         # 重新初始化定时任务
         try:
             from src.main import initialize_auto_tasks, message_handler
-            auto_tasker = initialize_auto_tasks(message_handler)
-            if auto_tasker:
-                # 检查是否有任务
-                tasks = auto_tasker.get_all_tasks()
-                if tasks:
-                    logger.info(f"成功重新初始化定时任务，共 {len(tasks)} 个任务")
+            try:
+                auto_tasker = initialize_auto_tasks(message_handler)
+                if auto_tasker:
+                    # 检查是否有任务
+                    tasks = auto_tasker.get_all_tasks() if hasattr(auto_tasker, 'get_all_tasks') else []
+                    if tasks:
+                        logger.info(f"成功重新初始化定时任务，共 {len(tasks)} 个任务")
+                    else:
+                        logger.info("成功重新初始化定时任务，暂无定时任务")
                 else:
                     logger.info("成功重新初始化定时任务，暂无定时任务")
-            else:
-                logger.info("成功重新初始化定时任务，暂无定时任务")
+            except AttributeError as attr_err:
+                logger.error(f"重新初始化定时任务时出现属性错误: {str(attr_err)}")
+            except ImportError as imp_err:
+                logger.error(f"重新初始化定时任务时出现导入错误: {str(imp_err)}")
+            except Exception as task_err:
+                logger.error(f"重新初始化定时任务失败: {str(task_err)}")
         except Exception as e:
-            logger.error(f"重新初始化定时任务失败: {str(e)}")
+            logger.error(f"导入定时任务模块失败: {str(e)}")
 
         return jsonify({
             "status": "success",
@@ -463,6 +514,13 @@ def update_config_value(config_data, key, value):
             'QUIET_TIME_END': ['categories', 'behavior_settings', 'settings', 'quiet_time', 'end', 'value'],
             'MAX_GROUPS': ['categories', 'behavior_settings', 'settings', 'context', 'max_groups', 'value'],
             'AVATAR_DIR': ['categories', 'behavior_settings', 'settings', 'context', 'avatar_dir', 'value'],
+            # 添加RAG配置项的映射
+            'RAG_BASE_URL': ['categories', 'rag_settings', 'settings', 'base_url', 'value'],
+            'RAG_API_KEY': ['categories', 'rag_settings', 'settings', 'api_key', 'value'],
+            'RAG_EMBEDDING_MODEL': ['categories', 'rag_settings', 'settings', 'embedding_model', 'value'],
+            'RAG_IS_RERANK': ['categories', 'rag_settings', 'settings', 'is_rerank', 'value'],
+            'RAG_RERANKER_MODEL': ['categories', 'rag_settings', 'settings', 'reranker_model', 'value'],
+            'RAG_TOP_K': ['categories', 'rag_settings', 'settings', 'top_k', 'value'],
         }
 
         if key in mapping:

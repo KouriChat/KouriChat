@@ -7,7 +7,61 @@ import os
 import shutil
 import win32gui
 import win32con
-from config import config, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, MODEL, MAX_TOKEN, TEMPERATURE, MAX_GROUPS
+from dataclasses import dataclass
+
+# 添加try-except块来处理可能的导入错误
+try:
+    from config import config, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, MODEL, MAX_TOKEN, TEMPERATURE, MAX_GROUPS
+except ImportError:
+    # 如果导入失败，创建一个空的配置对象
+    @dataclass
+    class EmptyConfig:
+        pass
+    
+    class Config:
+        def __init__(self):
+            self.behavior = EmptyConfig()
+            self.behavior.schedule_settings = EmptyConfig()
+            self.behavior.schedule_settings.tasks = []
+            self.behavior.auto_message = EmptyConfig()
+            self.behavior.auto_message.content = "你好"
+            self.behavior.auto_message.min_hours = 1.0
+            self.behavior.auto_message.max_hours = 3.0
+            self.behavior.quiet_time = EmptyConfig()
+            self.behavior.quiet_time.start = "22:00"
+            self.behavior.quiet_time.end = "08:00"
+            self.behavior.context = EmptyConfig()
+            self.behavior.context.max_groups = 5
+            self.behavior.context.avatar_dir = "data/avatars/default"
+            self.user = EmptyConfig()
+            self.user.listen_list = []
+            self.llm = EmptyConfig()
+            self.llm.api_key = ""
+            self.llm.base_url = ""
+            self.llm.model = "deepseek-chat"
+            self.llm.max_tokens = 1000
+            self.llm.temperature = 0.7
+            self.media = EmptyConfig()
+            self.media.image_recognition = EmptyConfig()
+            self.media.image_recognition.api_key = ""
+            self.media.image_recognition.base_url = ""
+            self.media.image_recognition.temperature = 0.7
+            self.media.image_recognition.model = "moonshot-v1-8k"
+            self.media.image_generation = EmptyConfig()
+            self.media.image_generation.model = "dall-e-3"
+            self.media.text_to_speech = EmptyConfig()
+            self.media.text_to_speech.tts_api_url = "http://127.0.0.1:5000/tts"
+    
+    config = Config()
+    DEEPSEEK_API_KEY = ""
+    DEEPSEEK_BASE_URL = ""
+    MODEL = "deepseek-chat"
+    MAX_TOKEN = 1000
+    TEMPERATURE = 0.7
+    MAX_GROUPS = 5
+    
+    logging.warning("无法导入config模块，使用空配置对象替代")
+
 from wxauto import WeChat
 import re
 from handlers.emoji import EmojiHandler
@@ -272,6 +326,15 @@ class ChatBot:
                 logger.info(f"移除@后的消息内容: {content}")
                 if original_content == content:
                     logger.info("未检测到@机器人，但是继续处理")
+                    
+                # 尝试识别群聊中的具体用户
+                identified_user = self.message_handler.memory_handler.identify_group_user(chatName, content)
+                if identified_user:
+                    logger.info(f"成功识别群聊用户: {identified_user}")
+                    # 使用识别出的用户名替换发送者名称
+                    username = identified_user
+                else:
+                    logger.info(f"无法识别群聊用户，使用原始发送者名称: {username}")
 
             if content and content.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
                 logger.info(f"检测到图片消息: {content}")
@@ -431,7 +494,7 @@ def get_personality_summary(prompt_content: str) -> str:
 
 
 def auto_send_message():
-    """自动发送消息 - 调用message_handler中的方法"""
+    """自动发送消息的入口点函数"""
     # 调用message_handler中的auto_send_message方法
     message_handler.auto_send_message(
         listen_list=listen_list,
@@ -440,80 +503,6 @@ def auto_send_message():
         is_quiet_time=is_quiet_time,
         start_countdown=start_countdown
     )
-    try:
-        if is_quiet_time():
-            logger.info("当前处于安静时间，跳过自动发送消息")
-            start_countdown()
-            return
-
-        if listen_list:
-            user_id = random.choice(listen_list)
-            if user_id not in message_handler.unanswered_counters:
-                message_handler.unanswered_counters[user_id] = 0
-            message_handler.unanswered_counters[user_id] += 1
-
-            # 获取当前时间和最近对话记录
-            current_time = datetime.now()
-            memories = memory_handler.get_relevant_memories(f"与{user_id}的最近对话")
-
-            # 获取精简后的性格特点
-            personality = get_personality_summary(message_handler.prompt_content)
-
-            # 构建优化后的提示信息，使用更合适的称呼方式
-            prompt = f"""现在是{current_time.strftime('%Y-%m-%d %H:%M')}，作为{robot_wx_name}，我想要主动发起一个全新的对话。
-
-                我的主要性格特点：
-                {personality}
-
-                过去24小时内的对话记录（仅供参考，不要重复之前的对话）：
-                {memories_text}
-
-                请根据我的性格特点和当前时间生成一个全新的、自然的开场白。要求：
-                1. 不要直接称呼对方的微信昵称
-                2. 可以使用"你"、"您"等称呼
-                3. 保持对话的自然性和礼貫性
-                4. 不要重复或延续之前的对话内容
-                5. 创造性地开启新的话题
-                6. 如果新话题主题与之前内容主题类似或一样，则内容以之前对话内容为主，防止出现内容差错"""
-
-            # 获取AI回复
-            reply_content = message_handler.get_api_response(prompt, ROBOT_WX_NAME)
-
-            logger.info(f"自动发送消息到 {user_id}: {reply_content}")
-            max_retries = 3
-            retry_delay = 1.0
-
-            for attempt in range(max_retries):
-                try:
-                    message_handler.add_to_queue(
-                        chat_id=user_id,
-                        content=reply_content,
-                        sender_name=ROBOT_WX_NAME,
-                        username=user_id,  # 修改：使用接收者的ID
-                        is_group=False
-                    )
-                    # 将对话记录保存到接收者的记忆中
-                    memory_handler.add_short_memory(
-                        f"我主动发起对话：{reply_content}",
-                        "等待回复中...",
-                        user_id  # 使用接收者的ID
-                    )
-                    break
-                except Exception as e:
-                    logger.error(f"发送消息失败，第{attempt + 1}次重试: {str(e)}")
-                    if attempt == max_retries - 1:
-                        logger.error("消息发送最终失败")
-                        return
-                    time.sleep(retry_delay * (attempt + 1))
-            start_countdown()
-        else:
-            logger.error("没有可用的聊天对象")
-            start_countdown()
-
-    except Exception as e:
-        logger.error(f"自动发送消息失败: {str(e)}")
-    finally:
-        start_countdown()
 
 
 def start_countdown():
@@ -528,7 +517,18 @@ def start_countdown():
 
     logger.info(f"开始新的倒计时: {countdown_seconds/3600:.2f}小时")
     
-    countdown_timer = threading.Timer(countdown_seconds, message_handler.auto_send_message, args=[config.user.listen_list, robot_name, get_personality_summary, is_quiet_time, start_countdown])
+    # 使用message_handler.auto_send_message作为回调函数
+    countdown_timer = threading.Timer(
+        countdown_seconds, 
+        message_handler.auto_send_message, 
+        args=[
+            listen_list, 
+            ROBOT_WX_NAME,  # 使用全局变量ROBOT_WX_NAME代替robot_name
+            get_personality_summary, 
+            is_quiet_time, 
+            start_countdown
+        ]
+    )
 
     countdown_timer.daemon = True
     countdown_timer.start()
@@ -538,35 +538,52 @@ def start_countdown():
 def message_listener():
     wx = None
     last_window_check = 0
-    check_interval = 600
+    check_interval = 300  # 减少检查间隔到5分钟
     reconnect_attempts = 0
-    max_reconnect_attempts = 3
+    max_reconnect_attempts = 5  # 增加最大重试次数
     reconnect_delay = 10  # 重连等待时间（秒）
     last_reconnect_time = 0
-    has_added_listeners = False  # 新增：标记是否已添加监听
+    has_added_listeners = False
+    last_successful_check = 0
     
     while not stop_event.is_set():
         try:
             current_time = time.time()
 
-            if wx is None or (current_time - last_window_check > check_interval):
-                # 检查是否需要重置重连计数
-                if current_time - last_reconnect_time > 300:  # 5分钟无错误，重置计数
-                    reconnect_attempts = 0
+            # 检查是否需要重置重连计数
+            if current_time - last_successful_check > 300:  # 5分钟无错误，重置计数
+                reconnect_attempts = 0
 
+            # 检查是否需要重新初始化微信
+            if wx is None or (current_time - last_window_check > check_interval):
                 # 检查重连次数
                 if reconnect_attempts >= max_reconnect_attempts:
-                    logger.error("等待一段时间后重试...")
+                    logger.error(f"微信连接失败次数过多，等待{reconnect_delay}秒后重试...")
                     time.sleep(reconnect_delay)
                     reconnect_attempts = 0
                     last_reconnect_time = current_time
                     continue
 
                 try:
+                    # 尝试初始化微信
                     wx = WeChat()
+                    
+                    # 验证微信连接状态
                     if not wx.GetSessionList():
                         logger.error("未检测到微信会话列表，请确保微信已登录")
-                        wx = None  # 重置 wx 对象
+                        wx = None
+                        reconnect_attempts += 1
+                        last_reconnect_time = current_time
+                        time.sleep(5)
+                        continue
+                    
+                    # 验证机器人名称
+                    try:
+                        robot_name = wx.A_MyIcon.Name
+                        logger.info(f"成功获取机器人名称: {robot_name}")
+                    except Exception as e:
+                        logger.error(f"获取机器人名称失败: {str(e)}")
+                        wx = None
                         reconnect_attempts += 1
                         last_reconnect_time = current_time
                         time.sleep(5)
@@ -574,11 +591,21 @@ def message_listener():
                     
                     # 只在首次初始化或重连后添加监听
                     if not has_added_listeners:
+                        # 记录已添加的监听，避免重复添加
+                        added_listeners = set()
                         for chat_name in listen_list:
                             try:
+                                # 跳过已添加的监听
+                                if chat_name in added_listeners:
+                                    logger.info(f"跳过已添加的监听: {chat_name}")
+                                    continue
+                                    
                                 if wx.ChatWith(chat_name):
                                     wx.AddListenChat(who=chat_name, savepic=True, savefile=True)
+                                    added_listeners.add(chat_name)
                                     logger.info(f"添加监听: {chat_name}")
+                                else:
+                                    logger.warning(f"找不到会话: {chat_name}")
                             except Exception as e:
                                 logger.error(f"添加监听失败 {chat_name}: {str(e)}")
                         has_added_listeners = True
@@ -586,58 +613,71 @@ def message_listener():
                     # 成功初始化，重置计数
                     reconnect_attempts = 0
                     last_window_check = current_time
+                    last_successful_check = current_time
                     logger.info("微信监听正常运行")
                     
                 except Exception as e:
                     logger.error(f"微信初始化失败: {str(e)}")
                     wx = None
-                    has_added_listeners = False  # 重置监听状态
+                    has_added_listeners = False
                     reconnect_attempts += 1
                     last_reconnect_time = current_time
                     time.sleep(5)
                     continue
 
             # 正常的消息处理逻辑
-            msgs = wx.GetListenMessage()
-            if not msgs:
-                time.sleep(wait)
-                continue
-
-            for chat in msgs:
-                who = chat.who
-                if not who:
+            try:
+                msgs = wx.GetListenMessage()
+                if not msgs:
+                    time.sleep(wait)
                     continue
 
-                one_msgs = msgs.get(chat)
-                if not one_msgs:
-                    continue
-
-                for msg in one_msgs:
-                    try:
-                        msgtype = msg.type
-                        content = msg.content
-                        if not content:
-                            continue
-                        if msgtype != 'friend':
-                            logger.debug(f"非好友消息，忽略! 消息类型: {msgtype}")
-                            continue
-                            # 接收窗口名跟发送人一样，代表是私聊，否则是群聊
-                        if who == msg.sender:
-
-                            chat_bot.handle_wxauto_message(msg, msg.sender)  # 处理私聊信息
-                        elif ROBOT_WX_NAME != '' and (bool(re.search(f'@{ROBOT_WX_NAME}\u2005', msg.content)) or bool(
-                                re.search(f'{ROBOT_WX_NAME}\u2005', msg.content))):
-                            # 修改：在群聊被@时或者被叫名字，传入群聊ID(who)作为回复目标
-                            chat_bot.handle_wxauto_message(msg, who, is_group=True)
-                        else:
-                            logger.debug(f"非需要处理消息，可能是群聊非@消息: {content}")
-                    except Exception as e:
-                        logger.debug(f"处理单条消息失败: {str(e)}")
+                for chat in msgs:
+                    who = chat.who
+                    if not who:
                         continue
 
+                    one_msgs = msgs.get(chat)
+                    if not one_msgs:
+                        continue
+
+                    for msg in one_msgs:
+                        try:
+                            msgtype = msg.type
+                            content = msg.content
+                            if not content:
+                                continue
+                            if msgtype != 'friend':
+                                logger.debug(f"非好友消息，忽略! 消息类型: {msgtype}")
+                                continue
+                                
+                            if who == msg.sender:
+                                chat_bot.handle_wxauto_message(msg, msg.sender)
+                            elif ROBOT_WX_NAME != '' and (bool(re.search(f'@{ROBOT_WX_NAME}\u2005', msg.content)) or bool(
+                                    re.search(f'{ROBOT_WX_NAME}\u2005', msg.content))):
+                                chat_bot.handle_wxauto_message(msg, who, is_group=True)
+                            else:
+                                logger.debug(f"非需要处理消息，可能是群聊非@消息: {content}")
+                        except Exception as e:
+                            logger.error(f"处理单条消息失败: {str(e)}")
+                            continue
+                            
+            except Exception as e:
+                logger.error(f"获取消息失败: {str(e)}")
+                wx = None
+                has_added_listeners = False
+                reconnect_attempts += 1
+                last_reconnect_time = current_time
+                time.sleep(5)
+                continue
+
         except Exception as e:
-            logger.debug(f"消息监听出错: {str(e)}")
+            logger.error(f"消息监听出错: {str(e)}")
             wx = None
+            has_added_listeners = False
+            reconnect_attempts += 1
+            last_reconnect_time = current_time
+            
         time.sleep(wait)
 
 
@@ -656,9 +696,17 @@ def initialize_wx_listener():
                 time.sleep(retry_delay)
                 continue
 
+            # 记录已添加的监听，避免重复添加
+            added_listeners = set()
+            
             # 循环添加监听对象
             for chat_name in listen_list:
                 try:
+                    # 跳过已添加的监听
+                    if chat_name in added_listeners:
+                        logger.info(f"跳过已添加的监听: {chat_name}")
+                        continue
+                        
                     # 检查会话是否存在
                     if not wx.ChatWith(chat_name):
                         logger.error(f"找不到会话: {chat_name}")
@@ -666,6 +714,7 @@ def initialize_wx_listener():
 
                     # 尝试添加监听
                     wx.AddListenChat(who=chat_name, savepic=True, savefile=True)
+                    added_listeners.add(chat_name)
                     logger.info(f"成功添加监听: {chat_name}")
                     time.sleep(0.5)  # 添加短暂延迟，避免操作过快
                 except Exception as e:
@@ -703,44 +752,48 @@ def initialize_auto_tasks(message_handler):
             return auto_tasker
 
         # 从配置文件读取任务信息
-        if hasattr(config, 'behavior') and hasattr(config.behavior, 'schedule_settings'):
-            schedule_settings = config.behavior.schedule_settings
-            if hasattr(schedule_settings, 'tasks') and schedule_settings.tasks:
-                tasks = schedule_settings.tasks
-                if tasks:
-                    print_status(f"从配置文件读取到 {len(tasks)} 个任务", "info", "TASK")
-                    tasks_added = 0
+        try:
+            if hasattr(config, 'behavior') and hasattr(config.behavior, 'schedule_settings'):
+                schedule_settings = config.behavior.schedule_settings
+                if hasattr(schedule_settings, 'tasks') and schedule_settings.tasks:
+                    tasks = schedule_settings.tasks
+                    if tasks:
+                        print_status(f"从配置文件读取到 {len(tasks)} 个任务", "info", "TASK")
+                        tasks_added = 0
 
-                    # 遍历所有任务并添加
-                    for task in tasks:
-                        try:
-                            # 检查任务必要字段
-                            required_fields = ['task_id', 'content', 'schedule_type', 'schedule_time']
-                            if not all(hasattr(task, field) for field in required_fields):
-                                print_status(f"任务缺少必要字段: {task}", "warning", "WARNING")
-                                continue
+                        # 遍历所有任务并添加
+                        for task in tasks:
+                            try:
+                                # 检查任务必要字段
+                                required_fields = ['task_id', 'content', 'schedule_type', 'schedule_time']
+                                if not all(hasattr(task, field) for field in required_fields):
+                                    print_status(f"任务缺少必要字段: {task}", "warning", "WARNING")
+                                    continue
 
-                            # 添加定时任务
-                            auto_tasker.add_task(
-                                task_id=task.task_id,
-                                chat_id=listen_list[0],  # 使用 listen_list 中的第一个聊天ID
-                                content=task.content,
-                                schedule_type=task.schedule_type,
-                                schedule_time=task.schedule_time
-                            )
-                            tasks_added += 1
-                            print_status(f"成功添加任务 {task.task_id}: {task.content}", "success", "CHECK")
-                        except Exception as e:
-                            print_status(f"添加任务 {task.task_id} 失败: {str(e)}", "error", "ERROR")
-                            logger.error(f"添加任务 {task.task_id} 失败: {str(e)}")
+                                # 添加定时任务
+                                auto_tasker.add_task(
+                                    task_id=task.task_id,
+                                    chat_id=listen_list[0],  # 使用 listen_list 中的第一个聊天ID
+                                    content=task.content,
+                                    schedule_type=task.schedule_type,
+                                    schedule_time=task.schedule_time
+                                )
+                                tasks_added += 1
+                                print_status(f"成功添加任务 {task.task_id}: {task.content}", "success", "CHECK")
+                            except Exception as e:
+                                print_status(f"添加任务 {task.task_id} 失败: {str(e)}", "error", "ERROR")
+                                logger.error(f"添加任务 {task.task_id} 失败: {str(e)}")
 
-                    print_status(f"成功添加 {tasks_added}/{len(tasks)} 个任务", "info", "TASK")
+                        print_status(f"成功添加 {tasks_added}/{len(tasks)} 个任务", "info", "TASK")
+                    else:
+                        print_status("配置文件中没有找到任务", "warning", "WARNING")
                 else:
-                    print_status("配置文件中没有找到任务", "warning", "WARNING")
+                    print_status("schedule_settings.tasks 不存在或为空", "warning", "WARNING")
             else:
-                print_status("schedule_settings.tasks 不存在或为空", "warning", "WARNING")
-        else:
-            print_status("未找到任务配置信息", "warning", "WARNING")
+                print_status("未找到任务配置信息", "warning", "WARNING")
+        except Exception as config_error:
+            print_status(f"读取任务配置信息失败: {str(config_error)}", "error", "ERROR")
+            logger.error(f"读取任务配置信息失败: {str(config_error)}", exc_info=True)
 
         return auto_tasker
 
@@ -852,9 +905,6 @@ def main(debug_mode=False):
                 wx = WeChat()
                 ROBOT_WX_NAME = wx.A_MyIcon.Name
                 logger.info(f"获取到机器人名称: {ROBOT_WX_NAME}")
-                # 循环添加监听对象
-                for i in listen_list:
-                    wx.AddListenChat(who=i, savepic=True, savefile=True)
             except Exception as e:
                 logger.error(f"获取机器人名称失败: {str(e)}")
                 ROBOT_WX_NAME = ""  # 设置默认值

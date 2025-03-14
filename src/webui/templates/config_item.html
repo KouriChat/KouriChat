@@ -148,16 +148,36 @@
                 }
             });
 
-        // 根据当前配置设置初始值
+        // 获取当前配置的URL和模型
         const currentUrl = document.getElementById('DEEPSEEK_BASE_URL').value;
-        const currentProvider = modelConfigs.api_providers.find(p => p.url === currentUrl);
+        const currentModel = document.getElementById('MODEL').value;
+        const modelSelect = document.getElementById('model_select');
+        const customModelInput = document.getElementById('customModelInput');
         
-        if (currentProvider) {
-            apiSelect.value = currentProvider.id;
-            updateApiProvider(currentProvider.id);
-        } else if (currentUrl) {
-            apiSelect.value = 'custom';
-            showCustomApiInput(currentUrl);
+        // 如果已有配置值，初始化选择框
+        if (currentUrl || currentModel) {
+            const currentProvider = modelConfigs.api_providers.find(p => p.url === currentUrl);
+            
+            if (currentProvider) {
+                // 如果是预设提供商
+                apiSelect.value = currentProvider.id;
+                updateApiProvider(currentProvider.id);
+            } else if (currentUrl) {
+                // 如果是自定义API
+                apiSelect.value = 'custom';
+                showCustomApiInput(currentUrl);
+                
+                // 对于自定义API提供商，直接隐藏模型选择框，显示输入框
+                if (modelSelect) {
+                    modelSelect.style.display = 'none';
+                }
+                if (customModelInput) {
+                    customModelInput.style.display = 'block';
+                    if (currentModel) {
+                        customModelInput.querySelector('input').value = currentModel;
+                    }
+                }
+            }
         }
     }
 
@@ -181,36 +201,83 @@
     }
         // 更新模型选择框
     async function updateModelSelect(providerId) {
+        // 获取模型选择框和自定义输入框
         const modelSelect = document.getElementById('model_select');
-        modelSelect.innerHTML = '<option value="">请选择模型</option>';
-
+        const customModelInput = document.getElementById('customModelInput');
+        const modelInput = document.getElementById('MODEL');
+        
+        if (!modelSelect) return;
+        
+        // 如果是自定义API提供商，直接显示自定义模型输入框
         if (providerId === 'custom') {
-            modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
+            modelSelect.style.display = 'none';  // 隐藏选择框
+            customModelInput.style.display = 'block';
+            const inputElement = customModelInput.querySelector('input');
+            // 保持现有的模型值
+            if (modelInput && modelInput.value) {
+                inputElement.value = modelInput.value;
+            }
             return;
         }
+        
+        // 非自定义API提供商时显示选择框
+        modelSelect.style.display = 'block';
+        
+        // 重置模型选择框，但保留当前值
+        const currentModel = modelInput.value;
+        modelSelect.innerHTML = '<option value="">请选择模型</option>';
+        
+        // 如果没有选择提供商但有现有模型值，保持自定义模型显示
+        if (!providerId && currentModel) {
+            customModelInput.style.display = 'block';
+            customModelInput.querySelector('input').value = currentModel;
+            return;
+        }
+        
+        // 如果没有选择提供商且没有现有值，禁用选择框
+        if (!providerId && !currentModel) {
+            modelSelect.disabled = true;
+            customModelInput.style.display = 'none';
+            return;
+        }
+        
+        modelSelect.disabled = false;
+        customModelInput.style.display = 'none';
 
-        if (!providerId) return;
-
-        // 如果是 Ollama，尝试获取本地模型列表
-        if (providerId === 'ollama') {
-            try {
-                const response = await fetch('http://localhost:11434/api/tags');
-                if (response.ok) {
-                    const data = await response.json();
-                    const ollamaModels = data.models || [];
-                    ollamaModels.forEach(model => {
-                        modelSelect.innerHTML += `
-                            <option value="${model.name}" 
-                                data-type="chat"
-                                data-context-length="16000"
-                                >${model.name}</option>`;
+        try {
+            // 如果是 Ollama，尝试获取本地模型列表
+            if (providerId === 'ollama') {
+                try {
+                    const response = await fetch('http://localhost:11434/api/tags');
+                    if (response.ok) {
+                        const data = await response.json();
+                        const ollamaModels = data.models || [];
+                        ollamaModels.forEach(model => {
+                            modelSelect.innerHTML += `
+                                <option value="${model.name}" 
+                                    data-type="chat"
+                                    data-context-length="16000"
+                                    >${model.name}</option>`;
+                        });
+                    }
+                } catch (error) {
+                    console.error('获取Ollama模型列表失败:', error);
+                    // 如果获取失败，使用配置文件中的默认模型
+                    const defaultModels = modelConfigs.models[providerId] || [];
+                    defaultModels.forEach(model => {
+                        if (model.status === 'active') {
+                            modelSelect.innerHTML += `
+                                <option value="${model.id}" 
+                                    data-type="${model.type}"
+                                    data-context-length="${model.context_length}"
+                                    >${model.name}</option>`;
+                        }
                     });
                 }
-            } catch (error) {
-                console.error('获取Ollama模型列表失败:', error);
-                // 如果获取失败，使用配置文件中的默认模型
-                const defaultModels = modelConfigs.models[providerId] || [];
-                defaultModels.forEach(model => {
+            } else {
+                // 其他提供商使用配置文件中的模型列表
+                const providerModels = modelConfigs.models[providerId] || [];
+                providerModels.forEach(model => {
                     if (model.status === 'active') {
                         modelSelect.innerHTML += `
                             <option value="${model.id}" 
@@ -220,35 +287,26 @@
                     }
                 });
             }
-        } else {
-            //  其他提供商使用配置文件中的模型列表
-            const providerModels = modelConfigs.models[providerId] || [];
-            providerModels.forEach(model => {
-                if (model.status === 'active') {
-                    modelSelect.innerHTML += `
-                        <option value="${model.id}" 
-                            data-type="${model.type}"
-                            data-context-length="${model.context_length}"
-                            >${model.name}</option>`;
+
+            // 添加自定义选项
+            modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
+
+            // 设置当前选中的模型
+            const currentModel = modelInput.value;
+            if (currentModel) {
+                const modelExists = Array.from(modelSelect.options).some(opt => opt.value === currentModel);
+                if (modelExists) {
+                    modelSelect.value = currentModel;
+                } else {
+                    modelSelect.value = 'custom';
+                    if (customModelInput) {
+                        customModelInput.style.display = 'block';
+                        customModelInput.querySelector('input').value = currentModel;
+                    }
                 }
-            });
-        }
-
-        // 添加自定义选项
-        modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
-
-        // 设置当前选中的模型
-        const currentModel = document.getElementById('MODEL').value;
-        const allModels = providerId === 'ollama' ? 
-            (modelSelect.querySelectorAll('option') || []) : 
-            (modelConfigs.models[providerId] || []);
-        
-        if (Array.from(allModels).some(m => m.value === currentModel || m.id === currentModel)) {
-            modelSelect.value = currentModel;
-        } else if (currentModel) {
-            modelSelect.value = 'custom';
-            document.getElementById('customModelInput').style.display = 'block';
-            document.getElementById('customModelInput').querySelector('input').value = currentModel;
+            }
+        } catch (error) {
+            console.error('更新模型选择框失败:', error);
         }
     }
 
@@ -283,10 +341,8 @@
 
         // 处理自定义选项
         if (value === 'custom') {
-            showCustomApiInput();
+            showCustomApiInput(baseUrlInput.value);  // 传入当前的URL值
             updateModelSelect('custom');
-            // 当选择自定义时，清空API URL输入框
-            baseUrlInput.value = ''; 
             return;
         }
 
@@ -331,7 +387,19 @@
     // 更新自定义API
     function updateCustomApi(value) {
         const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+        const customModelInput = document.getElementById('customModelInput');
+        const modelSelect = document.getElementById('model_select');
+        
+        // 更新API URL
         baseUrlInput.value = value;
+        
+        // 确保模型输入框显示正确
+        if (modelSelect) {
+            modelSelect.style.display = 'none';
+        }
+        if (customModelInput) {
+            customModelInput.style.display = 'block';
+        }
     }
 
     // 页面加载时获取配置
@@ -741,7 +809,8 @@
             border-radius: 8px;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
             width: 300px;
-            overflow: hidden;
+            max-height: 400px;
+            overflow-y: auto; /* 添加垂直滚动 */
         }
         
         [data-bs-theme="dark"] .time-picker-dropdown-{{ key }} {
@@ -754,6 +823,10 @@
             text-align: center;
             border-bottom: 1px solid #eee;
             font-weight: 500;
+            position: sticky;
+            top: 0;
+            background-color: inherit;
+            z-index: 1;
         }
         
         [data-bs-theme="dark"] .time-header-{{ key }} {
@@ -832,6 +905,10 @@
             padding: 10px 16px;
             border-top: 1px solid #eee;
             gap: 8px;
+            position: sticky;
+            bottom: 0;
+            background-color: inherit;
+            z-index: 1;
         }
         
         [data-bs-theme="dark"] .time-picker-footer-{{ key }} {
@@ -854,6 +931,7 @@
             // 计算位置
             const inputRect = input.getBoundingClientRect();
             const viewportHeight = window.innerHeight;
+            const viewportWidth = window.innerWidth;
             const spaceBelow = viewportHeight - inputRect.bottom;
             const pickerHeight = 320; // 估计的选择器高度
             
@@ -862,12 +940,21 @@
             picker.style.bottom = '';
             picker.style.left = '0';
             
+            // 确保选择器在视口内
             if (spaceBelow < pickerHeight && inputRect.top > pickerHeight) {
                 // 如果下方空间不足且上方空间足够，则在上方显示
                 picker.style.bottom = input.offsetHeight + 'px';
             } else {
                 // 否则在下方显示
                 picker.style.top = input.offsetHeight + 'px';
+            }
+            
+            // 确保水平方向也在视口内
+            const pickerWidth = 300; // 选择器宽度
+            if (inputRect.left + pickerWidth > viewportWidth) {
+                // 如果会超出右边界，则向左对齐
+                picker.style.left = 'auto';
+                picker.style.right = '0';
             }
             
             // 显示选择器
@@ -888,6 +975,17 @@
                 // 滚动到选中位置
                 scrollToSelected_{{ key }}();
             }
+            
+            // 确保底部按钮可见
+            setTimeout(() => {
+                const footer = picker.querySelector('.time-picker-footer-{{ key }}');
+                const footerRect = footer.getBoundingClientRect();
+                
+                if (footerRect.bottom > viewportHeight) {
+                    // 如果底部按钮超出视口，调整选择器位置
+                    picker.scrollTop = picker.scrollHeight;
+                }
+            }, 100);
         }
         
         // 选择时间选项
@@ -959,6 +1057,12 @@
             
             // 隐藏选择器
             document.getElementById('time_picker_{{ key }}').style.display = 'none';
+            
+            // 触发change事件，确保表单能够捕获到值的变化
+            const event = new Event('change', { bubbles: true });
+            document.getElementById('{{ key }}').dispatchEvent(event);
+            
+            console.log('时间已选择:', timeString, '字段:', '{{ key }}');
         }
         
         // 取消时间选择
@@ -980,8 +1084,56 @@
         document.addEventListener('DOMContentLoaded', function() {
             // 初始化时间显示
             updateTimeDisplay_{{ key }}();
+            
+            // 确保隐藏字段的值与显示值一致
+            const displayValue = document.getElementById('{{ key }}_display').value;
+            if (displayValue) {
+                document.getElementById('{{ key }}').value = displayValue;
+            }
         });
     </script>
+{% elif key == 'RAG_BASE_URL' %}
+    <input type="text" class="form-control" 
+        id="{{ key }}" name="{{ key }}" 
+        value="{{ config.value }}"
+        placeholder="不填写则使用与LLM相同的API地址">
+{% elif key == 'RAG_API_KEY' %}
+    <div class="password-input-group">
+        <input type="{{ 'password' if config.is_secret else 'text' }}" class="form-control" 
+            id="{{ key }}" name="{{ key }}" 
+            value="{{ config.value }}"
+            placeholder="不填写则使用与LLM相同的API密钥">
+        {% if config.is_secret %}
+            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('{{ key }}')">
+                <i class="bi bi-eye"></i>
+            </button>
+        {% endif %}
+    </div>
+{% elif key == 'RAG_EMBEDDING_MODEL' %}
+    <input type="text" class="form-control" 
+        id="{{ key }}" name="{{ key }}" 
+        value="{{ config.value }}"
+        placeholder="默认值: text-embedding-3-large">
+{% elif key == 'RAG_RERANKER_MODEL' %}
+    <input type="text" class="form-control" 
+        id="{{ key }}" name="{{ key }}" 
+        value="{{ config.value }}"
+        placeholder="默认值: deepseek-ai/DeepSeek-V3">
+{% elif key == 'RAG_TOP_K' %}
+    <input type="number" class="form-control" 
+        id="{{ key }}" name="{{ key }}" 
+        value="{{ config.value }}"
+        placeholder="默认值: 5"
+        min="1" max="20">
+{% elif key == 'RAG_IS_RERANK' %}
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" 
+            id="{{ key }}" name="{{ key }}" 
+            {% if config.value %}checked{% endif %}>
+        <label class="form-check-label" for="{{ key }}">
+            启用重排序（默认关闭）
+        </label>
+    </div>
 {% else %}
     <input type="text" class="form-control" 
         id="{{ key }}" name="{{ key }}" 

@@ -1,10 +1,13 @@
 from .core.memory import Memory
 from .core.rag import RAG, EmbeddingModel, ReRanker
+import logging
 
 _memory_instance = None
 _rag_instance = None
 _rag_settings = None
 _memory_setting = None
+
+logger = logging.getLogger('main')
 
 
 def setup_rag(embedding_model: EmbeddingModel, reranker: ReRanker = None):
@@ -59,13 +62,37 @@ def get_rag() -> RAG:
 
 
 def start_memory():
-    rag = get_rag()
-    memory = get_memory()
+    try:
+        # 重置RAG实例，确保使用最新配置
+        global _rag_instance
+        _rag_instance = None
+        
+        logger.info("正在初始化记忆系统...")
+        rag = get_rag()
+        memory = get_memory()
 
-    if memory.get_key_value_pairs() is not None:
-        rag.add_documents(memory.get_key_value_pairs())
+        memory_pairs = memory.get_key_value_pairs()
+        if memory_pairs is not None and len(memory_pairs) > 0:
+            try:
+                logger.info(f"正在加载 {len(memory_pairs)} 条记忆到RAG索引...")
+                rag.add_documents(memory_pairs)
+                logger.info("记忆加载完成")
+            except Exception as e:
+                logger.error(f"加载记忆文档到RAG索引失败: {str(e)}")
+        else:
+            logger.info("没有找到现有记忆，将从空记忆开始")
 
-    @memory.add_memory_hook
-    def hook(key, value):
-        # 这里是在记忆文档增加时，对rag内部文档进行增量维护（添加新的文档）
-        rag.add_documents([f"{key}:{value}"])
+        @memory.add_memory_hook
+        def hook(key, value):
+            # 这里是在记忆文档增加时，对rag内部文档进行增量维护（添加新的文档）
+            try:
+                # 使用简洁的日志，避免每次添加记忆都产生大量输出
+                logger.debug(f"正在添加新记忆到RAG索引: {key[:30]}...")
+                rag.add_documents([f"{key}:{value}"])
+            except Exception as e:
+                logger.error(f"添加新记忆到RAG索引失败: {str(e)}")
+                
+        logger.info("记忆系统初始化完成")
+    except Exception as e:
+        logger.error(f"启动记忆系统失败: {str(e)}")
+        logger.warning("程序将继续运行，但记忆检索功能可能不可用")

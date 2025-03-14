@@ -14,19 +14,66 @@
             "title": "大语言模型配置",
             "settings": {
                 "base_url": {
-                    "value": "https://aiproxy.bja.sealos.run/v1"
+                    "value": "https://api.siliconflow.cn/v1/"
                 },
                 "model": {
-                    "value": "deepseek-chat"
+                    "value": "deepseek-ai/DeepSeek-V3"
                 },
                 "api_key": {
-                    "value": "sk-8HgqJuIRsv7br3MJ300b14232d084a6c82089d660122F5F2"
+                    "value": "sk-hnobnlsgbethdjpsopkflppjezpntlwujdxxicrdheawqxfi"
                 },
                 "max_tokens": {
                     "value": 1000
                 },
                 "temperature": {
                     "value": 1.2
+                }
+            }
+        },
+        "rag_settings": {
+            "title": "rag记忆配置",
+            "settings": {
+                "base_url": {
+                    "value": "https://ark.cn-beijing.volces.com/api/v3/embeddings",
+                    "type": "string",
+                    "description": "RAG服务基础URL"
+                },
+                "api_key": {
+                    "value": "123",
+                    "type": "string",
+                    "description": "RAG服务API密钥",
+                    "is_secret": true
+                },
+                "embedding_base_url": {
+                    "value": "546",
+                    "type": "string",
+                    "description": "嵌入模型服务基础URL"
+                },
+                "embedding_api_key": {
+                    "value": "5464",
+                    "type": "string",
+                    "description": "嵌入模型服务API密钥",
+                    "is_secret": true
+                },
+                "is_rerank": {
+                    "value": false,
+                    "type": "boolean",
+                    "description": "是否启用重排序"
+                },
+                "reranker_model": {
+                    "value": "deepseek-ai/DeepSeek-V3",
+                    "type": "string",
+                    "description": "重排序模型"
+                },
+                "embedding_model": {
+                    "value": "deepseek-ai/embedding",
+                    "type": "string",
+                    "description": "嵌入模型"
+                },
+                "top_k": {
+                    "value": 5,
+                    "type": "number",
+                    "description": "返回结果数量"
                 }
             }
         },
@@ -74,19 +121,19 @@
                     },
                     "countdown": {
                         "min_hours": {
-                            "value": 0.01
+                            "value": 0.04
                         },
                         "max_hours": {
-                            "value": 0.03
+                            "value": 0.06
                         }
                     }
                 },
                 "quiet_time": {
                     "start": {
-                        "value": "22:00"
+                        "value": "00:00"
                     },
                     "end": {
-                        "value": "08:00"
+                        "value": "00:02"
                     }
                 },
                 "context": {
@@ -94,7 +141,7 @@
                         "value": 30
                     },
                     "avatar_dir": {
-                        "value": "data/avatars/ATRI"
+                        "value": "data/avatars/Lucy"
                     }
                 }
             }

@@ -27,6 +27,10 @@ python-docx
 pandas
 openpyxl
 sentence-transformers
+# 如需GPU版本，请使用conda安装：conda install -c conda-forge faiss-gpu
+# 或参考官方文档：https://github.com/facebookresearch/faiss/blob/main/INSTALL.md
 faiss-cpu
 numpy
 openai
+python-dotenv
+pathlib

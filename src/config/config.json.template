@@ -53,12 +53,37 @@
         "rag_settings": {
             "title": "rag记忆配置",
             "settings": {
-                "base_url": "",
-                "api_key": "",
-                "is_rerank": false,
-                "reranker_model": "gpt-4o-mini-2024-07-18",
-                "embedding_model": "text-embedding-3-large",
-                "top_k": 5
+                "base_url": {
+                    "value": "",
+                    "type": "string",
+                    "description": "RAG服务基础URL"
+                },
+                "api_key": {
+                    "value": "",
+                    "type": "string",
+                    "description": "RAG服务API密钥",
+                    "is_secret": true
+                },
+                "is_rerank": {
+                    "value": false,
+                    "type": "boolean",
+                    "description": "是否启用重排序"
+                },
+                "reranker_model": {
+                    "value": "gpt-4o-mini-2024-07-18",
+                    "type": "string",
+                    "description": "重排序模型"
+                },
+                "embedding_model": {
+                    "value": "text-embedding-3-large",
+                    "type": "string",
+                    "description": "嵌入模型"
+                },
+                "top_k": {
+                    "value": 5,
+                    "type": "number",
+                    "description": "返回结果数量"
+                }
             }
         },
         "media_settings": {

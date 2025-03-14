@@ -895,6 +895,42 @@
                     }
                 }
             }
+            
+            // 处理RAG配置项
+            const ragConfigMapping = {
+                'RAG_BASE_URL': ['rag_settings', 'settings', 'base_url', 'value'],
+                'RAG_API_KEY': ['rag_settings', 'settings', 'api_key', 'value'],
+                'RAG_EMBEDDING_MODEL': ['rag_settings', 'settings', 'embedding_model', 'value'],
+                'RAG_IS_RERANK': ['rag_settings', 'settings', 'is_rerank', 'value'],
+                'RAG_RERANKER_MODEL': ['rag_settings', 'settings', 'reranker_model', 'value'],
+                'RAG_TOP_K': ['rag_settings', 'settings', 'top_k', 'value']
+            };
+            
+            if (configs.categories) {
+                for (const [configKey, path] of Object.entries(ragConfigMapping)) {
+                    let value = configs.categories;
+                    for (const key of path) {
+                        if (value && value[key] !== undefined) {
+                            value = value[key];
+                        } else {
+                            value = null;
+                            break;
+                        }
+                    }
+                    
+                    if (value !== null) {
+                        const element = document.getElementById(configKey);
+                        if (element) {
+                            if (element.type === 'checkbox') {
+                                element.checked = value;
+                            } else {
+                                element.value = value;
+                            }
+                            console.log(`更新RAG配置项: ${configKey} = ${value}`);
+                        }
+                    }
+                }
+            }
         }
 
         // 修改保存配置到cookie的函数
@@ -906,7 +942,13 @@
                 DEEPSEEK_API_KEY: config.DEEPSEEK_API_KEY || '',
                 DEEPSEEK_BASE_URL: config.DEEPSEEK_BASE_URL || '',
                 MODEL: config.MODEL || '',
-                MOONSHOT_API_KEY: config.MOONSHOT_API_KEY || ''
+                MOONSHOT_API_KEY: config.MOONSHOT_API_KEY || '',
+                RAG_BASE_URL: config.RAG_BASE_URL || '',
+                RAG_API_KEY: config.RAG_API_KEY || '',
+                RAG_EMBEDDING_MODEL: config.RAG_EMBEDDING_MODEL || '',
+                RAG_IS_RERANK: config.RAG_IS_RERANK || false,
+                RAG_RERANKER_MODEL: config.RAG_RERANKER_MODEL || '',
+                RAG_TOP_K: config.RAG_TOP_K || 5
             };
             
             // 检查是否有有效数据
@@ -915,7 +957,13 @@
                 keyConfigs.DEEPSEEK_API_KEY || 
                 keyConfigs.DEEPSEEK_BASE_URL ||
                 keyConfigs.MODEL || 
-                keyConfigs.MOONSHOT_API_KEY;
+                keyConfigs.MOONSHOT_API_KEY ||
+                keyConfigs.RAG_BASE_URL ||
+                keyConfigs.RAG_API_KEY ||
+                keyConfigs.RAG_EMBEDDING_MODEL ||
+                keyConfigs.RAG_IS_RERANK ||
+                keyConfigs.RAG_RERANKER_MODEL ||
+                keyConfigs.RAG_TOP_K;
             
             if (!hasValidData) {
                 console.log('没有有效数据，不保存到cookie');
@@ -932,14 +980,26 @@
                     item.DEEPSEEK_API_KEY, 
                     item.DEEPSEEK_BASE_URL,
                     item.MODEL, 
-                    item.MOONSHOT_API_KEY
+                    item.MOONSHOT_API_KEY,
+                    item.RAG_BASE_URL,
+                    item.RAG_API_KEY,
+                    item.RAG_EMBEDDING_MODEL,
+                    item.RAG_IS_RERANK,
+                    item.RAG_RERANKER_MODEL,
+                    item.RAG_TOP_K
                 ]) === 
                 JSON.stringify([
                     keyConfigs.LISTEN_LIST, 
                     keyConfigs.DEEPSEEK_API_KEY, 
                     keyConfigs.DEEPSEEK_BASE_URL,
                     keyConfigs.MODEL, 
-                    keyConfigs.MOONSHOT_API_KEY
+                    keyConfigs.MOONSHOT_API_KEY,
+                    keyConfigs.RAG_BASE_URL,
+                    keyConfigs.RAG_API_KEY,
+                    keyConfigs.RAG_EMBEDDING_MODEL,
+                    keyConfigs.RAG_IS_RERANK,
+                    keyConfigs.RAG_RERANKER_MODEL,
+                    keyConfigs.RAG_TOP_K
                 ])
             );
             
@@ -1017,6 +1077,10 @@
                                 <div class="mb-1">API Base URL: ${config.DEEPSEEK_BASE_URL || '未设置'}</div>
                                 <div class="mb-1">API密钥: ${config.DEEPSEEK_API_KEY ? '已设置' : '未设置'}</div>
                                 <div class="mb-1">Moonshot密钥: ${config.MOONSHOT_API_KEY ? '已设置' : '未设置'}</div>
+                                <div class="mb-1">RAG Base URL: ${config.RAG_BASE_URL || '未设置'}</div>
+                                <div class="mb-1">RAG API密钥: ${config.RAG_API_KEY ? '已设置' : '未设置'}</div>
+                                <div class="mb-1">嵌入模型: ${config.RAG_EMBEDDING_MODEL || '未设置'}</div>
+                                <div class="mb-1">重排序: ${config.RAG_IS_RERANK ? '启用' : '禁用'}</div>
                             </div>
                             <div>
                                 <button class="btn btn-danger btn-sm me-2" onclick="deleteHistoryConfig(${index})">
@@ -1033,35 +1097,50 @@
         }
 
         // 修改应用历史配置的函数
-        function applyHistoryConfig(index) {
-            // 获取现有的历史配置
-            let historyConfigs = getCookieConfigs();
+        async function applyHistoryConfig(index) {
+            // 获取历史配置
+            const historyConfigs = getCookieConfigs();
             
             if (index >= 0 && index < historyConfigs.length) {
                 const config = historyConfigs[index];
                 
-                // 更新表单值
-                document.getElementById('LISTEN_LIST').value = config.LISTEN_LIST.join(',');
-                document.getElementById('DEEPSEEK_API_KEY').value = config.DEEPSEEK_API_KEY || '';
-                document.getElementById('DEEPSEEK_BASE_URL').value = config.DEEPSEEK_BASE_URL || '';
-                document.getElementById('MODEL').value = config.MODEL || '';
-                document.getElementById('MOONSHOT_API_KEY').value = config.MOONSHOT_API_KEY || '';
-                
-                // 保存新配置，确保新配置优先
-                saveConfigToCookie({
+                // 创建要保存的配置对象
+                const configToSave = {
                     LISTEN_LIST: config.LISTEN_LIST,
-                    DEEPSEEK_API_KEY: config.DEEPSEEK_API_KEY,
-                    DEEPSEEK_BASE_URL: config.DEEPSEEK_BASE_URL,
-                    MODEL: config.MODEL,
-                    MOONSHOT_API_KEY: config.MOONSHOT_API_KEY
-                });
+                    DEEPSEEK_API_KEY: config.DEEPSEEK_API_KEY || '',
+                    DEEPSEEK_BASE_URL: config.DEEPSEEK_BASE_URL || '',
+                    MODEL: config.MODEL || '',
+                    MOONSHOT_API_KEY: config.MOONSHOT_API_KEY || '',
+                    RAG_BASE_URL: config.RAG_BASE_URL || '',
+                    RAG_API_KEY: config.RAG_API_KEY || '',
+                    RAG_EMBEDDING_MODEL: config.RAG_EMBEDDING_MODEL || '',
+                    RAG_IS_RERANK: config.RAG_IS_RERANK || false,
+                    RAG_RERANKER_MODEL: config.RAG_RERANKER_MODEL || '',
+                    RAG_TOP_K: config.RAG_TOP_K || 5
+                };
                 
-                // 显示提示
-                showSaveNotification('已应用历史配置');
+                // 显示保存中提示
+                showSaveNotification('正在应用历史配置...');
                 
-                // 关闭模态框
-                const modal = bootstrap.Modal.getInstance(document.getElementById('historyConfigModal'));
-                modal.hide();
+                // 发送保存请求
+                try {
+                    const response = await fetch('/save', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(configToSave)
+                    });
+                    
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        showSaveNotification('历史配置已成功应用并保存');
+                    } else {
+                        showSaveNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    showSaveNotification('保存失败：' + error, 'error');
+                }
             }
         }
 
@@ -1073,6 +1152,28 @@
                 config['AVATAR_DIR'] = avatarDirSelect.value;
                 console.log('保存角色设定:', config['AVATAR_DIR']);
             }
+            
+            // 确保RAG配置项被正确处理
+            const ragConfigItems = ['RAG_BASE_URL', 'RAG_API_KEY', 'RAG_EMBEDDING_MODEL', 'RAG_IS_RERANK', 'RAG_RERANKER_MODEL', 'RAG_TOP_K'];
+            ragConfigItems.forEach(item => {
+                const element = document.getElementById(item);
+                if (element) {
+                    if (element.type === 'checkbox') {
+                        config[item] = element.checked;
+                    } else if (item === 'RAG_TOP_K' || item === 'RAG_IS_RERANK') {
+                        // 数值或布尔值处理
+                        if (item === 'RAG_IS_RERANK') {
+                            config[item] = element.value === 'true';
+                        } else {
+                            const value = parseInt(element.value);
+                            config[item] = isNaN(value) ? 5 : value; // 默认值为5
+                        }
+                    } else {
+                        config[item] = element.value;
+                    }
+                    console.log(`保存RAG配置项: ${item} = ${config[item]}`);
+                }
+            });
             
             // 保存配置到cookie
             saveConfigToCookie(config);
@@ -1253,21 +1354,31 @@
             // 移除现有的背景色类
             notification.classList.remove('bg-success', 'bg-danger');
             
-            // 根据类型设置样式
-            if (type === 'success') {
-                notification.classList.add('bg-success');
-            } else {
-                notification.classList.add('bg-danger');
-            }
+            // 添加新的背景色类
+            notification.classList.add(type === 'success' ? 'bg-success' : 'bg-danger');
             
+            // 设置消息内容
             messageElement.textContent = message;
             
-            const toast = new bootstrap.Toast(notification, {
-                animation: true,
-                autohide: true,
-                delay: 3000
-            });
+            // 显示通知
+            const toast = new bootstrap.Toast(notification);
             toast.show();
+        }
+
+        // 添加密码显示切换函数
+        function togglePasswordVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            const icon = input.parentElement.querySelector('.password-toggle i');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+            }
         }
 
         // 修改显示添加任务模态框时的处理

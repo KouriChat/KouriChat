@@ -196,15 +196,27 @@ class Config:
                     temperature=llm_data['temperature']['value']
                 )
 
-                rag_data = categories['rag_settings']['settings']
-                self.rag = RagSettings(
-                    base_url=rag_data['base_url'],
-                    api_key=rag_data['api_key'],
-                    is_rerank=rag_data['is_rerank'],
-                    reranker_model=rag_data['reranker_model'],
-                    embedding_model=rag_data['embedding_model'],
-                    top_k=rag_data['top_k']
-                )
+                # 处理 rag_settings，如果不存在则使用默认值
+                if 'rag_settings' in categories and 'settings' in categories['rag_settings']:
+                    rag_data = categories['rag_settings']['settings']
+                    self.rag = RagSettings(
+                        base_url=rag_data['base_url']['value'],
+                        api_key=rag_data['api_key']['value'],
+                        is_rerank=rag_data['is_rerank']['value'],
+                        reranker_model=rag_data['reranker_model']['value'],
+                        embedding_model=rag_data['embedding_model']['value'],
+                        top_k=rag_data['top_k']['value']
+                    )
+                else:
+                    # 使用默认值
+                    self.rag = RagSettings(
+                        base_url="",
+                        api_key="",
+                        is_rerank=False,
+                        reranker_model="",
+                        embedding_model="",
+                        top_k=5
+                    )
                 
                 media_data = categories['media_settings']['settings']
                 self.media = MediaSettings(
@@ -322,4 +334,13 @@ QUIET_TIME_END = config.behavior.quiet_time.end
 def reload_config():
     global config
     config = Config()
+    
+    # 重新初始化RAG系统，使用最新配置
+    try:
+        from src.memory import start_memory
+        start_memory()
+        logger.info("已重新初始化RAG记忆系统")
+    except Exception as e:
+        logger.error(f"重新初始化RAG记忆系统失败: {str(e)}")
+    
     return True
