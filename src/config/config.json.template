@@ -50,6 +50,17 @@
                 }
             }
         },
+        "rag_settings": {
+            "title": "rag记忆配置",
+            "settings": {
+                "base_url": "",
+                "api_key": "",
+                "is_rerank": false,
+                "reranker_model": "gpt-4o-mini-2024-07-18",
+                "embedding_model": "text-embedding-3-large",
+                "top_k": 5
+            }
+        },
         "media_settings": {
             "title": "媒体设置",
             "settings": {

@@ -1,6 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
+
 :: 璁剧疆浠ｇ爜椤典负 UTF-8
 chcp 65001 >nul
 title My Dream Moments 鍚姩鍣�
@@ -10,11 +11,12 @@ echo ====================================
 echo       My Dream Moments 鍚姩鍣�
 echo ====================================
 echo.
-echo +--------------------------------+
-echo ^|   My Dream Moments - AI Chat   ^|
-echo ^|   Created with Heart by umaru  ^|
-echo +--------------------------------+
+echo ╔═══════════════════════════════════╗
+echo ║      My Dream Moments - AI Chat   ║
+echo ║      Created with Heart by umaru  ║
+echo ╚═══════════════════════════════════╝
 echo.
+
 
 :: 璁剧疆 Python 鐜鍙橀噺
 set "PYTHONIOENCODING=utf-8"
@@ -25,9 +27,7 @@ echo cheking pip ...
 python -m ensurepip --upgrade >nul 2>&1
 if errorlevel 1 (
     echo pip 瀹夎澶辫触鍠�
-    pause
-    exit /b 1
-)
+
 
 :: 妫�鏌ヤ緷璧栨槸鍚﹂渶瑕佹洿鏂�
 @echo off
@@ -63,8 +63,9 @@ if exist requirements.txt (
         set "mirrors[3]=https://mirrors.cloud.tencent.com/pypi/simple"
         set "mirrors[4]=https://pypi.org/simple"
 
-        set success=0
-        set mirror_count=5
+:: 激活虚拟环境
+call %VENV_DIR%\Scripts\activate.bat
+
 
         :: 灏濊瘯姣忎釜闀滃儚婧�
         for /L %%i in (0,1,4) do (
@@ -111,6 +112,7 @@ if errorlevel 1 (
 echo 正在启动程序...
 python run_config_web.py
 
+
 :: 异常退出处理
 if errorlevel 1 (
     echo 程序异常退出
@@ -119,4 +121,3 @@ if errorlevel 1 (
 
 :: 退出虚拟环境
 deactivate
-
