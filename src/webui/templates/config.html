@@ -833,7 +833,7 @@
                 })
                 .catch(error => console.error('Error:', error));
 
-            // 添加到现有的DOMContentLoaded事件处理程序中
+            // 初始化历史配置列表
             updateHistoryConfigList();
             
             // 为历史配置模态框添加显示事件
@@ -1150,14 +1150,17 @@
             updateTaskChatIdOptions();
         }
 
-        // 修改保存配置的函数，添加保存到cookie的功能
-        function saveConfig(config) {
+                // 修改保存配置的函数，添加保存到cookie的功能
+                function saveConfig(config) {
             // 确保角色设定值被正确处理
             const avatarDirSelect = document.getElementById('AVATAR_DIR');
             if (avatarDirSelect && avatarDirSelect.value) {
                 config['AVATAR_DIR'] = avatarDirSelect.value;
                 console.log('保存角色设定:', config['AVATAR_DIR']);
             }
+            
+            // 保存配置到cookie
+            saveConfigToCookie(config);
             
             // 发送保存请求
             fetch('/save', {

@@ -35,6 +35,7 @@ config_path = os.path.join(root_dir, 'src', 'config', 'config.json')
 config_template_path = os.path.join(root_dir, 'src', 'config', 'config.json.template')
 # 初始化 ROBOT_WX_NAME 变量
 ROBOT_WX_NAME = ""
+robot_name = ""
 if not os.path.exists(config_path) and os.path.exists(config_template_path):
     logger = logging.getLogger('main')
     logger.info("配置文件不存在，正在从模板创建...")
@@ -63,6 +64,7 @@ logger.info("情感分析模块预热完成")
 
 class ChatBot:
     def __init__(self, message_handler, moonshot_ai, memory_handler):
+        global robot_name
         self.message_handler = message_handler
         self.moonshot_ai = moonshot_ai
         self.memory_handler = memory_handler
@@ -74,6 +76,7 @@ class ChatBot:
         # 获取机器人的微信名称
         self.wx = WeChat()
         self.robot_name = self.wx.A_MyIcon.Name  # 移除括号，直接访问Name属性
+        robot_name = self.robot_name  # 更新全局变量
         # logger.info(f"机器人名称: {self.robot_name}")
 
     def process_user_messages(self, chat_id):
@@ -434,92 +437,9 @@ def get_personality_summary(prompt_content: str) -> str:
         logger.error(f"提取性格特点失败: {str(e)}")
         return "请参考上下文"  # 返回默认特征
 
-def auto_send_message():
-    """自动发送消息 - 调用message_handler中的方法"""
-    # 调用message_handler中的auto_send_message方法
-    message_handler.auto_send_message(
-        listen_list=listen_list,
-        robot_wx_name=ROBOT_WX_NAME,
-        get_personality_summary=get_personality_summary,
-        is_quiet_time=is_quiet_time,
-        start_countdown=start_countdown
-    )
-    try:
-        if is_quiet_time():
-            logger.info("当前处于安静时间，跳过自动发送消息")
-            start_countdown()
-            return
-
-        if listen_list:
-            user_id = random.choice(listen_list)
-            if user_id not in message_handler.unanswered_counters:
-                message_handler.unanswered_counters[user_id] = 0
-            message_handler.unanswered_counters[user_id] += 1
-
-            # 获取当前时间和最近对话记录
-            current_time = datetime.now()
-            memories = memory_handler.get_relevant_memories(f"与{user_id}的最近对话")
-            
-            # 获取精简后的性格特点
-            personality = get_personality_summary(message_handler.prompt_content)
-            
-            # 构建优化后的提示信息，使用更合适的称呼方式
-            prompt = f"""现在是{current_time.strftime('%Y-%m-%d %H:%M')}，作为{ROBOT_WX_NAME}，我想要主动联系对方。
-
-我的主要性格特点：
-{personality}
-
-最近的对话记录：
-{memories[:500] if memories else '暂无最近对话'}
-
-请根据我的性格特点、当前时间、对话记录，生成一个自然的开场白。注意：
-1. 不要直接称呼对方的微信昵称
-2. 可以使用"你"、"您"等称呼
-3. 保持对话的自然性和礼貌性
-4. 可以选择接续之前的对话或者创造性地开启新聊天"""
-
-            # 获取AI回复
-            reply_content = message_handler.get_api_response(prompt, ROBOT_WX_NAME)
-            
-            logger.info(f"自动发送消息到 {user_id}: {reply_content}")
-            max_retries = 3
-            retry_delay = 1.0
-
-            for attempt in range(max_retries):
-                try:
-                    message_handler.add_to_queue(
-                        chat_id=user_id,
-                        content=reply_content,
-                        sender_name=ROBOT_WX_NAME,
-                        username=user_id,  # 修改：使用接收者的ID
-                        is_group=False
-                    )
-                    # 将对话记录保存到接收者的记忆中
-                    memory_handler.add_short_memory(
-                        f"我主动发起对话：{reply_content}",
-                        "等待回复中...",
-                        user_id  # 使用接收者的ID
-                    )
-                    break
-                except Exception as e:
-                    logger.error(f"发送消息失败，第{attempt+1}次重试: {str(e)}")
-                    if attempt == max_retries - 1:
-                        logger.error("消息发送最终失败")
-                        return
-                    time.sleep(retry_delay * (attempt + 1))
-            start_countdown()
-        else:
-            logger.error("没有可用的聊天对象")
-            start_countdown()
-
-    except Exception as e:
-        logger.error(f"自动发送消息失败: {str(e)}")
-    finally:
-        start_countdown()
-
 def start_countdown():
     """开始新的倒计时"""
-    global countdown_timer, is_countdown_running, countdown_end_time  # 添加 countdown_end_time
+    global countdown_timer, is_countdown_running, countdown_end_time, robot_name  # 添加 robot_name
     
     if countdown_timer:
         countdown_timer.cancel()
@@ -528,7 +448,7 @@ def start_countdown():
     countdown_end_time = datetime.now() + timedelta(seconds=countdown_seconds)  # 设置结束时间
     logger.info(f"开始新的倒计时: {countdown_seconds/3600:.2f}小时")
     
-    countdown_timer = threading.Timer(countdown_seconds, auto_send_message)
+    countdown_timer = threading.Timer(countdown_seconds, message_handler.auto_send_message, args=[config.user.listen_list, robot_name, get_personality_summary, is_quiet_time, start_countdown])
     countdown_timer.daemon = True
     countdown_timer.start()
     is_countdown_running = True

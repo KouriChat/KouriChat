@@ -161,7 +161,7 @@ class MessageHandler:
             current_time = time.time()
             
             # 检查是否需要缓存消息
-            if username in self.last_message_time and current_time - self.last_message_time[username] < 7:
+            if username in self.last_message_time and current_time - self.last_message_time[username] < 5:
                 # 取消之前的定时器
                 if username in self.message_timer and self.message_timer[username]:
                     self.message_timer[username].cancel()
@@ -196,9 +196,6 @@ class MessageHandler:
             # 如果有缓存的消息，添加当前消息并一起处理
             self.message_cache[username].append({
                 'content': content,
-                'chat_id': chat_id,
-                'sender_name': sender_name,
-                'is_group': is_group,
                 'is_image_recognition': is_image_recognition
             })
             return self._process_cached_messages(username)
@@ -245,7 +242,7 @@ class MessageHandler:
                 
             # 处理普通文本回复
             else:
-                return self._handle_text_message(content, chat_id, sender_name, username, is_group, is_image_recognition)
+                return self._handle_text_message(content, chat_id, sender_name, username, is_group)
                 
         except Exception as e:
             logger.error(f"处理消息失败: {str(e)}", exc_info=True)
@@ -264,9 +261,14 @@ class MessageHandler:
                 context = f"{recent_history[0]['message']}(上次的对话内容，只是提醒，无需进行互动，处理重点请放在后面的新内容)\n"
                 logger.info(f"加载了用户 {username} 的最近一轮对话记录作为上下文")
             
-            # 合并所有缓存的消息，但优先处理新消息
+            # 合并所有缓存的消息，优先处理图片识别消息
             messages = self.message_cache[username]
-            combined_content = context + "\n".join([msg['content'] for msg in messages])
+            image_messages = [msg for msg in messages if msg.get('is_image_recognition', False)]
+            text_messages = [msg for msg in messages if not msg.get('is_image_recognition', False)]
+            
+            # 按照图片识别消息优先的顺序合并内容
+            combined_messages = image_messages + text_messages
+            combined_content = context + "\n".join([msg['content'] for msg in combined_messages])
             
             # 使用最后一条消息的参数
             last_message = messages[-1]
@@ -278,7 +280,7 @@ class MessageHandler:
                 last_message['sender_name'],
                 username,
                 last_message['is_group'],
-                last_message['is_image_recognition']
+                any(msg.get('is_image_recognition', False) for msg in messages)
             )
             
             # 清理缓存
@@ -906,3 +908,96 @@ class MessageHandler:
                          args=(qqid, sender_name, content, reply)).start()
         return delayed_reply
         
+
+
+    def auto_send_message(self, listen_list, robot_wx_name, get_personality_summary, is_quiet_time, start_countdown):
+        """自动发送消息的方法"""
+        try:
+            if is_quiet_time():
+                logger.info("当前处于安静时间，跳过自动发送消息")
+                start_countdown()
+                return
+
+            if listen_list:
+                user_id = random.choice(listen_list)
+                if user_id not in self.unanswered_counters:
+                    self.unanswered_counters[user_id] = 0
+                self.unanswered_counters[user_id] += 1
+
+                # 获取当前时间和最近对话记录（限制只获取24小时内的对话）
+                current_time = datetime.now()
+                cutoff_time = current_time - timedelta(hours=24)
+                
+                # 修改获取记忆的方式，添加时间限制
+                memories = self.memory_handler.get_recent_memory(user_id, max_count=3)
+                if memories:
+                    # 格式化记忆，添加时间信息
+                    formatted_memories = []
+                    for memory in memories:
+                        # 如果记忆有时间戳，检查是否在24小时内
+                        if hasattr(memory, 'timestamp'):
+                            memory_time = datetime.fromtimestamp(memory.timestamp)
+                            if memory_time > cutoff_time:
+                                formatted_memories.append(f"[{memory_time.strftime('%Y-%m-%d %H:%M')}] {memory['message']}")
+                    memories_text = "\n".join(formatted_memories) if formatted_memories else "暂无最近对话"
+                else:
+                    memories_text = "暂无最近对话"
+                
+                # 获取精简后的性格特点
+                personality = get_personality_summary(self.prompt_content)
+                
+                # 构建优化后的提示信息，明确指出这是新的主动对话
+                prompt = f"""现在是{current_time.strftime('%Y-%m-%d %H:%M')}，作为{robot_wx_name}，我想要主动发起一个全新的对话。
+
+                我的主要性格特点：
+                {personality}
+
+                过去24小时内的对话记录（仅供参考，不要重复之前的对话）：
+                {memories_text}
+
+                请根据我的性格特点和当前时间生成一个全新的、自然的开场白。要求：
+                1. 不要直接称呼对方的微信昵称
+                2. 可以使用"你"、"您"等称呼
+                3. 保持对话的自然性和礼貫性
+                4. 不要重复或延续之前的对话内容
+                5. 创造性地开启新的话题
+                6. 如果新话题主题与之前内容主题类似或一样，则内容以之前对话内容为主，防止出现内容差错"""
+
+                # 获取AI回复
+                reply_content = self.get_api_response(prompt, robot_wx_name)
+                
+                logger.info(f"自动发送消息到 {user_id}: {reply_content}")
+                max_retries = 3
+                retry_delay = 1.0
+
+                for attempt in range(max_retries):
+                    try:
+                        self.add_to_queue(
+                            chat_id=user_id,
+                            content=reply_content,
+                            sender_name=robot_wx_name,
+                            username=user_id,  # 修改：使用接收者的ID
+                            is_group=False
+                        )
+                        # 将对话记录保存到接收者的记忆中
+                        self.memory_handler.add_short_memory(
+                            f"我主动发起对话：{reply_content}",
+                            "等待回复中...",
+                            user_id  # 使用接收者的ID
+                        )
+                        break
+                    except Exception as e:
+                        logger.error(f"发送消息失败，第{attempt+1}次重试: {str(e)}")
+                        if attempt == max_retries - 1:
+                            logger.error("消息发送最终失败")
+                            return
+                        time.sleep(retry_delay * (attempt + 1))
+                start_countdown()
+            else:
+                logger.error("没有可用的聊天对象")
+                start_countdown()
+
+        except Exception as e:
+            logger.error(f"自动发送消息失败: {str(e)}")
+        finally:
+            start_countdown()
