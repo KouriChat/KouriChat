@@ -7,7 +7,7 @@
 <!-- Closes/Resolves #0 -->
 
 
-## 如何测试的？|Tests
+## 如何测试的？| Tests
 <!-- _请描述你进行了哪些测试来验证你的更改。也请标注你测试的任何配置细节。_ -->
 
 
@@ -15,9 +15,8 @@
 <!-- 如果有文档格式或布局变更，请提供截图 | If there are format or layout changes, please provide screenshots --> 
 
 
-## **在提出此拉取请求时，我确认了以下几点（请复选框）：**
+## 在提出此拉取请求时，我确认了以下几点（请复选框）： | In making this pull request, I have identified the following (please check the box)
 
-_请剔除无关项._
 _欢迎新人在按下提交前阅读[贡献者指南](https://github.com/freeCodeCamp/how-to-contribute-to-open-source/blob/main/README-CN.md)。| Newcomers are welcome to [Contributor Guide](https://github.com/freeCodeCamp/how-to-contribute-to-open-source/blob/main/README.md) before commit._
 
 - [ ] 我对我的代码进行了自我检查, 包括是否存在重复的拉取请求。| I have performed self-checks on my code, including duplicate pull requests.
