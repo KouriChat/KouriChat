@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from nonebot_plugin_uninfo import Uninfo
 from nonebot_plugin_session import EventSession
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.log import logger
 import random
 import os
@@ -26,6 +27,7 @@ from nonebot_plugin_alconna import (
     UniMessage,
     on_alconna,
 )
+from nonebot.rule import to_me
 def ensure_group(session: Uninfo) -> bool:
     """
     是否在群聊中
@@ -53,12 +55,13 @@ def ensure_private(session: EventSession) -> bool:
 class NetworkError(Exception):
     pass
 
-_matcher = on_message(rule=ensure_private, priority=999)
-# 没有实现：5分钟未回复计数器功能，自动任务功能，目前只开了私信 （由on_message rule保证）
+_matcher = on_message(rule=to_me(), priority=999)
+# 没有实现：5分钟未回复计数器功能，自动任务功能，
 @_matcher.handle()
 async def _(event: MessageEvent, session: Uninfo):
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    UserMsg= f"[{current_time}] 该用户的昵称是：'{event.sender.nickname}'，ta私聊对你说 " #str
+    talk_type = "群聊" if isinstance(event,GroupMessageEvent) else "私聊"
+    UserMsg= f"[{current_time}] 该用户的昵称是：'{event.sender.nickname}'，ta {talk_type} 对你说 " #str
     for iterator in event.message:
         if iterator.type == "text":
             UserMsg += str(iterator.data["text"])
@@ -102,7 +105,7 @@ async def _(event: MessageEvent, session: Uninfo):
     if voice_handler.is_voice_request(UserMsg):
         reply=message_handler.QQ_handle_voice_request(content=UserMsg, qqid=event.user_id,sender_name=event.sender.nickname)
         try:
-            if os.path.isfile(reply):
+            if reply:
                 await UniMessage.audio(path=reply).send()
                 try:
                     os.remove(reply)
@@ -118,7 +121,7 @@ async def _(event: MessageEvent, session: Uninfo):
         reply=message_handler.QQ_handle_random_image_request(content=UserMsg,qqid=event.user_id,sender_name=event.sender.nickname)
         defaultReply= "给主人你找了一张好看的图片哦~"
         try:
-            if os.path.isfile(reply):
+            if reply:
                 await UniMessage.image(path=reply).send()
                 await UniMessage.text(text=defaultReply).send()
                 try:
@@ -133,7 +136,7 @@ async def _(event: MessageEvent, session: Uninfo):
         reply=message_handler.QQ_handle_image_generation_request(content=UserMsg,qqid=event.user_id,sender_name=event.sender.nickname)
         defaultReply="这是按照主人您的要求生成的图片\\(^o^)/~"
         try:
-            if os.path.isfile(reply):
+            if reply:
                 await UniMessage.image(path=reply).send()
                 await UniMessage.text(text=defaultReply).send()
                 try:

@@ -8,9 +8,16 @@ import json
 import sys
 import time
 import os
+
 from nonebot.log import logger
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 from nonebot.plugin import _plugins
+
+from nonebot import get_bot, require, get_driver
+from nonebot.plugin import PluginMetadata
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+from nonebot.config import Config
 
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
 sys.path.append(src_path)
@@ -40,7 +47,6 @@ config_path = os.path.join(root_dir, 'src', 'config', 'config.json')
 config_template_path = os.path.join(root_dir, 'src', 'config', 'config.json.template')
 
 if not os.path.exists(config_path) and os.path.exists(config_template_path):
-    logger = logging.getLogger('main')
     logger.info("配置文件不存在，正在从模板创建...")
     shutil.copy2(config_template_path, config_path)
     logger.info(f"已从模板创建配置文件: {config_path}")
@@ -97,8 +103,7 @@ message_handler = MessageHandler(
     is_qq=True
 )
 
-if __name__ == '__main__':
-    
+def bot_init():
     # 程序开始时间
     startTime = time.time_ns()
 
@@ -107,15 +112,25 @@ if __name__ == '__main__':
     sys.path.append("./src/Plugins/Basic_plugins")  # 底层插件
     sys.path.append("./src/Plugins/ChatPlugin")  # chat插件
 
-    # 初始化nonebot
-    nonebot.init()
-    app = nonebot.get_asgi()
+
+    # 引入定时任务插件库
+    require("nonebot_plugin_apscheduler")
+    from nonebot_plugin_apscheduler import scheduler
 
     # 连接驱动
-    driver = nonebot.get_driver()
+    driver = get_driver()
     driver.register_adapter(ONEBOT_V11Adapter)
 
+    # 根据初始化配置选择插件目录配置文件进行初始化
+    # 默认配置文件路径为./plugin.dev.json
+    # 根据在.env中的环境设置，进行更新
     configDict = driver.config.dict()
+    if "environment" not in configDict.keys():
+        plugin_dir = "plugin.dev.json"
+    else:
+        environment = configDict["environment"]
+        plugin_dir = "plugin." + environment + ".json"
+
     if "save_log_level" not in configDict.keys():
         save_log_level = "ERROR"
     else:
@@ -124,14 +139,41 @@ if __name__ == '__main__':
         os.makedirs("Log")
     logger.add(f"onebotLog/KouriChat.log", level=save_log_level, rotation="1 days", retention="14 days")
 
-    # 根据初始化配置选择插件目录配置文件进行初始化
-    # 默认配置文件路径为./plugin.dev.json
-    # 根据在.env中的环境设置，进行更新
-    if "environment" not in configDict.keys():
-        plugin_dir = "plugin.dev.json"
-    else:
-        environment = configDict["environment"]
-        plugin_dir = "plugin." + environment + ".json"
+    master_id = int(configDict["master"])
+    if master_id == 10001:
+        logger.warning("主人qq号未初始化，定时任务可能无法正常运行")
+
+
+    #自动任务消息实现
+    async def send_message_to_user(target_user: int, message: str):
+        bot = get_bot()  # 获取当前 Bot 实例
+        await bot.send_private_msg(user_id=target_user, message=message)
+        
+    # 加载自动任务
+    @driver.on_startup
+    async def load_scheduled_tasks():
+        if hasattr(config,'behavior') and hasattr(config.behavior,'schedule_settings'):
+            schedule_settings = config.behavior.schedule_settings
+            if schedule_settings and schedule_settings.tasks:
+                tasks = schedule_settings.tasks
+                if tasks:
+                    logger.info(f"读取到{len(tasks)}个任务")
+                    tasks_added = 0
+                    for task in tasks:
+                        if not task.content:
+                            continue
+                        if task.schedule_type == "cron":
+                            trigger = CronTrigger.from_crontab(task.schedule_time)
+                        elif task.schedule_type == "interval":
+                            trigger = IntervalTrigger(seconds=int(task.schedule_time))
+                        else:
+                            raise ValueError(f"不支持的调度类型: {task.schedule_type}")
+                        scheduler.add_job(
+                            send_message_to_user,
+                            trigger = trigger,
+                            args = [master_id,task.content]
+                        )
+
 
     with open(plugin_dir, encoding="utf-8") as plg_dir:
         plugins = json.load(plg_dir)
@@ -205,23 +247,11 @@ if __name__ == '__main__':
     print_status("开始启动Kouri核心服务", "info", "CHECK")
     # 获取项目根目录
 
-    # 检查并初始化配置文件
-    config_path = os.path.join(root_dir, 'src', 'config', 'config.json')
-    config_template_path = os.path.join(root_dir, 'src', 'config', 'config.json.template')
-
-    if not os.path.exists(config_path) and os.path.exists(config_template_path):
-        logger = logging.getLogger('main')
-        logger.info("配置文件不存在，正在从模板创建...")
-        shutil.copy2(config_template_path, config_path)
-        logger.info(f"已从模板创建配置文件: {config_path}")
-
     # 配置日志
     # 清除所有现有日志处理器
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
 
-    logger_config = LoggerConfig(root_dir)
-    logger = logger_config.setup_logger('main')
     # 初始化colorama
     init()
 
@@ -238,8 +268,11 @@ if __name__ == '__main__':
     print("-" * 50)
     print_status("系统初始化完成", "success", "STAR_2")
     print("=" * 50)
-    
+
+if __name__ == "__main__":
+    # 初始化nonebot
+    nonebot.init()
+    app = nonebot.get_asgi()
+    bot_init()
     nonebot.run(app="__mp_main__:app")
-
-
 
