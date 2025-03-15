@@ -92,7 +92,6 @@ My-Dream-Moments/
 ├── data/                         # Runtime data storage
 ├── src/
 │   ├── handlers/                # Function processors
-│   ├── Plugins/                 # onebot QQ support
 │   ├── services/                # AI service interfaces
 │   ├── webui/                   # Visual configuration UI
 │   └── utils/                   # Utility libraries
