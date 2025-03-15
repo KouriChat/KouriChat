@@ -426,6 +426,10 @@
                 <div class="config-section h-100">
                     <h4 class="mb-4">
                         <i class="bi bi-sliders me-2"></i>高级配置
+                        <!-- 添加修改记忆按钮 -->
+                        <button type="button" class="btn btn-outline-primary float-end" onclick="modifyMemory()">
+                            <i class="bi bi-brain me-2"></i>修改记忆
+                        </button>
                     </h4>
                     <form id="otherConfigForm">
                         {% for group_name, configs in config_groups.items() %}
@@ -1571,6 +1575,24 @@
                 // 显示提示
                 showSaveNotification('历史配置已删除');
             }
+        }
+
+        // 添加修改记忆的处理函数
+        function modifyMemory() {
+            fetch('/modify_memory', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showSaveNotification('记忆修改程序已启动');
+                } else {
+                    showSaveNotification(data.message || '启动失败', 'error');
+                }
+            })
+            .catch(error => {
+                showSaveNotification('启动失败：' + error, 'error');
+            });
         }
     </script>
 </body>
