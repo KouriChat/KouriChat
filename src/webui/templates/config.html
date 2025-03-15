@@ -372,6 +372,176 @@
             color: #fff;
         }
         
+        .calendar-container {
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+        
+        .calendar-header {
+            display: flex;
+            margin-bottom: 8px;
+        }
+        
+        .calendar-cell {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0;
+            font-weight: 500;
+        }
+        
+        .calendar-body {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 1px solid transparent;
+            background-color: transparent;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .calendar-day:hover {
+            transform: scale(1.1);
+            background-color: rgba(var(--bs-primary-rgb), 0.1);
+            z-index: 1;
+        }
+        
+        .calendar-day.selected {
+            animation: pulse 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            background-color: var(--primary-color);
+            color: white;
+            transform: scale(1.05);
+        }
+        
+        .calendar-day.other-month {
+            opacity: 0.3;
+        }
+        
+        .calendar-day.today {
+            border-color: var(--primary-color);
+            font-weight: bold;
+        }
+        
+        /* 选中动画 */
+        @keyframes pulse {
+            0% { transform: scale(0.8); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1.05); }
+        }
+        
+        /* 波纹效果 */
+        .calendar-day::after {
+            content: "";
+            display: block;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            background-image: radial-gradient(circle, var(--primary-color) 10%, transparent 10%);
+            background-repeat: no-repeat;
+            background-position: 50%;
+            transform: scale(10, 10);
+            opacity: 0;
+            transition: transform 0.5s, opacity 0.8s;
+            border-radius: 50%;
+        }
+        
+        .calendar-day:active::after {
+            transform: scale(0, 0);
+            opacity: 0.3;
+            transition: 0s;
+        }
+        
+        /* 月份切换按钮动画 */
+        #prevMonth, #nextMonth {
+            transition: all 0.2s ease;
+        }
+        
+        #prevMonth:hover, #nextMonth:hover {
+            transform: scale(1.1);
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        /* 当前月份标题动画 */
+        #currentMonth {
+            transition: all 0.3s ease;
+        }
+        
+        /* 按钮组动画 */
+        .btn-group-sm .btn {
+            transition: all 0.2s ease;
+        }
+        
+        .btn-group-sm .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        /* 确认按钮动画 */
+        .modal-footer .btn-primary {
+            transition: all 0.2s ease;
+        }
+        
+        .modal-footer .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* 日历模态框动画效果 */
+        .modal.fade .modal-dialog {
+            transform: scale(0.8);
+            opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        
+        .modal.show .modal-dialog {
+            transform: scale(1);
+            opacity: 1;
+        }
+        
+        /* 月份切换动画 */
+        @keyframes slideInRight {
+            from {
+                transform: translateX(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideInLeft {
+            from {
+                transform: translateX(-30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
     </style>
     <script defer src="http://umami.kourichat.com/script.js" data-website-id="319cc5bc-c057-4f6c-8bc4-4af5e110add1"></script>
     <script src="/static/js/bootstrap.bundle.min.js"></script>
@@ -490,12 +660,6 @@
                                                 任务列表管理
                                                 <i class="bi bi-chevron-right float-end mt-1"></i>
                                             </a>
-                                        </div>
-                                        
-                                        <!-- 说明文字 -->
-                                        <div class="text-muted small">
-                                            <i class="bi bi-info-circle me-1"></i>
-                                            可以添加定时发送消息的任务，支持Cron表达式和时间间隔两种方式
                                         </div>
                                     </div>
                                 </div>
@@ -623,43 +787,45 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">
-                                <i class="bi bi-alarm me-2"></i>定时类型
+                                <i class="bi bi-calendar3 me-2"></i>定时设置
                             </label>
-                            <select class="form-select" id="scheduleType" onchange="toggleScheduleInput()">
-                                <option value="cron">Cron表达式</option>
-                                <option value="interval">时间间隔</option>
-                            </select>
-                        </div>
-                        <div id="intervalInputGroup" class="mb-3" style="display: none;">
-                            <label class="form-label">
-                                <i class="bi bi-hourglass-split me-2"></i>间隔时间（小时）
-                            </label>
-                            <input type="number" class="form-control" id="intervalHours" 
-                                   min="0.1" step="0.1" placeholder="例如：1.5">
-                            <div class="form-text">
-                                <i class="bi bi-info-circle me-1"></i>
-                                设置任务每隔多少小时执行一次：
-                                <ul class="mb-0 mt-1">
-                                    <li>0.5 = 每30分钟执行一次</li>
-                                    <li>1 = 每1小时执行一次</li>
-                                    <li>24 = 每天执行一次</li>
-                                </ul>
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-2">
+                                    <div class="input-group">
+                                        <span class="input-group-text">小时</span>
+                                        <input type="number" class="form-control" id="cronHour" 
+                                               min="0" max="23" step="1" value="9"
+                                               onchange="updateCronExpression()">
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6 mb-2">
+                                    <div class="input-group">
+                                        <span class="input-group-text">分钟</span>
+                                        <input type="number" class="form-control" id="cronMinute" 
+                                               min="0" max="59" step="1" value="0"
+                                               onchange="updateCronExpression()">
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <div id="cronInputGroup" class="mb-3">
-                            <label class="form-label">
-                                <i class="bi bi-calendar3 me-2"></i>Cron表达式
-                            </label>
-                            <input type="text" class="form-control" id="cronExpression" 
-                                   placeholder="例如：0 9 * * * (每天9点)">
+                            
+                            <!-- 添加日程按钮 -->
+                            <div class="mt-2 mb-3">
+                                <button type="button" class="btn btn-outline-primary w-100" id="scheduleButton" onclick="showCalendar()">
+                                    <i class="bi bi-calendar-date me-2"></i>选择具体日期
+                                </button>
+                                <div id="selectedDates" class="mt-2 small">
+                                    <!-- 这里将显示选择的日期 -->
+                                </div>
+                            </div>
+                            
+                            <!-- 隐藏的Cron表达式字段，用于存储完整表达式 -->
+                            <input type="hidden" class="form-control" id="cronExpression">
+                            
                             <div class="form-text">
                                 <i class="bi bi-info-circle me-1"></i>
-                                格式：分 时 日 月 星期，常用示例：
-                                <ul class="mb-0 mt-1">
-                                    <li>0 9 * * * = 每天早上9点</li>
-                                    <li>0 */2 * * * = 每2小时整点</li>
-                                    <li>0 9-18 * * * = 每天9点到18点的整点</li>
-                                </ul>
+                                当前设置: <span id="cronDescription">每天 09:00</span>
                             </div>
                         </div>
                     </form>
@@ -693,6 +859,59 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 日历选择器模态框 -->
+    <div class="modal fade" id="calendarModal" tabindex="-1" aria-labelledby="calendarModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="calendarModalLabel">
+                        <i class="bi bi-calendar3 me-2"></i>选择执行日期
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <button class="btn btn-sm btn-outline-secondary" id="prevMonth">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <h5 class="mb-0" id="currentMonth">2023年12月</h5>
+                        <button class="btn btn-sm btn-outline-secondary" id="nextMonth">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="btn-group-sm w-100 d-flex" role="group">
+                            <button type="button" class="btn btn-outline-primary flex-fill" onclick="selectAllDays()">全选</button>
+                            <button type="button" class="btn btn-outline-primary flex-fill" onclick="selectWeekdays()">工作日</button>
+                            <button type="button" class="btn btn-outline-primary flex-fill" onclick="selectWeekends()">周末</button>
+                            <button type="button" class="btn btn-outline-danger flex-fill" onclick="clearSelection()">清除</button>
+                        </div>
+                    </div>
+                    
+                    <div class="calendar-container">
+                        <div class="calendar-header d-flex">
+                            <div class="calendar-cell">日</div>
+                            <div class="calendar-cell">一</div>
+                            <div class="calendar-cell">二</div>
+                            <div class="calendar-cell">三</div>
+                            <div class="calendar-cell">四</div>
+                            <div class="calendar-cell">五</div>
+                            <div class="calendar-cell">六</div>
+                        </div>
+                        <div class="calendar-body" id="calendarBody">
+                            <!-- 日历JS动态生成 -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmDateSelection()">确定</button>
                 </div>
             </div>
         </div>
@@ -1370,8 +1589,11 @@
                 }
             });
             
-            // 默认显示cron输入框
-            toggleScheduleInput();
+            // 重置日期选择模式
+            dateMode = false;
+            selectedDates = [];
+            document.getElementById('selectedDates').innerHTML = '';
+            updateCronExpression();
         });
 
         // 添加一个函数来更新任务对话框中的发送对象选项
@@ -1401,38 +1623,28 @@
             const taskId = document.getElementById('taskId').value.trim();
             const chatId = document.getElementById('taskChatId').value;
             const content = document.getElementById('taskContent').value.trim();
-            const scheduleType = document.getElementById('scheduleType').value;
+            const cronExp = document.getElementById('cronExpression').value.trim();
             
             // 验证必填字段
             if (!taskId || !chatId || !content) {
                 showSaveNotification('请填写所有必填字段', 'error');
                 return;
             }
+
+            if (!cronExp) {
+                // 如果没有cron表达式，重新生成
+                updateCronExpression();
+            }
             
+            // 创建任务对象
             const task = {
                 task_id: taskId,
                 chat_id: chatId,
                 content: content,
-                schedule_type: scheduleType,
+                schedule_type: 'cron',
+                schedule_time: document.getElementById('cronExpression').value,
                 is_active: true
             };
-            
-            // 根据调度类型设置相应的值
-            if (scheduleType === 'cron') {
-                const cronExp = document.getElementById('cronExpression').value.trim();
-                if (!cronExp) {
-                    showSaveNotification('请输入Cron表达式', 'error');
-                    return;
-                }
-                task.schedule_time = cronExp;
-            } else {
-                const hours = parseFloat(document.getElementById('intervalHours').value);
-                if (!hours || hours <= 0) {
-                    showSaveNotification('请输入有效的间隔时间', 'error');
-                    return;
-                }
-                task.schedule_time = (hours * 3600).toString(); // 转换为秒并存储为字符串
-            }
             
             // 获取现有的任务列表
             let tasks = [];
@@ -1495,9 +1707,7 @@
                         <div class="me-auto">
                             <div class="d-flex align-items-center mb-1">
                                 <span class="badge bg-primary me-2">${task.task_id}</span>
-                                <small class="text-muted">${task.schedule_type === 'cron' ? 
-                                    `Cron: ${task.schedule_time}` : 
-                                    `每 ${task.schedule_time.split(':')[0]}:${task.schedule_time.split(':')[1]}`}</small>
+                                <small class="text-muted">Cron: ${task.schedule_time}</small>
                             </div>
                             <div class="mb-1">发送给：${task.chat_id}</div>
                             <small class="text-muted">${task.content}</small>
@@ -1536,21 +1746,6 @@
             }
         }
 
-        // 添加切换调度类型输入框的函数
-        function toggleScheduleInput() {
-            const scheduleType = document.getElementById('scheduleType').value;
-            const cronInput = document.getElementById('cronExpression').parentElement;
-            const intervalInput = document.getElementById('intervalHours').parentElement;
-            
-            if (scheduleType === 'cron') {
-                cronInput.style.display = 'block';
-                intervalInput.style.display = 'none';
-            } else {
-                cronInput.style.display = 'none';
-                intervalInput.style.display = 'block';
-            }
-        }
-
         // 添加删除历史配置的函数
         function deleteHistoryConfig(index) {
             // 获取现有的历史配置
@@ -1571,6 +1766,306 @@
                 // 显示提示
                 showSaveNotification('历史配置已删除');
             }
+        }
+
+        // 日历功能相关变量
+        let currentDate = new Date();
+        let selectedDates = [];
+        let dateMode = false; // false表示"每天"模式，true表示"特定日期"模式
+
+        // 显示日历模态框
+        function showCalendar() {
+            generateCalendar(currentDate.getFullYear(), currentDate.getMonth());
+            const calendarModal = new bootstrap.Modal(document.getElementById('calendarModal'));
+            calendarModal.show();
+        }
+
+        // 生成日历
+        function generateCalendar(year, month) {
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startDayOfWeek = firstDay.getDay();
+            const daysInMonth = lastDay.getDate();
+            
+            // 更新当前月份显示
+            const monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+            document.getElementById('currentMonth').textContent = `${year}年${monthNames[month]}`;
+            
+            const calendarBody = document.getElementById('calendarBody');
+            calendarBody.innerHTML = '';
+            
+            // 添加上个月的日期
+            const prevMonthLastDay = new Date(year, month, 0).getDate();
+            for (let i = 0; i < startDayOfWeek; i++) {
+                const dayElement = document.createElement('div');
+                const day = prevMonthLastDay - startDayOfWeek + i + 1;
+                dayElement.className = 'calendar-day other-month';
+                dayElement.textContent = day;
+                calendarBody.appendChild(dayElement);
+            }
+            
+            // 添加当前月的日期
+            const today = new Date();
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day';
+                dayElement.textContent = i;
+                
+                // 添加自定义动画延迟
+                dayElement.style.animationDelay = `${i * 0.01}s`;
+                
+                // 检查是否是今天
+                if (year === today.getFullYear() && month === today.getMonth() && i === today.getDate()) {
+                    dayElement.classList.add('today');
+                }
+                
+                // 检查是否被选中
+                const dateStr = `${year}-${month+1}-${i}`;
+                if (selectedDates.includes(dateStr)) {
+                    dayElement.classList.add('selected');
+                }
+                
+                // 修改点击事件，添加动画处理
+                dayElement.addEventListener('click', function() {
+                    // 创建点击波纹效果
+                    this.classList.remove('selected');
+                    void this.offsetWidth; // 触发重绘，重置动画
+                    
+                    this.classList.toggle('selected');
+                    const day = parseInt(this.textContent);
+                    const dateStr = `${year}-${month+1}-${day}`;
+                    
+                    if (this.classList.contains('selected')) {
+                        if (!selectedDates.includes(dateStr)) {
+                            selectedDates.push(dateStr);
+                        }
+                    } else {
+                        selectedDates = selectedDates.filter(d => d !== dateStr);
+                    }
+                });
+                
+                calendarBody.appendChild(dayElement);
+            }
+            
+            // 添加下个月的日期
+            const totalCells = 42; // 6行7列
+            const remainingCells = totalCells - (startDayOfWeek + daysInMonth);
+            for (let i = 1; i <= remainingCells; i++) {
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day other-month';
+                dayElement.textContent = i;
+                calendarBody.appendChild(dayElement);
+            }
+        }
+
+        // 全选当月所有日期
+        function selectAllDays() {
+            const days = document.querySelectorAll('.calendar-day:not(.other-month)');
+            days.forEach(day => {
+                day.classList.add('selected');
+                const dayNum = parseInt(day.textContent);
+                const dateStr = `${currentDate.getFullYear()}-${currentDate.getMonth()+1}-${dayNum}`;
+                if (!selectedDates.includes(dateStr)) {
+                    selectedDates.push(dateStr);
+                }
+            });
+        }
+
+        // 选择工作日（周一到周五）
+        function selectWeekdays() {
+            clearSelection();
+            const days = document.querySelectorAll('.calendar-day:not(.other-month)');
+            days.forEach(day => {
+                const dayNum = parseInt(day.textContent);
+                const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), dayNum);
+                const dayOfWeek = dayDate.getDay();
+                
+                // 0是周日，1-5是周一到周五，6是周六
+                if (dayOfWeek > 0 && dayOfWeek < 6) {
+                    day.classList.add('selected');
+                    const dateStr = `${currentDate.getFullYear()}-${currentDate.getMonth()+1}-${dayNum}`;
+                    if (!selectedDates.includes(dateStr)) {
+                        selectedDates.push(dateStr);
+                    }
+                }
+            });
+        }
+
+        // 选择周末（周六和周日）
+        function selectWeekends() {
+            clearSelection();
+            const days = document.querySelectorAll('.calendar-day:not(.other-month)');
+            days.forEach(day => {
+                const dayNum = parseInt(day.textContent);
+                const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), dayNum);
+                const dayOfWeek = dayDate.getDay();
+                
+                // 0是周日，6是周六
+                if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    day.classList.add('selected');
+                    const dateStr = `${currentDate.getFullYear()}-${currentDate.getMonth()+1}-${dayNum}`;
+                    if (!selectedDates.includes(dateStr)) {
+                        selectedDates.push(dateStr);
+                    }
+                }
+            });
+        }
+
+        // 清除选择
+        function clearSelection() {
+            const days = document.querySelectorAll('.calendar-day.selected');
+            days.forEach(day => {
+                day.classList.remove('selected');
+            });
+            selectedDates = [];
+        }
+
+        // 确认日期选择
+        function confirmDateSelection() {
+            // 如果没有选择日期，则切换回每天模式
+            if (selectedDates.length === 0) {
+                dateMode = false;
+                updateCronExpression();
+                
+                // 添加一个牛逼的关闭效果
+                const modalElement = document.getElementById('calendarModal');
+                modalElement.classList.add('fade-out');
+                
+                setTimeout(() => {
+                    bootstrap.Modal.getInstance(modalElement).hide();
+                    modalElement.classList.remove('fade-out');
+                }, 300);
+                return;
+            }
+            
+            // 添加选择确认的视觉反馈
+            const selectedElements = document.querySelectorAll('.calendar-day.selected');
+            selectedElements.forEach((el, index) => {
+                // 添加闪烁效果
+                setTimeout(() => {
+                    el.style.animation = 'pulse 0.3s';
+                }, index * 50);
+            });
+            
+            // 等待动画完成后再关闭
+            setTimeout(() => {
+                dateMode = true;
+                updateSelectedDatesDisplay();
+                updateCronExpression();
+                bootstrap.Modal.getInstance(document.getElementById('calendarModal')).hide();
+            }, 300);
+        }
+
+        // 更新选中日期的显示
+        function updateSelectedDatesDisplay() {
+            const container = document.getElementById('selectedDates');
+            
+            if (selectedDates.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            // 排序日期
+            selectedDates.sort();
+            
+            // 显示选中的日期
+            container.innerHTML = `<div class="mt-2 text-primary"><i class="bi bi-calendar-check me-1"></i>已选择 ${selectedDates.length} 个日期</div>`;
+            
+            // 日期过多，显示部分
+            let displayDates = selectedDates;
+            if (selectedDates.length > 5) {
+                displayDates = selectedDates.slice(0, 5);
+                container.innerHTML += `<div class="d-flex flex-wrap mt-1">
+                    ${displayDates.map(d => `<span class="badge bg-primary me-1 mb-1">${d}</span>`).join('')}
+                    <span class="badge bg-secondary">+${selectedDates.length - 5}个</span>
+                </div>`;
+            } else {
+                container.innerHTML += `<div class="d-flex flex-wrap mt-1">
+                    ${displayDates.map(d => `<span class="badge bg-primary me-1 mb-1">${d}</span>`).join('')}
+                </div>`;
+            }
+        }
+
+        // 修改月份切换的处理函数
+        document.getElementById('prevMonth').addEventListener('click', function() {
+            const calendarBody = document.getElementById('calendarBody');
+            const currentMonthEl = document.getElementById('currentMonth');
+            
+            // 添加退出动画
+            calendarBody.style.animation = 'slideInRight 0.3s forwards';
+            currentMonthEl.style.animation = 'slideInRight 0.3s forwards';
+            
+            // 在动画结束后更新日历
+            setTimeout(() => {
+                currentDate.setMonth(currentDate.getMonth() - 1);
+                generateCalendar(currentDate.getFullYear(), currentDate.getMonth());
+                
+                // 重设动画
+                calendarBody.style.animation = '';
+                currentMonthEl.style.animation = '';
+            }, 150);
+        });
+
+        document.getElementById('nextMonth').addEventListener('click', function() {
+            const calendarBody = document.getElementById('calendarBody');
+            const currentMonthEl = document.getElementById('currentMonth');
+            
+            // 添加退出动画
+            calendarBody.style.animation = 'slideInLeft 0.3s forwards';
+            currentMonthEl.style.animation = 'slideInLeft 0.3s forwards';
+            
+            // 在动画结束后更新日历
+            setTimeout(() => {
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                generateCalendar(currentDate.getFullYear(), currentDate.getMonth());
+                
+                // 重设动画
+                calendarBody.style.animation = '';
+                currentMonthEl.style.animation = '';
+            }, 150);
+        });
+
+        // 更新Cron表达式的函数，支持特定日期
+        function updateCronExpression() {
+            const minute = document.getElementById('cronMinute').value;
+            const hour = document.getElementById('cronHour').value;
+            
+            let cronExp;
+            let description;
+            
+            if (dateMode && selectedDates.length > 0) {
+                // 特定日期模式
+                // 提取所有日期的日和月
+                const days = {};
+                selectedDates.forEach(dateStr => {
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    if (!days[month]) days[month] = [];
+                    days[month].push(day);
+                });
+                
+                // 构建月和日的表达式
+                const monthsExp = Object.keys(days).join(',');
+                
+                // 为每个月构建天数表达式
+                let daysExp = '';
+                for (const month in days) {
+                    if (daysExp) daysExp += ',';
+                    daysExp += days[month].join(',');
+                }
+                
+                cronExp = `${minute} ${hour} ${daysExp} ${monthsExp} *`;
+                description = `选定的 ${selectedDates.length} 天，每天 ${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+            } else {
+                // 每天模式
+                cronExp = `${minute} ${hour} * * *`;
+                description = `每天 ${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+            }
+            
+            // 更新隐藏的Cron表达式输入框
+            document.getElementById('cronExpression').value = cronExp;
+            
+            // 更新描述文本
+            document.getElementById('cronDescription').textContent = description;
         }
     </script>
 </body>
