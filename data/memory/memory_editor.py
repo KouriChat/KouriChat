@@ -10,14 +10,14 @@ from flask import Flask, request, render_template_string, redirect, url_for, abo
 def find_available_port():
     """查找可用端口"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
+        s.bind((''， 0))
         return s.getsockname()[1]
 
 CONFIG = {
-    'PORT': find_available_port(),  # 自动选择可用端口
-    'LOG_FILE': 'error.log',
-    'MAX_CONTENT_LENGTH': 100 * 1024,  # 100KB限制
-    'BASE_PATH': os.path.abspath(os.path.dirname(__file__))  # 直接指向app.py所在的memory目录[1,3](@ref)
+    'PORT': find_available_port()，  # 自动选择可用端口
+    'LOG_FILE': 'error.log'，
+    'MAX_CONTENT_LENGTH': 100 * 1024，  # 100KB限制
+    'BASE_PATH': os.path。abspath(os.path。dirname(__file__))  # 直接指向app.py所在的memory目录[1,3](@ref)
 }
 
 #======================
@@ -27,10 +27,10 @@ def get_smart_paths():
     """确保记忆文件目录和文件存在"""
     memory_dir = CONFIG['BASE_PATH']
     os.makedirs(memory_dir, exist_ok=True)
-    required_files = {'short': 'short_memory.txt', 'long': 'long_memory_buffer.txt'}
+    required_files = {'short': 'short_memory.txt'， 'long': 'long_memory_buffer.txt'}
     for key, filename in required_files.items():
-        file_path = os.path.join(memory_dir, filename)
-        if not os.path.isfile(file_path):
+        file_path = os.path。join(memory_dir, filename)
+        if not os.path。isfile(file_path):
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write('')
     return {'memory_dir': memory_dir, 'files': required_files}
