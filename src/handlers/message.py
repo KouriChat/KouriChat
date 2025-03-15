@@ -124,8 +124,7 @@ class MessageHandler:
                     sender_name=sender_name,
                     message=filtered_message,
                     reply=filtered_reply,
-                    is_group=is_group,
-                    timestamp=datetime.now()
+                    is_group=is_group
                 )
                 session.add(chat_message)
                 session.commit()
@@ -870,7 +869,7 @@ class MessageHandler:
                 with Session() as session:
                     recent_messages = session.query(ChatMessage).filter(
                         ChatMessage.sender_id == username
-                    ).order_by(ChatMessage.timestamp.desc()).limit(5).all()
+                    ).order_by(ChatMessage.created_at.desc()).limit(5).all()
                     
                     recent_replies = [msg.reply for msg in recent_messages if msg.reply]
             except Exception as e:

@@ -833,12 +833,12 @@ def main(debug_mode=False):
         )
         memory_handler = MemoryHandler(
             root_dir=root_dir,
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_BASE_URL,
-            model=MODEL,
-            max_token=MAX_TOKEN,
-            temperature=TEMPERATURE,
-            max_groups=MAX_GROUPS,
+            api_key=config.llm.api_key,
+            base_url=config.llm.base_url,
+            model=config.llm.model,
+            max_token=config.llm.max_tokens,
+            temperature=config.llm.temperature,
+            max_groups=config.behavior.context.max_groups,
             bot_name=ROBOT_WX_NAME
         )
         moonshot_ai = ImageRecognitionService(
