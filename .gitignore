@@ -20,10 +20,6 @@ wxauto文件/
 # Python310
 Python310/
 
-# Nonebot Local Config
-oneBotLog/
-oneBotConfig/
-
 # IntelliJ project files
 .idea
 *.iml

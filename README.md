@@ -116,7 +116,6 @@ KouriChat/
 ├── data/                         # 运行数据存储
 ├── src/
 │   ├── handlers/                # 功能处理器
-│   ├── Plugins/                 # onebot QQ 适配插件
 │   ├── services/                # AI服务接口
 │   ├── webui/                   # 可视化配置界面
 │   └── utils/                   # 工具库

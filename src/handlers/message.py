@@ -31,7 +31,7 @@ logger = logging.getLogger('main')
 class MessageHandler:
     def __init__(self, root_dir, api_key, base_url, model, max_token, temperature,
                  max_groups, robot_name, prompt_content, image_handler, emoji_handler, voice_handler, memory_handler,
-                 is_qq=False, is_debug=False):
+                 is_debug=False):
         self.root_dir = root_dir
         self.api_key = api_key
         self.model = model
@@ -60,12 +60,11 @@ class MessageHandler:
         self.chat_contexts = {}
 
         # 微信实例
-        if not is_qq:
-            if is_debug:
-                self.wx = None
-                logger.info("调试模式跳过微信初始化")
-            else:
-                self.wx = WeChat()
+        if is_debug:
+            self.wx = None
+            logger.info("调试模式跳过微信初始化")
+        else:
+            self.wx = WeChat()
 
         # 添加 handlers
         self.image_handler = image_handler
@@ -737,182 +736,3 @@ class MessageHandler:
         """处理消息队列中的消息（已废弃，保留兼容）"""
         logger.warning("process_messages方法已废弃，使用handle_message代替")
         pass
-
-    #以下是onebot QQ方法实现
-    def QQ_handle_voice_request(self, content, qqid, sender_name):
-        """处理QQ来源的语音请求"""
-        logger.info("处理语音请求")
-        reply = self.get_api_response(content, qqid)
-        if "</think>" in reply:
-            reply = reply.split("</think>", 1)[1].strip()
-
-        voice_path = self.voice_handler.generate_voice(reply)
-        # 异步保存消息记录
-        threading.Thread(target=self.save_message,
-                         args=(qqid, sender_name, content, reply)).start()
-        if voice_path:
-            return voice_path
-        else:
-            return reply
-
-    def QQ_handle_random_image_request(self, content, qqid, sender_name):
-        """处理随机图片请求"""
-        logger.info("处理随机图片请求")
-        image_path = self.image_handler.get_random_image()
-        if image_path:
-            reply = "给主人你找了一张好看的图片哦~"
-            threading.Thread(target=self.save_message, args=(qqid, sender_name, content, reply)).start()
-
-            return image_path
-            # 异步保存消息记录
-        return None
-
-    def QQ_handle_image_generation_request(self, content, qqid, sender_name):
-        """处理图像生成请求"""
-        logger.info("处理画图请求")
-        try:
-            image_path = self.image_handler.generate_image(content)
-            if image_path:
-                reply = "这是按照主人您的要求生成的图片\\(^o^)/~"
-                threading.Thread(target=self.save_message,
-                                 args=(qqid, sender_name, content, reply)).start()
-
-                return image_path
-                # 异步保存消息记录
-            else:
-                reply = "抱歉主人，图片生成失败了..."
-                threading.Thread(target=self.save_message,
-                                 args=(qqid, sender_name, content, reply)).start()
-            return None
-        except:
-            reply = "抱歉主人，图片生成失败了..."
-            threading.Thread(target=self.save_message,
-                             args=(qqid, sender_name, content, reply)).start()
-            return None
-
-    def QQ_handle_text_message(self, content, qqid, sender_name):
-        """处理普通文本消息"""
-        # 添加正则表达式过滤时间戳
-        time_pattern = r'\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\]'
-        content = re.sub(time_pattern, '', content)
-
-        # 更通用的模式
-        general_pattern = r'\[\d[^\]]*\]|\[\d+\]'
-        content = re.sub(general_pattern, '', content)
-
-        logger.info("处理普通文本回复")
-
-        # 定义结束关键词
-        end_keywords = [
-            "结束", "再见", "拜拜", "下次聊", "先这样", "告辞", "bye", "晚点聊", "回头见",
-            "稍后", "改天", "有空聊", "去忙了", "暂停", "待一会儿", "过一会儿", "晚安", "休息",
-            "走了", "撤了", "闪了", "不聊了", "断了", "下线", "离开", "停", "歇", "退"
-        ]
-
-        # 检查消息中是否包含结束关键词
-        is_end_of_conversation = any(keyword in content for keyword in end_keywords)
-        if is_end_of_conversation:
-            # 如果检测到结束关键词，在消息末尾添加提示
-            content += "\n请以你的身份回应用户的结束语。"
-            logger.info(f"检测到对话结束关键词，尝试生成更自然的结束语")
-
-        # 获取 API 回复, 需要传入 username
-        reply = self.get_api_response(content, qqid)
-        if "</think>" in reply:
-            think_content, reply = reply.split("</think>", 1)
-            logger.info("\n思考过程:")
-            logger.info(think_content.strip())
-            logger.info(reply.strip())
-        else:
-            logger.info("\nAI回复:")
-            logger.info(reply)
-
-            # 过滤括号内的动作和情感描述
-        reply = self._filter_action_emotion(reply)
-
-        try:
-            # 增强型智能分割器 - 优化版
-            delayed_reply = []
-            current_sentence = []
-            ending_punctuations = {'。', '！', '？', '!', '?', '…', '……'}
-            split_symbols = {'\\', '|', '￤', '\n', '\\n'}  # 支持多种手动分割符
-            last_split_idx = -1  # 记录上一次分割的位置，防止重复分割
-
-            for idx, char in enumerate(reply):
-                # 处理手动分割符号（优先级最高）
-                if char in split_symbols:
-                    if current_sentence and idx > last_split_idx:
-                        delayed_reply.append(''.join(current_sentence).strip())
-                        last_split_idx = idx
-                    current_sentence = []
-                    continue
-
-                current_sentence.append(char)
-
-                # 处理中文标点和省略号
-                if char in ending_punctuations:
-                    # 排除英文符号在短句中的误判（如英文缩写）
-                    if char in {'!', '?'} and len(current_sentence) < 4:
-                        continue
-
-                    # 处理连续省略号
-                    if char == '…' and idx > 0 and reply[idx - 1] == '…':
-                        if len(current_sentence) >= 3 and idx > last_split_idx:  # 至少三个点形成省略号
-                            delayed_reply.append(''.join(current_sentence).strip())
-                            last_split_idx = idx
-                            current_sentence = []
-                    elif idx > last_split_idx:  # 确保不会在同一位置重复分割
-                        delayed_reply.append(''.join(current_sentence).strip())
-                        last_split_idx = idx
-                        current_sentence = []
-
-            # 处理剩余内容
-            if current_sentence:
-                delayed_reply.append(''.join(current_sentence).strip())
-
-            # 过滤空内容和去重
-            delayed_reply = [s for s in delayed_reply if s]  # 过滤空内容
-            # 去除完全相同的相邻句子
-            if len(delayed_reply) > 1:
-                unique_reply = [delayed_reply[0]]
-                for i in range(1, len(delayed_reply)):
-                    if delayed_reply[i] != delayed_reply[i - 1]:
-                        unique_reply.append(delayed_reply[i])
-                delayed_reply = unique_reply
-
-            # 检查回复中是否包含情感关键词并发送表情包
-            logger.info("开始检查AI回复的情感关键词")
-            emotion_detected = False
-
-            if not hasattr(self.emoji_handler, 'emotion_map'):
-                logger.error("emoji_handler 缺少 emotion_map 属性")
-                return delayed_reply  # 直接返回分割后的文本，在控制台打印error
-
-            for emotion, keywords in self.emoji_handler.emotion_map.items():
-                if not keywords:  # 跳过空的关键词列表
-                    continue
-
-                if any(keyword in reply for keyword in keywords):
-                    emotion_detected = True
-                    logger.info(f"在回复中检测到情感: {emotion}")
-
-                    emoji_path = self.emoji_handler.get_emotion_emoji(reply)
-                    if emoji_path:
-                        # try:
-                        #     self.wx.SendFiles(filepath=emoji_path, who=chat_id)
-                        #     logger.info(f"已发送情感表情包: {emoji_path}")
-                        # except Exception as e:
-                        #     logger.error(f"发送表情包失败: {str(e)}")
-                        delayed_reply.append(emoji_path)  #在发送消息队列后增加path，由响应器处理
-                    else:
-                        logger.warning(f"未找到对应情感 {emotion} 的表情包")
-                    break
-
-            if not emotion_detected:
-                logger.info("未在回复中检测到明显情感")
-        except Exception as e:
-            logger.error(f"消息处理过程中发生错误: {str(e)}")
-        # 异步保存消息记录
-        threading.Thread(target=self.save_message,
-                         args=(qqid, sender_name, content, reply)).start()
-        return delayed_reply
