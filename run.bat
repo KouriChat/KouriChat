@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 
 :: 设置控制台编码为 GBK
 chcp 936 >nul
-title My Dream Moments 梦想家
+title My Dream Moments 启动器
 
 cls
 echo ====================================
@@ -19,8 +19,8 @@ echo.
 :: 添加错误捕获
 echo [尝试] 正在启动程序...
 
-:: 检查 Python 是否已安装
-echo [检查] 正在检查Python环境...
+:: 检测 Python 是否已安装
+echo [检测] 正在检测Python环境...
 python --version >nul 2>&1
 if errorlevel 1 (
     echo [错误] Python未安装，请先安装Python
@@ -30,13 +30,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: 检查 Python 版本
+:: 检测 Python 版本
 for /f "tokens=2" %%I in ('python -V 2^>^&1') do set PYTHON_VERSION=%%I
 echo [尝试] 检测到Python版本: !PYTHON_VERSION!
 for /f "tokens=2 delims=." %%I in ("!PYTHON_VERSION!") do set MINOR_VERSION=%%I
 if !MINOR_VERSION! GEQ 13 (
-    echo [错误] 不支持 Python 3.13 及以上版本
-    echo [错误] 请使用 Python 3.12 或更低版本
+    echo [警告] 不支持 Python 3.13 及更高版本
+    echo [警告] 请使用 Python 3.12 或更低版本
     echo.
     echo 按任意键退出...
     pause >nul
@@ -87,7 +87,7 @@ if errorlevel 1 (
         exit /b 1
     )
 )
-echo [成功] 虚拟环境创建完成
+echo [成功] 虚拟环境已创建
 
 :activate_venv
 :: 激活虚拟环境
@@ -95,25 +95,25 @@ echo [尝试] 正在激活虚拟环境...
 
 :: 再次检查激活脚本是否存在
 if not exist %VENV_DIR%\Scripts\activate.bat (
-    echo [错误] 虚拟环境激活脚本不存在
+    echo [警告] 虚拟环境激活脚本不存在
     echo.
-    echo 尝试直接使用系统 Python 继续...
+    echo 将直接使用系统 Python 继续...
     goto :skip_venv
 )
 
 call %VENV_DIR%\Scripts\activate.bat 2>nul
 if errorlevel 1 (
-    echo [错误] 虚拟环境激活失败，尝试直接使用系统 Python 继续...
+    echo [警告] 虚拟环境激活失败，将直接使用系统 Python 继续...
     goto :skip_venv
 )
 echo [成功] 虚拟环境已激活
 goto :install_deps
 
 :skip_venv
-echo [警告] 将使用系统 Python 环境继续
+echo [尝试] 将使用系统 Python 继续运行
 
 :install_deps
-:: 定义镜像源列表
+:: 设置镜像源列表
 set "MIRRORS[1]=阿里云源|https://mirrors.aliyun.com/pypi/simple/"
 set "MIRRORS[2]=清华源|https://pypi.tuna.tsinghua.edu.cn/simple"
 set "MIRRORS[3]=腾讯源|https://mirrors.cloud.tencent.com/pypi/simple"
@@ -139,15 +139,15 @@ if not exist requirements.txt (
                     set SUCCESS=1
                 ) else (
                     echo [失败] %%a安装失败，尝试下一个源
-                    echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    echo ──────────────────────────────────────────────────────
                 )
             )
         )
     )
     
     if !SUCCESS! EQU 0 (
-        echo [错误] 所有镜像源安装失败，建议：
-        echo       1. 检查网络连接
+        echo [错误] 所有镜像源安装失败，请检查：
+        echo       1. 网络连接问题
         echo       2. 手动安装：pip install -r requirements.txt
         echo       3. 临时关闭防火墙/安全软件
         echo.
@@ -157,9 +157,9 @@ if not exist requirements.txt (
     )
 )
 
-:: 检查主程序文件是否存在
+:: 检查配置文件是否存在
 if not exist run_config_web.py (
-    echo [错误] 主程序文件 run_config_web.py 不存在
+    echo [错误] 配置文件 run_config_web.py 不存在
     echo.
     echo 按任意键退出...
     pause >nul
