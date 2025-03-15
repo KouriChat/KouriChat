@@ -15,7 +15,7 @@
 <!-- 如果有文档格式或布局变更，请提供截图 | If there are format or layout changes, please provide screenshots --> 
 
 
-# **在提出此拉取请求时，我确认了以下几点（请复选框）：**
+## **在提出此拉取请求时，我确认了以下几点（请复选框）：**
 
 _请剔除无关项._
 _欢迎新人在按下提交前阅读[贡献者指南](https://github.com/freeCodeCamp/how-to-contribute-to-open-source/blob/main/README-CN.md)。| Newcomers are welcome to [Contributor Guide](https://github.com/freeCodeCamp/how-to-contribute-to-open-source/blob/main/README.md) before commit._
