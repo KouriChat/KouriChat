@@ -24,6 +24,8 @@ openpyxl
 
 sentence-transformers
 faiss-cpu
-numpy
+numpy==1.26.4
 openai
 ruamel.yaml
+transformers==4.30.2
+torch==2.0.1
