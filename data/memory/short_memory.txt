@@ -1,0 +1,1 @@
+1111111OOO代码一定要带屎OOO  run_config_web.py 这个是webui启动器， config.html 这个是其中的一个模板，帮我完善一下记忆修改功能，要求实时修改，实时显示文本内容，有保存键和取消键，保存或取消后会自动跳转回上一级界面，txt路径在 memory 里面，名字分别叫做“long_memory_buffer.txt”和“short_memory.txt”​
