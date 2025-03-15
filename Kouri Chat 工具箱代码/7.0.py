@@ -6,6 +6,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
 from PIL import Image, ImageTk
 import io
+import webbrowser  # 用于打开浏览器
+import os  # 用于检查文件大小
 
 # 配置日志记录
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -29,7 +31,7 @@ def save_config(config):
 # API测试类
 class APITester:
     def __init__(self, base_url, api_key, model, messages=None):
-        self.messages = messages or [{"role": "user", "content": "测试消息"}]
+        self.messages = messages or [{"role": "用户", "content": "测试消息"}]
         self.base_url = base_url
         self.api_key = api_key
         self.model = model
@@ -62,7 +64,7 @@ class APITester:
             f"描述：{character_desc}\n"
             f"请以清晰的格式返回。"
         )
-        messages = [{"role": "user", "content": prompt}]
+        messages = [{"role": "用户", "content": prompt}]
         data = {
             "model": self.model,
             "messages": messages
@@ -82,7 +84,7 @@ class APITester:
             f"人设内容：{profile}\n"
             f"请返回润色后的完整人设。"
         )
-        messages = [{"role": "user", "content": prompt}]
+        messages = [{"role": "用户", "content": prompt}]
         data = {
             "model": self.model,
             "messages": messages
@@ -124,7 +126,7 @@ class APITester:
 
 # 处理API请求错误
 def handle_api_error(e, server_type):
-    error_msg = f"⚠️ 访问{server_type}遇到问题："
+    error_msg = f"警告：访问{server_type}遇到问题："
     
     if isinstance(e, requests.exceptions.ConnectionError):
         error_msg += "网络连接失败\n🔧 请检查：1.服务器是否启动 2.地址端口是否正确 3.网络是否通畅 4.防火墙设置"
@@ -157,6 +159,7 @@ def handle_api_error(e, server_type):
     logging.error(error_msg)
     return error_msg
 
+
 # 测试实际 AI 对话服务器
 def test_servers():
     config = read_config()
@@ -168,7 +171,7 @@ def test_servers():
         config.get('real_server_base_url'),
         config.get('api_key'),
         config.get('model'),
-        messages=[{"role": "user", "content": "测试消息"}]
+        messages=[{"role": "用户", "content": "测试消息"}]
     )
 
     try:
@@ -260,6 +263,7 @@ class KouriChatToolbox:
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="帮助", menu=help_menu)
         help_menu.add_command(label="使用指南", command=self.show_help)
+        help_menu.add_command(label="历史版本", command=self.open_history_page)
 
         # 配置框架
         config_frame = ttk.LabelFrame(self.root, text="配置", padding=10)
@@ -367,17 +371,26 @@ class KouriChatToolbox:
     def import_profile(self):
         file_path = filedialog.askopenfilename(
             filetypes=[("Text Files", "*.txt")],
-            title="选择人设文件"  # 确保这里有一个右括号
+            title="选择人设文件"
         )
-        if file_path:
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    self.generated_profile = f.read()
-                messagebox.showinfo("导入成功", "人设文件已导入！")
-                self.log_text.insert("end", f"导入的人设内容:\n{self.generated_profile}\n")
-                self.log_text.see("end")
-            except Exception as e:
-                messagebox.showerror("导入失败", f"导入文件时出错：{e}")
+        if not file_path:
+            return
+
+                # 检查文件大小（限制为 10MB）
+        file_size = os.path.getsize(file_path)  # 获取文件大小（单位：字节）
+        if file_size > 10 * 1024 * 1024:  # 10MB
+            messagebox.showwarning("文件过大", "文件大小超过 10MB，请选择较小的文件！")
+            return
+
+        try:
+            # 使用流式读取文件内容，避免一次性加载大文件
+            with open(file_path, "r", encoding="utf-8") as f:
+                self.generated_profile = f.read()
+            messagebox.showinfo("导入成功", "人设文件已导入！")
+            self.log_text.insert("end", f"导入的人设内容:\n{self.generated_profile}\n")
+            self.log_text.see("end")
+        except Exception as e:
+            messagebox.showerror("导入失败", f"导入文件时出错：{e}")
 
     def export_profile(self):
         if not self.generated_profile:
@@ -533,6 +546,10 @@ class KouriChatToolbox:
             self.model_entry.insert(0, model_name)
             messagebox.showinfo("设置成功", f"模型名称已设置为：{model_name}")
 
+    def open_history_page(self):
+        """打开历史版本页面"""
+        webbrowser.open("https://github.com/linxiajin08/Kouri-Chat-")
+
     def show_help(self):
         """显示帮助信息"""
         help_text = (
@@ -576,3 +593,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = KouriChatToolbox(root)
     root.mainloop()
+
