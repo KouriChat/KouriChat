@@ -1,9 +1,14 @@
 import os
 import logging
-import random
 from typing import List, Optional, Dict  # 添加 Dict 导入
 from datetime import datetime
+from src.memories.key_memory import KeyMemory
+from src.memories.long_term_memory import LongTermMemory
+from src.memories.memory.core.rag import RAG, OnlineCrossEncoderReRanker, OnlineEmbeddingModel
+from src.memories.memory_saver import MySQLMemorySaver, SQLiteMemorySaver
+from src.memories.short_term_memory import ShortTermMemory
 from src.services.ai.llm_service import LLMService
+
 import jieba
 import re
 from src.handlers.emotion import SentimentResourceLoader, SentimentAnalyzer
@@ -18,6 +23,11 @@ import time  # 添加time模块导入，用于超时控制
 EMBEDDING_MODEL = "text-embedding-3-large"  # 默认嵌入模型
 EMBEDDING_FALLBACK_MODEL = "text-embedding-ada-002"  # 备用嵌入模型
 
+# 从config模块获取配置
+from src.config import config
+from src.services.ai.llms.openai_llm import OpenAILLM
+
+
 logger = logging.getLogger('main')
 
 # 定义需要重点关注的关键词列表
@@ -29,11 +39,30 @@ KEYWORDS = [
     "核对", "检查", "温馨提示", "小心"
 ]
 
+def get_saver(is_long_term: bool = False):
+    if config["categories"]["memory_settings"]["db_settings"]["type"] == "sqlite":
+        return SQLiteMemorySaver(
+            table_name=config["categories"]["memory_settings"]["long_term_memory"]["table_name"] if is_long_term else config["categories"]["memory_settings"]["key_memory"]["table_name"],
+            db_path=config["categories"]["memory_settings"]["db_settings"]["sqlite_path"]
+        )
+    elif config["categories"]["memory_settings"]["db_settings"]["type"] == "mysql":
+        return MySQLMemorySaver(
+            table_name=config["categories"]["memory_settings"]["long_term_memory"]["table_name"] if is_long_term else config["categories"]["memory_settings"]["key_memory"]["table_name"],
+            db_settings={
+                "host": config["categories"]["memory_settings"]["db_settings"]["host"],
+                "port": config["categories"]["memory_settings"]["db_settings"]["port"],
+                "user": config["categories"]["memory_settings"]["db_settings"]["user"],
+                "password": config["categories"]["memory_settings"]["db_settings"]["password"],
+                "database": config["categories"]["memory_settings"]["db_settings"]["database"],
+            }
+        )
+    else:
+        raise ValueError("不支持的数据库类型")
 
 class MemoryHandler:
     def __init__(self, root_dir: str, api_key: str, base_url: str, model: str,
                  max_token: int, temperature: float, max_groups: int,
-                 bot_name: str = None, sentiment_analyzer: SentimentAnalyzer = None):
+                 llm: LLMService,bot_name: str = None, sentiment_analyzer: SentimentAnalyzer = None):
         # 基础参数
         self.root_dir = root_dir
         self.api_key = api_key
@@ -43,9 +72,13 @@ class MemoryHandler:
         self.max_groups = max_groups
         self.model = model
 
+
         # 从config模块获取配置
         from src.config.rag_config import config
         self.config = config  # 保存config对象的引用
+
+        self.llm = llm
+
         self.bot_name = bot_name or config.robot_wx_name
         self.listen_list = config.user.listen_list
 
@@ -53,217 +86,111 @@ class MemoryHandler:
         self.memory_base_dir = os.path.join(root_dir, "data", "memory")
         os.makedirs(self.memory_base_dir, exist_ok=True)
 
-        # 初始化每个用户的记忆文件
-        for user_id in self.listen_list:
-            if user_id:  # 确保用户ID不为空
-                self._init_user_files(user_id)
-
         # 初始化Rag记忆的方法
-        setup_memory(os.path.join(self.memory_base_dir, "rag-memory.json"))
-        
-        # 检查嵌入模型名称是否为空
-        embedding_model_name = config.rag.embedding_model
-        if not embedding_model_name:
-            # 如果嵌入模型名称为空，使用默认值
-            embedding_model_name = "text-embedding-3-large"
-            logger.info(f"嵌入模型名称为空，使用默认值: {embedding_model_name}")
-        else:
-            logger.info(f"使用配置的嵌入模型: {embedding_model_name}")
-            
-        # 检查重排序模型名称是否为空
-        reranker_model_name = config.rag.reranker_model
-        if config.rag.is_rerank and not reranker_model_name:
-            # 如果重排序模型名称为空，使用默认值
-            reranker_model_name = "gpt-3.5-turbo"
-            logger.info(f"重排序模型名称为空，使用默认值: {reranker_model_name}")
-        elif config.rag.is_rerank:
-            logger.info(f"使用配置的重排序模型: {reranker_model_name}")
-            
-        setup_rag(
+        # 2025-03-15修改，使用ShortTermMemory单例模式
+        self.short_term_memory = ShortTermMemory.get_instance(
+            memory_path=os.path.join(self.memory_base_dir, "rag-memory.json"),
             embedding_model=OnlineEmbeddingModel(
                 api_key=config.rag.api_key,
                 base_url=config.rag.base_url,
-                model_name=embedding_model_name
+                model_name=config.rag.embedding_model
             ),
             reranker=OnlineCrossEncoderReRanker(
                 api_key=config.rag.api_key,
                 base_url=config.rag.base_url,
-                model_name=reranker_model_name
-            ) if config.rag.is_rerank is True else None
+                model_name=config.rag.reranker_model
+            ) 
+        )
+        self.key_memory = KeyMemory.get_instance(
+            get_saver(is_long_term=False)
+        )
+        self.long_term_memory = LongTermMemory.get_instance(
+            get_saver(is_long_term=True),
+            OpenAILLM(
+                api_key=config.llm.api_key,
+                url=config.llm.base_url,
+                model_name=config.llm.model,
+                max_tokens=config.llm.max_tokens,
+                temperature=config.llm.temperature,
+                max_context_messages=config.behavior.context.max_groups,
+                logger=logger,
+    
+            ),
+            config["categories"]["memory_settings"]["long_term_memory"]["process_prompt"]
         )
         self.is_rerank = config.rag.is_rerank
         self.top_k = config.rag.top_k
-        start_memory()
-        
-        # 新增：用户名映射字典，用于群聊中识别用户
-        self.user_name_mapping = {}
-        # 新增：群聊用户记忆缓存
-        self.group_user_memory_cache = {}
+        self.short_term_memory.start_memory()
+        self.add_short_term_memory_hook()
 
-    # 删除不需要的方法
-    def _load_config(self):
-        """此方法不再需要"""
-        pass
-
-    def _get_robot_name_from_config(self):
-        """此方法不再需要"""
-        pass
-
-    def _get_listen_list_from_config(self):
-        """此方法不再需要"""
-        pass
-
-    def _get_memory_paths(self, user_id: str, group_id: str = None, sender_name: str = None) -> tuple:
-        """获取用户的所有记忆文件路径
-        
-        Args:
-            user_id: 用户ID，可以是个人ID或群ID
-            group_id: 群ID，如果是群聊则提供
-            sender_name: 发送者名称，如果是群聊中的用户则提供
-            
-        Returns:
-            包含短期记忆、长期记忆和重要记忆文件路径的元组
-        """
-        # 如果是群聊中的个人消息
-        if group_id and sender_name:
-            # 创建群聊用户的唯一标识
-            group_user_id = f"{group_id}_{sender_name}"
-            
-            # 记录用户名映射
-            if group_id not in self.user_name_mapping:
-                self.user_name_mapping[group_id] = {}
-            self.user_name_mapping[group_id][sender_name] = group_user_id
-            
-            # 获取群聊用户的记忆目录
-            user_dir = self._get_group_user_memory_dir(group_id, sender_name)
-        else:
-            # 个人聊天
-            user_dir = self._get_user_memory_dir(user_id)
-            
-        return (
-            os.path.join(user_dir, "short_memory.txt"),
-            os.path.join(user_dir, "long_memory_buffer.txt"),
-            os.path.join(user_dir, "important_memory.txt")
+        # 初始化一个长期记忆和关键记忆的组合rag
+        self.lg_tm_m_and_k_m = RAG(
+            embedding_model=OnlineEmbeddingModel(
+                api_key=config.rag.api_key,
+                base_url=config.rag.base_url,
+                model_name=config.rag.embedding_model
+            ),
+            reranker=OnlineCrossEncoderReRanker(
+                api_key=config.rag.api_key,
+                base_url=config.rag.base_url,
+                model_name=config.rag.reranker_model
+            ) if config.rag.is_rerank is True else None
         )
-
-    def add_short_memory(self, message: str, reply: str, user_id: str, group_id: str = None, sender_name: str = None):
-        """添加短期记忆
-        
-        Args:
-            message: 用户消息
-            reply: 机器人回复
-            user_id: 用户ID或群ID
-            group_id: 群ID，如果是群聊则提供
-            sender_name: 发送者名称，如果是群聊中的用户则提供
+        self.init_lg_tm_m_and_k_m()
+    
+    def init_lg_tm_m_and_k_m(self):
         """
-        # 检查用户ID是否有效
-        if not user_id:
-            logger.error(f"无效的用户ID: {user_id}")
-            return
-
-        try:
-            # 确保记忆文件存在
-            self._ensure_memory_files(user_id, group_id, sender_name)
-            
-            # 获取记忆文件路径
-            short_memory_path, _, _ = self._get_memory_paths(user_id, group_id, sender_name)
-
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-            # 写入记忆 - 简化格式，只保留时间戳和对话双方身份
-            memory_content = (
-                f"[{timestamp}] 对方: {message}\n"
-                f"[{timestamp}] 你: {reply}\n\n"
-            )
-
-            # 构建记忆键，只保留时间戳和对方标识，剔除所有提示词
-            memory_key = f"[{timestamp}] 对方: {message}"
-            
-            # 将记忆写入Rag记忆
-            get_memory()[memory_key] = f"[{timestamp}] 你: {reply}"
-            get_memory().save_config()
-
-            try:
-                with open(short_memory_path, "a", encoding="utf-8") as f:
-                    f.write(memory_content)
-                logger.debug(f"成功写入短期记忆: {user_id}{' (群聊用户: '+sender_name+')' if group_id and sender_name else ''}")
-            except Exception as e:
-                logger.error(f"写入短期记忆失败: {str(e)}")
-                return
-
-        except Exception as e:
-            logger.error(f"添加短期记忆失败: {str(e)}")
-
-    def _ensure_memory_files(self, user_id: str, group_id: str = None, sender_name: str = None):
-        """确保用户的记忆文件存在"""
-        try:
-            # 获取所有记忆文件路径
-            short_memory_path, long_memory_buffer_path, important_memory_path = self._get_memory_paths(user_id, group_id, sender_name)
-
-            # 确保用户目录存在
-            user_dir = os.path.dirname(short_memory_path)
-            os.makedirs(user_dir, exist_ok=True)
-
-            # 检查并创建所有必要的文件
-            for file_path in [short_memory_path, long_memory_buffer_path, important_memory_path]:
-                if not os.path.exists(file_path):
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        pass  # 创建空文件
-                    logger.info(f"创建记忆文件: {file_path}")
-
-            return True
-        except Exception as e:
-            logger.error(f"确保记忆文件存在时出错: {str(e)}")
-            return False
-
-    def get_relevant_memories(self, query: str, user_id: Optional[str] = None, group_id: str = None, sender_name: str = None) -> List[str]:
-        """获取相关记忆
-        
-        Args:
-            query: 查询内容
-            user_id: 用户ID或群ID
-            group_id: 群ID，如果是群聊则提供
-            sender_name: 发送者名称，如果是群聊中的用户则提供
-            
-        Returns:
-            相关记忆列表
+        初始化长期记忆和关键记忆的组合rag库
         """
-        if user_id is None and self.listen_list:
-            user_id = self.listen_list[0]
+        self.lg_tm_m_and_k_m.add_documents(self.long_term_memory.get_memories())
+        self.lg_tm_m_and_k_m.add_documents(self.key_memory.get_memory())
 
-        if not user_id:
-            logger.error("无效的用户ID")
-            return []
-
-        # 检查是否是时间相关查询
-        if self._is_time_related_query(query):
-            logger.info("检测到时间相关查询，优先返回时间记忆")
-            time_memories = self._get_time_related_memories(user_id, group_id, sender_name)
-            if time_memories:
-                return time_memories
-
-        _, long_memory_buffer_path, important_memory_path = self._get_memory_paths(user_id, group_id, sender_name)
-
-        memories = []
-
-        # 检查查询是否明确要求查看长期记忆
-        if "长期记忆" in query or "日记" in query:
+    def add_short_term_memory_hook(self):
+        """添加短期记忆监听器方法"""
+        @self.llm.llm.context_handler
+        def short_term_memory_add(ai_response: str, user_response: str):
             try:
-                with open(long_memory_buffer_path, "r", encoding="utf-8") as f:
-                    long_memories = [line.strip() for line in f if line.strip()]
-                    memories.extend(long_memories)
-                logger.debug(f"检索到用户 {user_id}{' (群聊用户: '+sender_name+')' if group_id and sender_name else ''} 的长期记忆: {len(long_memories)} 条")
+
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+                # 将记忆写入Rag记忆
+                # 2025-03-15修改，把写入Rag的代码修改到llm的钩子方法中
+                self.short_term_memory.memory[f"[{timestamp}] 对方: {ai_response}"] = f"[{timestamp}] 你: {user_response}"
+                self.short_term_memory.save_memory()
+
+                # 2025-03-15修改，记忆文件弃用
+                # try:
+                #     with open(short_memory_path, "a", encoding="utf-8") as f:
+                #         f.write(memory_content)
+                #     logger.info(f"成功写入短期记忆: {user_id}")
+                #     print(f"控制台日志: 成功写入短期记忆 - 用户ID: {user_id}")
+                # except Exception as e:
+                #     logger.error(f"写入短期记忆失败: {str(e)}")
+                #     print(f"控制台日志: 写入短期记忆失败 - 用户ID: {user_id}, 错误: {str(e)}")
+                #     return
+
+                # 检查关键词并添加重要记忆
+                # 2025-03-15修改，重要记忆暂时弃用
             except Exception as e:
-                logger.error(f"读取长期记忆失败: {str(e)}")
+                logger.error(f"添加短期记忆失败: {str(e)}")
+                print(f"控制台日志: 添加短期记忆失败 - 用户:, 错误: {str(e)}")
 
-        # Rag向量查询
-        try:
-            rag_memories = self.get_rag_memories(query, user_id, group_id, sender_name)
-            memories.extend(rag_memories)
-        except Exception as e:
-            logger.error(f"RAG查询失败: {str(e)}")
-            logger.info("将继续使用传统记忆检索方法")
+    def _add_important_memory(self, message: str, user_id: str):
+        """添加重要记忆"""
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        memory_content = f'["{timestamp} 用户{user_id}的重要记忆"] = "[{timestamp}] 重要记忆内容: {message}"'
 
+        # 写入Rag记忆
+        self.key_memory.add_memory(memory_content)
+
+        logger.info(f"成功写入重要记忆: {user_id}")
+
+    def get_relevant_memories(self, query: str, user_id: Optional[str] = None) -> List[str]:
+        """获取相关记忆，只在用户主动询问时检索重要记忆和长期记忆"""
+        content = f"[{user_id}]:{query}"
+        memories = self.lg_tm_m_and_k_m.query(content, self.top_k, self.is_rerank)
+        memories += self.short_term_memory.rag.query(content, self.top_k, self.is_rerank)
         return memories
         
     def _get_time_related_memories(self, user_id: str, group_id: str = None, sender_name: str = None) -> List[str]:
@@ -299,6 +226,7 @@ class MemoryHandler:
             logger.error(f"读取时间相关记忆失败: {str(e)}")
             
         return time_memories
+
 
     def summarize_daily_memory(self, user_id: str, group_id: str = None, sender_name: str = None):
         """将短期记忆总结为日记式的长期记忆"""
@@ -538,62 +466,31 @@ class MemoryHandler:
             
         Returns:
             识别出的用户名，如果无法识别则返回None
-        """
-        if group_id not in self.user_name_mapping or not self.user_name_mapping[group_id]:
-            logger.info(f"群 {group_id} 中没有已知用户")
-            return None
-            
-        # 获取该群中所有已知用户
-        known_users = list(self.user_name_mapping[group_id].keys())
-        logger.info(f"群 {group_id} 中的已知用户: {known_users}")
-        
-        # 如果只有一个用户，直接返回
-        if len(known_users) == 1:
-            return known_users[0]
-            
-        # 对每个用户计算相似度分数
-        user_scores = {}
-        
-        for user_name in known_users:
-            # 获取用户的最近记忆
-            recent_memories = self.get_recent_memory(group_id, max_count=10, group_id=group_id, sender_name=user_name)
-            
-            # 如果没有记忆，跳过
-            if not recent_memories:
-                continue
-                
-            # 计算消息与用户历史记忆的相似度
-            score = 0
-            for memory in recent_memories:
-                if "message" in memory:
-                    # 简单的词汇重叠计算
-                    user_msg = memory["message"]
-                    common_words = set(jieba.cut(user_msg)) & set(jieba.cut(message))
-                    score += len(common_words)
-                    
-            user_scores[user_name] = score
-            
-        # 如果没有得分，无法识别
-        if not user_scores:
-            return None
-            
-        # 返回得分最高的用户
-        max_score_user = max(user_scores.items(), key=lambda x: x[1])
-        
-        # 如果最高分数为0，无法可靠识别
-        if max_score_user[1] == 0:
-            return None
-            
-        logger.info(f"识别群聊用户: {max_score_user[0]}，得分: {max_score_user[1]}")
-        return max_score_user[0]
 
-    def _is_time_related_query(self, query: str) -> bool:
-        """检查是否是时间相关的查询"""
-        time_keywords = [
-            '几点', '时间', '现在是', '当前时间', 'time now', 'what time',
-            '刚才', '之前', '记得', '说过什么', '聊了什么'
-        ]
-        return any(keyword in query for keyword in time_keywords)
+        """
+        添加长期记忆处理任务
+        这个方法会启动一个线程，定期处理长期记忆
+        """
+        try:
+            # 从配置获取保存间隔时间(分钟)
+            from src.config import config
+            save_interval = config.memory.long_term_memory.save_interval
+            
+            # 创建并启动定时器线程
+            def process_memory():
+                try:
+                    # 调用长期记忆处理方法
+                    self.long_term_memory.add_memory(self.short_term_memory.memory.get_key_value_pairs())
+                    
+                    # 清空短期记忆文档和索引
+                    self.short_term_memory.memory.settings.clear()
+                    self.short_term_memory.rag.documents.clear()
+                    self.short_term_memory.rag.index.clear()
+
+                    logger.info(f"成功处理用户 {user_id} 的长期记忆")
+                except Exception as e:
+                    logger.error(f"处理长期记忆失败: {str(e)}")
+
 
     def get_embedding_with_fallback(self, text, model=EMBEDDING_MODEL):
         """获取嵌入向量，失败时快速跳过"""
@@ -683,3 +580,4 @@ class MemoryHandler:
         except Exception as e:
             logger.error(f"获取最近聊天时间失败: {str(e)}")
             return None
+

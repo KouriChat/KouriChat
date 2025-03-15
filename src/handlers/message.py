@@ -8,19 +8,21 @@
 - 对话结束处理
 """
 
+from datetime import datetime
 import logging
 import threading
 import time
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-from openai import OpenAI
 from wxauto import WeChat
 import random
 import os
 from services.ai.llm_service import LLMService
+
 from handlers.memory import MemoryHandler
 from src.config.rag_config import config
 from src.handlers.emotion import SentimentResourceLoader, SentimentAnalyzer
+
+from config import config
+
 import re
 import jieba
 
@@ -29,6 +31,7 @@ logger = logging.getLogger('main')
 
 
 class MessageHandler:
+
     def __init__(self, root_dir, api_key, base_url, model, max_token, temperature,
                  max_groups, robot_name, prompt_content, image_handler, emoji_handler, voice_handler, memory_handler,
                  is_qq=False, is_debug=False, wx=None):
@@ -47,13 +50,23 @@ class MessageHandler:
         self.MAX_MESSAGE_LENGTH = 500  # 单条消息最大长度
         
         # 处理器
+
         self.image_handler = image_handler
         self.emoji_handler = emoji_handler
         self.voice_handler = voice_handler
         self.memory_handler = memory_handler
         
-        # 微信实例
-        self.wx = wx
+        
+        # 微信QQ实例或debug
+        if not is_qq:
+            if is_debug:
+                self.wx = None
+                logger.info("调试模式跳过微信初始化")
+            else:
+                self.wx = wx
+
+
+        
         
         # 创建LLM服务
         self.llm_service = LLMService(
@@ -77,6 +90,7 @@ class MessageHandler:
         self.message_cache = {}  # 用户消息缓存
         self.last_message_time = {}  # 用户最后发送消息的时间
         self.message_timer = {}  # 消息处理定时器
+
         self.unanswered_counters = {}
         self.unanswered_timers = {}  # 新增：存储每个用户的计时器
 
@@ -95,7 +109,8 @@ class MessageHandler:
 
         # 保存到记忆 - 移除这一行，避免重复保存
         # 修改（2025/3/14 by Elimir) 打开了记忆这一行，进行测试
-        self.memory_handler.add_short_memory(message, reply, sender_id)
+        # 修改(2025/3/15 by Elimir) 注释这一行，移除add_short_memory，改成在memory_handler中添加钩子
+        # self.memory_handler.add_short_memory(message, reply, sender_id)
 
     def get_api_response(self, message: str, user_id: str, group_id: str = None, sender_name: str = None) -> str:
         """获取 API 回复（添加历史对话支持和缓存机制）"""
@@ -125,8 +140,10 @@ class MessageHandler:
             
         try:
             # 获取最近的对话历史
+
             recent_history = self.memory_handler.get_recent_memory(user_id, max_count=30)  # 获取最近30轮对话
             
+
             # 构建带有历史记录的上下文
             context = original_content + "\n\n最近的对话记录：\n"
             for hist in recent_history:
@@ -350,9 +367,11 @@ class MessageHandler:
             logger.info(f"处理缓存 - 用户: {username}, 消息数: {msg_count}, 总内容长度: {total_length}")
             
             # 获取最近的对话记录作为上下文
+
             recent_history = self.memory_handler.get_recent_memory(username, max_count=30)
             
             # 初始化上下文，但不立即添加提示词
+
             context = ""
             if recent_history and len(recent_history) > 0 and recent_history[0].get('message'):
                 # 构建更丰富的上下文，包含最多30轮对话历史
@@ -876,6 +895,7 @@ class MessageHandler:
         return False
 
     def _handle_text_message(self, content, chat_id, sender_name, username, is_group, is_image_recognition=False):
+
         """处理文本消息"""
         try:
             # 记录消息
@@ -964,38 +984,43 @@ class MessageHandler:
                     for emotion, keywords in self.emoji_handler.emotion_map.items():
                         if not keywords:  # 跳过空的关键词列表
                             continue
+
                         
-                        if any(keyword in reply for keyword in keywords):
-                            emotion_detected = True
-                            logger.info(f"在回复中检测到情感: {emotion}")
-                            
-                            emoji_path = self.emoji_handler.get_emotion_emoji(reply)
-                            if emoji_path:
-                                # 将表情包路径添加到回复列表中，由响应器处理
-                                delayed_reply.append(emoji_path)
-                            else:
-                                logger.warning(f"未找到对应情感 {emotion} 的表情包")
-                            break
-                    
-                    if not emotion_detected:
-                        logger.info("未在回复中检测到明显情感")
                 else:
-                    logger.error("emoji_handler 缺少 emotion_map 属性")
-            except Exception as e:
-                logger.error(f"发送回复失败: {str(e)}")
+                    logger.info(f"跳过重复内容: {part[:20]}...")
+
+            # 检查回复中是否包含情感关键词并发送表情包
+            logger.info("开始检查AI回复的情感关键词")
+            emotion_detected = False
+
+            if not hasattr(self.emoji_handler, 'emotion_map'):
+                logger.error("emoji_handler 缺少 emotion_map 属性")
                 return delayed_reply
-            
-            # 异步保存消息记录
-            threading.Thread(target=self.save_message,
-                            args=(username, sender_name, raw_content, reply, is_group)).start()
-            
-            # 重置计数器（如果大于0）
-            if self.unanswered_counters.get(username, 0) > 0:
-                self.unanswered_counters[username] = 0
-                logger.info(f"用户 {username} 的未回复计数器: {self.unanswered_counters[username]}")
-            
-            return delayed_reply
+
+            for emotion, keywords in self.emoji_handler.emotion_map.items():
+                if not keywords:  # 跳过空的关键词列表
+                    continue
+
+                if any(keyword in reply for keyword in keywords):
+                    emotion_detected = True
+                    logger.info(f"在回复中检测到情感: {emotion}")
+
+                    emoji_path = self.emoji_handler.get_emotion_emoji(reply)
+                    if emoji_path:
+                        # try:
+                        #     self.wx.SendFiles(filepath=emoji_path, who=chat_id)
+                        #     logger.info(f"已发送情感表情包: {emoji_path}")
+                        # except Exception as e:
+                        #     logger.error(f"发送表情包失败: {str(e)}")
+                        delayed_reply.append(emoji_path)  #在发送消息队列后增加path，由响应器处理
+                    else:
+                        logger.warning(f"未找到对应情感 {emotion} 的表情包")
+                    break
+
+            if not emotion_detected:
+                logger.info("未在回复中检测到明显情感")
         except Exception as e:
+
             logger.error(f"处理文本消息失败: {str(e)}", exc_info=True)
             error_msg = f"抱歉，处理消息时出现错误"
             if is_group:
@@ -1080,6 +1105,7 @@ class MessageHandler:
     #         return True, reply
     #         
     #     return False, None
+
 
     #以下是onebot QQ方法实现
     def add_to_queue(self, chat_id: str, content: str, sender_name: str,

@@ -24,8 +24,10 @@ sentence-transformers==2.2.2
 faiss-cpu==1.7.4
 numpy==1.26.4
 ruamel.yaml
+mysql-connector-python
 transformers==4.30.2
 torch==2.0.1
+
 torchvision==0.15.2
 torchaudio==2.0.2
 huggingface-hub==0.16.4
@@ -51,3 +53,4 @@ pyaudio
 pycryptodome
 chardet
 importlib_metadata
+

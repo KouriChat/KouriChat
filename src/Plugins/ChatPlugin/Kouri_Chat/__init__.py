@@ -7,11 +7,6 @@ import random
 import os
 import time
 import requests
-from handlers.emoji import EmojiHandler
-from handlers.image import ImageHandler
-from handlers.message import MessageHandler
-from handlers.voice import VoiceHandler
-from src.handlers.memory import MemoryHandler
 from src.services.ai.image_recognition_service import ImageRecognitionService
 from src.config.rag_config import config, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, MODEL, MAX_TOKEN, TEMPERATURE, MAX_GROUPS
 from oneBotMain import message_handler,moonshot_ai,emoji_handler,voice_handler,image_handler

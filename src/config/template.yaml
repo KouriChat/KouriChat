@@ -143,3 +143,32 @@ categories:
         type: string
         description: 管理员密码
         is_secret: true
+  
+  memory_settings:
+    # 记忆测试
+    title: 记忆设置
+    # 数据库设置
+    db_settings:
+      # 数据源类型，可选项：sqlite, mysql
+      type: "sqlite"
+      # 数据库相关地址（默认空，sqlite空，其余需要设置）
+      # 不会设置的请使用sqlite或看群内使用文档
+      host: ""
+      port: null
+      user: null
+      password: null
+      database: null
+      # sqlite特有设置：
+      sqlite_path: "./data/database/memory.db"
+    # 长期记忆设置
+    long_term_memory:
+      # 长期记忆保存间隔（单位：分钟）
+      save_interval: 3600
+      # 长期记忆处理prompt
+      process_prompt: "请将以下内容作为长期记忆保存"
+      # 长期记忆保存表
+      table_name: "long_term_memory"
+    # 关键记忆设置
+    key_memory:
+      # 关键记忆保存表
+      table_name: "key_memory"
