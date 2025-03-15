@@ -30,26 +30,35 @@ class LocalEmbeddingModel(EmbeddingModel):
 
 
 class OnlineEmbeddingModel(EmbeddingModel):
-    def __init__(self, model_name: str, api_key: Optional[str] = None, base_url: Optional[str] = None):  # 参数名与调用处统一
+    def __init__(self, model_name: str, api_key: Optional[str] = None, base_url: Optional[str] = None):
         self.model_name = model_name
         self.api_key = api_key
-        self.base_url = base_url  # 参数名改为base_url
+        self.base_url = base_url
         self.client = OpenAI(
-            base_url=self.base_url,  # 使用统一参数名
+            base_url=self.base_url,
             api_key=self.api_key
         )
+        self._failure_count = 0
+        self._last_failure_time = 0
+        self._max_failures = 3
+        self._cooldown_period = 300
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-
+            
+        current_time = time.time()
+        if self._failure_count >= self._max_failures and current_time - self._last_failure_time < self._cooldown_period:
+            print(f"嵌入服务暂时不可用，将在{int(self._cooldown_period - (current_time - self._last_failure_time))}秒后重试")
+            return [[0.0] * 1024 for _ in texts]
+            
         embeddings = []
         for text in texts:
             if not text.strip():
                 embeddings.append([])
                 continue
 
-            for attempt in range(3):  # 最多重试3次
+            for attempt in range(2):
                 try:
                     response = self.client.embeddings.create(
                         model=self.model_name,
@@ -57,7 +66,6 @@ class OnlineEmbeddingModel(EmbeddingModel):
                         encoding_format="float"
                     )
 
-                    # 强化响应校验
                     if not response or not response.data:
                         raise ValueError("API返回空响应")
 
@@ -66,13 +74,20 @@ class OnlineEmbeddingModel(EmbeddingModel):
                         raise ValueError("无效的嵌入格式")
 
                     embeddings.append(embedding)
+                    self._failure_count = 0
                     break
                 except Exception as e:
-                    if attempt == 2:
-                        print(f"嵌入失败（已重试3次）: {str(e)}")
-                        embeddings.append([0.0] * 1024)  # 返回默认维度向量
-                    import time
-                    time.sleep(1)  # 重试间隔
+                    if attempt == 1:
+                        print(f"嵌入失败: {str(e)}")
+                        self._failure_count += 1
+                        self._last_failure_time = time.time()
+                        embeddings.append([0.0] * 1024)
+                    
+                    retry_delay = 1
+                    if attempt < 1:
+                        print(f"将在{retry_delay}秒后重试...")
+                    time.sleep(retry_delay)
+                    
         return embeddings
 
 
@@ -109,15 +124,14 @@ class OnlineCrossEncoderReRanker(ReRanker):
                     ]
                 )
                 content = response.choices[0].message.content.strip()
-                # 使用正则表达式提取数值
                 match = re.search(r"0?\.\d+|\d\.?\d*", content)
                 if match:
                     score = float(match.group())
-                    score = max(0.0, min(1.0, score))  # 确保分数在0-1之间
+                    score = max(0.0, min(1.0, score))
                 else:
-                    score = 0.0  # 解析失败默认值
+                    score = 0.0
             except Exception as e:
-                score = 0.0  # 异常处理
+                score = 0.0
             scores.append(score)
         return scores
 
