@@ -8,17 +8,14 @@
 - 对话结束处理
 """
 
+from datetime import datetime
 import logging
 import threading
 import time
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-from openai import OpenAI
 from wxauto import WeChat
 import random
 import os
 from services.ai.llm_service import LLMService
-from handlers.memory import MemoryHandler
 from config import config
 import re
 import jieba
@@ -28,15 +25,9 @@ logger = logging.getLogger('main')
 
 
 class MessageHandler:
-    def __init__(self, root_dir, api_key, base_url, model, max_token, temperature,
-                 max_groups, robot_name, prompt_content, image_handler, emoji_handler, voice_handler, memory_handler,
+    def __init__(self, root_dir, llm: LLMService, robot_name, prompt_content, image_handler, emoji_handler, voice_handler, memory_handler,
                  is_qq=False, is_debug=False):
         self.root_dir = root_dir
-        self.api_key = api_key
-        self.model = model
-        self.max_token = max_token
-        self.temperature = temperature
-        self.max_groups = max_groups
         self.robot_name = robot_name
         self.prompt_content = prompt_content
         self.debug = is_debug
@@ -45,15 +36,8 @@ class MessageHandler:
         self.last_message_time = {}  # 用户最后发送消息的时间
         self.message_timer = {}  # 用户消息处理定时器
         # 使用 DeepSeekAI 替换直接的 OpenAI 客户端
-        self.deepseek = LLMService(
-            api_key=api_key,
-            base_url=base_url,
-            model=model,
-            max_token=max_token,
-            temperature=temperature,
-            max_groups=max_groups
-        )
-
+        # 2025-03-15修改，把deepseek改为外部注入
+        self.deepseek = llm
         # 消息队列相关
         self.user_queues = {}
         self.queue_lock = threading.Lock()
@@ -90,7 +74,8 @@ class MessageHandler:
 
         # 保存到记忆 - 移除这一行，避免重复保存
         # 修改（2025/3/14 by Elimir) 打开了记忆这一行，进行测试
-        self.memory_handler.add_short_memory(message, reply, sender_id)
+        # 修改(2025/3/15 by Elimir) 注释这一行，移除add_short_memory，改成在memory_handler中添加钩子
+        # self.memory_handler.add_short_memory(message, reply, sender_id)
 
     def get_api_response(self, message: str, user_id: str, group_id: str = None, sender_name: str = None) -> str:
         """获取 API 回复（添加历史对话支持和缓存机制）"""
@@ -120,8 +105,8 @@ class MessageHandler:
             
         try:
             # 获取最近的对话历史
-            recent_history = self.memory_handler.get_recent_memory(user_id, max_count=5)  # 获取最近5轮对话
-            
+            recent_history = self.memory_handler.get_relevant_memories(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",user_id)  # 获取最近5轮对话
+
             # 构建带有历史记录的上下文
             context = original_content + "\n\n最近的对话记录：\n"
             for hist in recent_history:
@@ -336,7 +321,7 @@ class MessageHandler:
             logger.info(f"处理缓存 - 用户: {username}, 消息数: {msg_count}")
             
             # 获取最近的对话记录作为上下文
-            recent_history = self.memory_handler.get_recent_memory(username, max_count=1)
+            recent_history = self.memory_handler.get_relevant_memories(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",username)
             context = ""
             if recent_history:
                 # 修改：只添加一次上下文提示词
@@ -799,209 +784,198 @@ class MessageHandler:
 
     def _handle_text_message(self, content, chat_id, sender_name, username, is_group, is_image_recognition=False):
         """处理普通文本消息"""
-        try:
-            # 添加正则表达式过滤时间戳
-            time_pattern = r'\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\]'
-            content = re.sub(time_pattern, '', content)
-            
-            # 更通用的模式
-            general_pattern = r'\[\d[^\]]*\]|\[\d+\]'
-            content = re.sub(general_pattern, '', content)
-            
-            logger.info("处理普通文本回复")
-            
-            # 检查是否是时间查询
-            is_time_query, time_reply = self._check_time_query(content, username)
-            if is_time_query:
-                logger.info("检测到时间查询请求")
-                if is_group:
-                    time_reply = f"@{sender_name} {time_reply}"
-                
-                # 发送时间回复
-                if self.wx:
-                    self.wx.SendMsg(msg=time_reply, who=chat_id)
-                
-                # 异步保存消息记录
-                threading.Thread(target=self.save_message,
-                                args=(username, sender_name, content, time_reply, is_group)).start()
-                return [time_reply]
-            
-            # 检查是否是记忆查询
-            is_memory_query, memory_reply = self._check_memory_query(content, username, is_group, chat_id, sender_name)
-            if is_memory_query:
-                logger.info("检测到记忆查询请求")
-                if is_group:
-                    memory_reply = f"@{sender_name} {memory_reply}"
-                    
-                # 发送记忆回复
-                if self.wx:
-                    self.wx.SendMsg(msg=memory_reply, who=chat_id)
-                    
-                # 异步保存消息记录
-                threading.Thread(target=self.save_message,
-                                args=(username, sender_name, content, memory_reply, is_group)).start()
-                return [memory_reply]
-            
-            # 获取或初始化未回复计数器
-            counter = self.unanswered_counters.get(username, 0)
-            
-            # 定义结束关键词
-            end_keywords = [
-                "结束", "再见", "拜拜", "下次聊", "先这样", "告辞", "bye", "晚点聊", "回头见",
-                "稍后", "改天", "有空聊", "去忙了", "暂停", "待一会儿", "过一会儿", "晚安", "休息",
-                "走了", "撤了", "闪了", "不聊了", "断了", "下线", "离开", "停", "歇", "退"
-            ]
-            
-            # 检查消息中是否包含结束关键词
-            is_end_of_conversation = any(keyword in content for keyword in end_keywords)
-            raw_content = content
-            
-            # 记录一个raw_content用于存到记忆中
-            if is_end_of_conversation:
-                # 如果检测到结束关键词，在消息末尾添加提示
-                content += "\n请你回应用户的结束语"
-                logger.info(f"检测到对话结束关键词，尝试生成更自然的结束语")
-            else:
-                # 此处修改(2025/03/14 by eliver) 不是结束时则添加记忆到内容中
-                memories = self.memory_handler.get_rag_memories(content)
-                if memories:
-                    content += f"\n以上是用户的沟通内容；以下是记忆中检索的内容：{';'.join(memories)}\n请你根据以上内容回复用户的消息。"
-            
-            # 获取 API 回复
-            reply = self.get_api_response(content, chat_id)
-            
-            # 处理思考过程
-            if "</think>" in reply:
-                think_content, reply = reply.split("</think>", 1)
-                logger.info("\n思考过程:")
-                logger.info(think_content.strip())
-                logger.info(reply.strip())
-            else:
-                logger.info("\nAI回复:")
-                logger.info(reply)
-            
-            # 过滤括号内的动作和情感描述
-            reply = self._filter_action_emotion(reply)
-            
-            # 添加群聊@
-            if is_group:
-                reply = f"@{sender_name} {reply}"
-            
-            try:
-                # 使用优化后的消息分割方法
-                delayed_reply = self._split_message_for_sending(reply)
-                
-                # 使用优化后的消息发送方法
-                self._send_split_messages(delayed_reply, chat_id)
-                
-                # 检查回复中是否包含情感关键词并发送表情包
-                logger.info("开始检查AI回复的情感关键词")
-                emotion_detected = False
-                
-                if hasattr(self.emoji_handler, 'emotion_map'):
-                    for emotion, keywords in self.emoji_handler.emotion_map.items():
-                        if not keywords:  # 跳过空的关键词列表
-                            continue
-                        
-                        if any(keyword in reply for keyword in keywords):
-                            emotion_detected = True
-                            logger.info(f"在回复中检测到情感: {emotion}")
-                            
-                            emoji_path = self.emoji_handler.get_emotion_emoji(reply)
-                            if emoji_path:
-                                # 将表情包路径添加到回复列表中，由响应器处理
-                                delayed_reply.append(emoji_path)
-                            else:
-                                logger.warning(f"未找到对应情感 {emotion} 的表情包")
-                            break
-                    
-                    if not emotion_detected:
-                        logger.info("未在回复中检测到明显情感")
-                else:
-                    logger.error("emoji_handler 缺少 emotion_map 属性")
-            except Exception as e:
-                logger.error(f"发送回复失败: {str(e)}")
-                return delayed_reply
-            
-            # 异步保存消息记录
-            threading.Thread(target=self.save_message,
-                            args=(username, sender_name, raw_content, reply, is_group)).start()
-            
-            # 重置计数器（如果大于0）
-            if self.unanswered_counters.get(username, 0) > 0:
-                self.unanswered_counters[username] = 0
-                logger.info(f"用户 {username} 的未回复计数器: {self.unanswered_counters[username]}")
-            
-            return delayed_reply
-        except Exception as e:
-            logger.error(f"处理文本消息失败: {str(e)}", exc_info=True)
-            error_msg = f"抱歉，处理消息时出现错误"
-            if is_group:
-                error_msg = f"@{sender_name} {error_msg}"
-            
-            if self.wx:
-                self.wx.SendMsg(msg=error_msg, who=chat_id)
-            
-            return [error_msg]
+        # 添加正则表达式过滤时间戳
+        time_pattern = r'\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\]'
+        content = re.sub(time_pattern, '', content)
 
-    def _check_time_query(self, content: str, username: str) -> tuple:
-        """检查是否是时间查询请求"""
-        # 时间查询关键词
-        time_keywords = [
-            "几点了", "现在时间", "当前时间", "现在几点", "时间是", "报时", "几点钟",
-            "what time", "current time", "time now", "现在是几点", "告诉我时间",
-            "几点", "时间", "日期", "今天日期", "今天几号", "几月几号", "星期几",
-            "today's date", "what day", "date today", "几月几日"
-        ]
-        
-        # 检查是否包含时间查询关键词 - 修改为更精确的匹配
-        # 简单的问候语如"你好"不应该触发时间查询
-        if any(keyword in content.lower() for keyword in time_keywords) and not (
-                "你好" in content or "早上好" in content or "晚上好" in content or 
-                "下午好" in content or "中午好" in content or "嗨" in content):
-            # 获取当前时间
-            now = datetime.now()
-            weekday_names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-            weekday = weekday_names[now.weekday()]
-            
-            # 格式化时间回复
-            time_str = now.strftime("%Y年%m月%d日 %H:%M:%S")
-            reply = f"现在是 {time_str}，{weekday}"
-            
-            logger.info(f"检测到时间查询请求，回复: {reply}")
-            return True, reply
-            
-        return False, None
+        # 更通用的模式
+        general_pattern = r'\[\d[^\]]*\]|\[\d+\]'
+        content = re.sub(general_pattern, '', content)
 
-    def _check_memory_query(self, content: str, username: str, is_group: bool = False, group_id: str = None, sender_name: str = None) -> tuple:
-        """检查是否是记忆查询请求"""
-        # 记忆查询关键词
-        memory_keywords = [
-            "记得我", "还记得", "记忆中", "之前说过", "上次说", "之前提到", "之前聊过",
-            "remember me", "remember what", "我们之前", "我之前跟你", "你之前说",
-            "你记得", "你还记得", "记得什么", "记得多少", "记得我们", "记得我说过",
-            "记得我告诉过你", "记得我们讨论过", "记得我们聊过", "记得我问过你"
+        logger.info("处理普通文本回复")
+
+        # 获取或初始化未回复计数器
+        counter = self.unanswered_counters.get(username, 0)
+
+        # 定义结束关键词
+        end_keywords = [
+            "结束", "再见", "拜拜", "下次聊", "先这样", "告辞", "bye", "晚点聊", "回头见",
+            "稍后", "改天", "有空聊", "去忙了", "暂停", "待一会儿", "过一会儿", "晚安", "休息",
+            "走了", "撤了", "闪了", "不聊了", "断了", "下线", "离开", "停", "歇", "退"
         ]
-        
-        # 检查是否包含记忆查询关键词
-        if any(keyword in content.lower() for keyword in memory_keywords):
-            # 获取相关记忆
+
+        # 检查消息中是否包含结束关键词
+        is_end_of_conversation = any(keyword in content for keyword in end_keywords)
+        raw_content = content
+        # 记录一个raw_content用于存到记忆中
+        if is_end_of_conversation:
+            # 如果检测到结束关键词，在消息末尾添加提示
+            content += "\n请你回应用户的结束语"
+            logger.info(f"检测到对话结束关键词，尝试生成更自然的结束语")
+        else:
+            # 此处修改(2025/03/14 by eliver) 不是结束时则添加记忆到内容中
             memories = self.memory_handler.get_relevant_memories(content, username)
-            
-            if memories:
-                # 构建记忆回复
-                memory_text = "\n".join([f"- {mem}" for mem in memories[:3]])  # 最多显示3条记忆
-                reply = f"根据我的记忆，我们之前聊过这些内容：\n{memory_text}"
-                
-                if len(memories) > 3:
-                    reply += f"\n...还有{len(memories)-3}条相关记忆"
-            else:
-                reply = "抱歉，我没有找到与此相关的记忆。"
-            
-            logger.info(f"检测到记忆查询请求，回复: {reply[:100]}...")
-            return True, reply
-            
-        return False, None
+            content += f"\n以上是用户的沟通内容；以下是记忆中检索的内容：{';'.join(memories)}\n请你根据以上内容回复用户的消息。"
+
+        # 获取 API 回复
+        # logger.info(f"生成依据内容 {content}")
+        reply = self.get_api_response(content, chat_id)
+        if "</think>" in reply:
+            think_content, reply = reply.split("</think>", 1)
+            logger.info("\n思考过程:")
+            logger.info(think_content.strip())
+            logger.info(reply.strip())
+        else:
+            logger.info("\nAI回复:")
+            logger.info(reply)
+
+            # 过滤括号内的动作和情感描述 - 移除重复调用
+        reply = self._filter_action_emotion(reply)
+
+        if is_group:
+            reply = f"@{sender_name} {reply}"
+
+        try:
+            # 增强型智能分割器 - 优化版
+            delayed_reply = []
+            current_sentence = []
+            ending_punctuations = {'。', '！', '？', '!', '?', '…', '……'}
+            split_symbols = {'\\', '|', '￤', '\n', '\\n'}  # 支持多种手动分割符
+            last_split_idx = -1  # 记录上一次分割的位置，防止重复分割
+
+            for idx, char in enumerate(reply):
+                # 处理手动分割符号（优先级最高）
+                if char in split_symbols:
+                    if current_sentence and idx > last_split_idx:
+                        delayed_reply.append(''.join(current_sentence).strip())
+                        last_split_idx = idx
+                    current_sentence = []
+                    continue
+
+                current_sentence.append(char)
+
+                # 处理中文标点和省略号
+                if char in ending_punctuations:
+                    # 排除英文符号在短句中的误判（如英文缩写）
+                    if char in {'!', '?'} and len(current_sentence) < 4:
+                        continue
+
+                    # 处理连续省略号
+                    if char == '…' and idx > 0 and reply[idx - 1] == '…':
+                        if len(current_sentence) >= 3 and idx > last_split_idx:  # 至少三个点形成省略号
+                            delayed_reply.append(''.join(current_sentence).strip())
+                            last_split_idx = idx
+                            current_sentence = []
+                    elif idx > last_split_idx:  # 确保不会在同一位置重复分割
+                        delayed_reply.append(''.join(current_sentence).strip())
+                        last_split_idx = idx
+                        current_sentence = []
+
+            # 处理剩余内容
+            if current_sentence:
+                delayed_reply.append(''.join(current_sentence).strip())
+
+            # 过滤空内容和去重
+            delayed_reply = [s for s in delayed_reply if s]  # 过滤空内容
+            # 去除完全相同的相邻句子
+            if len(delayed_reply) > 1:
+                unique_reply = [delayed_reply[0]]
+                for i in range(1, len(delayed_reply)):
+                    if delayed_reply[i] != delayed_reply[i - 1]:
+                        unique_reply.append(delayed_reply[i])
+                delayed_reply = unique_reply
+
+            # 记录已发送的消息，防止重复发送
+            sent_messages = set()
+
+            # 发送分割后的文本回复
+            for part in delayed_reply:
+                if part not in sent_messages:
+                    # 计算模拟输入时间：假设每个字符需要0.1秒
+                    input_time = len(part) * 0.1
+                    # 模拟粘贴文本到输入框的时间
+                    time.sleep(0.2)  # 粘贴操作时间
+                    # 模拟阅读和点击发送按钮的时间
+                    time.sleep(input_time + random.uniform(1, 2))  # 阅读和点击发送按钮的时间
+
+                    # 添加对wx对象的检查
+                    if self.wx:
+                        self.wx.SendMsg(msg=part, who=chat_id)
+                        sent_messages.add(part)
+                    else:
+                        if self.debug is False:
+                            logger.error("WeChat对象为None，无法发送消息")
+                            return delayed_reply
+                        
+                else:
+                    logger.info(f"跳过重复内容: {part[:20]}...")
+
+            # 检查回复中是否包含情感关键词并发送表情包
+            logger.info("开始检查AI回复的情感关键词")
+            emotion_detected = False
+
+            if not hasattr(self.emoji_handler, 'emotion_map'):
+                logger.error("emoji_handler 缺少 emotion_map 属性")
+                return delayed_reply
+
+            for emotion, keywords in self.emoji_handler.emotion_map.items():
+                if not keywords:  # 跳过空的关键词列表
+                    continue
+
+                if any(keyword in reply for keyword in keywords):
+                    emotion_detected = True
+                    logger.info(f"在回复中检测到情感: {emotion}")
+
+                    emoji_path = self.emoji_handler.get_emotion_emoji(reply)
+                    if emoji_path:
+                        # try:
+                        #     self.wx.SendFiles(filepath=emoji_path, who=chat_id)
+                        #     logger.info(f"已发送情感表情包: {emoji_path}")
+                        # except Exception as e:
+                        #     logger.error(f"发送表情包失败: {str(e)}")
+                        delayed_reply.append(emoji_path)  #在发送消息队列后增加path，由响应器处理
+                    else:
+                        logger.warning(f"未找到对应情感 {emotion} 的表情包")
+                    break
+
+            if not emotion_detected:
+                logger.info("未在回复中检测到明显情感")
+        except Exception as e:
+            logger.error(f"发送回复失败: {str(e)}")
+            return delayed_reply
+
+        # 异步保存消息记录
+        threading.Thread(target=self.save_message,
+                         args=(username, sender_name, raw_content, reply)).start()
+        # 重置计数器（如果大于0）
+        if self.unanswered_counters.get(username, 0) > 0:
+            self.unanswered_counters[username] = 0
+            logger.info(f"用户 {username} 的未回复计数器: {self.unanswered_counters[username]}")
+
+        return delayed_reply
+
+    def increase_unanswered_counter(self, username: str):
+        """增加未回复计数器"""
+        with self.queue_lock:
+            current_time = time.time()
+
+            # 获取上次回复时间
+            last_reply_time = getattr(self, '_last_reply_times', {}).get(username, 0)
+
+            # 如果没有_last_reply_times属性，创建它
+            if not hasattr(self, '_last_reply_times'):
+                self._last_reply_times = {}
+
+            # 检查是否超过30分钟未回复
+            if current_time - last_reply_time > 1800:  # 1800秒 = 30分钟
+                if username in self.unanswered_counters:
+                    self.unanswered_counters[username] += 1
+                else:
+                    self.unanswered_counters[username] = 1
+
+                # 更新最后回复时间
+                self._last_reply_times[username] = current_time
+                logger.info(f"用户 {username} 超过30分钟未回复，计数器增加到: {self.unanswered_counters[username]}")
 
     #以下是onebot QQ方法实现
     def add_to_queue(self, chat_id: str, content: str, sender_name: str,
