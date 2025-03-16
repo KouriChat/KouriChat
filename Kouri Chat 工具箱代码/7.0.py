@@ -31,7 +31,7 @@ def save_config(config):
 # API测试类
 class APITester:
     def __init__(self, base_url, api_key, model, messages=None):
-        self.messages = messages or [{"role": "用户", "content": "测试消息"}]
+        self.messages = messages or [{"role": "user", "content": "测试消息"}]
         self.base_url = base_url
         self.api_key = api_key
         self.model = model
@@ -64,7 +64,7 @@ class APITester:
             f"描述：{character_desc}\n"
             f"请以清晰的格式返回。"
         )
-        messages = [{"role": "用户", "content": prompt}]
+        messages = [{"role": "user", "content": prompt}]
         data = {
             "model": self.model,
             "messages": messages
@@ -84,7 +84,7 @@ class APITester:
             f"人设内容：{profile}\n"
             f"请返回润色后的完整人设。"
         )
-        messages = [{"role": "用户", "content": prompt}]
+        messages = [{"role": "user", "content": prompt}]
         data = {
             "model": self.model,
             "messages": messages
@@ -171,7 +171,7 @@ def test_servers():
         config.get('real_server_base_url'),
         config.get('api_key'),
         config.get('model'),
-        messages=[{"role": "用户", "content": "测试消息"}]
+        messages=[{"role": "user", "content": "测试消息"}]
     )
 
     try:
