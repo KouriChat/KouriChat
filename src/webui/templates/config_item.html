@@ -43,6 +43,80 @@
         transform: translateY(-2px);
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     }
+
+    /* 移除遮罩相关样式 */
+    .modal-backdrop-custom {
+        display: none !important;
+    }
+
+    /* 修改模态框样式 */
+    .time-picker-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1050;
+        display: none;
+        transition: opacity 0.3s ease;
+        opacity: 0;
+    }
+
+    .time-picker-modal.show {
+        opacity: 1;
+    }
+
+    .time-picker-content {
+        transform: scale(0.95);
+        transition: transform 0.3s ease;
+    }
+
+    .time-picker-modal.show .time-picker-content {
+        transform: scale(1);
+    }
+
+    /* 添加时间显示输入框的点击反馈效果 */
+    .time-display {
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .time-display:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .time-display:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    /* 修改时间选项的悬停和选中效果 */
+    .time-option-{{ key }} {
+        padding: 8px 4px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 15px;
+        border-radius: 8px;
+        margin: 2px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .time-option-{{ key }}:hover {
+        background-color: rgba(var(--bs-primary-rgb), 0.1);
+        transform: translateX(2px);
+    }
+
+    .time-option-{{ key }}.selected {
+        background-color: var(--bs-primary);
+        color: white;
+        transform: scale(1.05);
+    }
+
+    .time-option-{{ key }}.clicking {
+        transform: scale(0.95);
+    }
 </style>
 <label class="form-label">
     <span class="badge badge-info rounded-pill me-2" 
@@ -681,244 +755,235 @@
     </div>
 {% elif key == 'QUIET_TIME_START' or key == 'QUIET_TIME_END' %}
     <div class="mb-3">
-        <div class="time-picker-container-{{ key }}">
-            <input type="text" 
-                class="form-control time-display" 
-                id="{{ key }}_display" 
-                value="{{ config.value }}"
-                readonly
-                placeholder="请选择时间"
-                onclick="showTimePicker_{{ key }}()">
-            <input type="hidden" 
-                id="{{ key }}" 
-                name="{{ key }}" 
-                value="{{ config.value }}">
+        <input type="text" 
+            class="form-control time-display" 
+            id="{{ key }}_display" 
+            value="{{ config.value }}"
+            readonly
+            placeholder="请选择时间"
+            onclick="showTimePicker_{{ key }}()">
+        <input type="hidden" 
+            id="{{ key }}" 
+            name="{{ key }}" 
+            value="{{ config.value }}">
             
-            <!-- 时间选择器弹出层 -->
-            <div class="time-picker-dropdown-{{ key }}" id="time_picker_{{ key }}" style="display: none;">
-                <div class="time-header-{{ key }}">
-                    {{ config.value }}
-                </div>
-                <div class="time-columns-container-{{ key }}">
-                    <div class="time-column-label-{{ key }}">{{ '开始时间' if key == 'QUIET_TIME_START' else '结束时间' }}</div>
-                    <div class="time-columns-{{ key }}">
-                        <div class="time-column-{{ key }}">
-                            {% for h in range(24) %}
-                            <div class="time-option-{{ key }}" data-value="{{ '%02d' % h }}" onclick="selectTimeOption_{{ key }}('hour', '{{ '%02d' % h }}')">{{ '%02d' % h }}</div>
-                            {% endfor %}
+        <!-- 时间选择器模态框 -->
+        <div class="modal" id="timePickerModal_{{ key }}" tabindex="-1" aria-hidden="true" data-bs-backdrop="false">
+            <div class="modal-dialog modal-dialog-centered" style="max-width: 300px;">
+                <div class="modal-content time-picker-content">
+                    <div class="modal-header border-bottom-0">
+                        <h5 class="modal-title">
+                            <i class="bi bi-clock me-2"></i>
+                            选择{{ '开始时间' if key == 'QUIET_TIME_START' else '结束时间' }}
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body pt-0">
+                        <div class="time-header-{{ key }} mb-3 text-center fs-4 fw-bold text-primary">
+                            {{ config.value }}
                         </div>
-                        <div class="time-column-{{ key }}">
-                            {% for m in range(0, 60, 1) %}
-                            <div class="time-option-{{ key }}" data-value="{{ '%02d' % m }}" onclick="selectTimeOption_{{ key }}('minute', '{{ '%02d' % m }}')">{{ '%02d' % m }}</div>
-                            {% endfor %}
+                        <div class="time-columns-container-{{ key }}">
+                            <div class="time-columns-{{ key }}">
+                                <div class="time-column-{{ key }}">
+                                    {% for h in range(24) %}
+                                    <div class="time-option-{{ key }}" data-value="{{ '%02d' % h }}" onclick="selectTimeOption_{{ key }}('hour', '{{ '%02d' % h }}')">{{ '%02d' % h }}</div>
+                                    {% endfor %}
+                                </div>
+                                <div class="time-column-{{ key }}">
+                                    {% for m in range(0, 60, 1) %}
+                                    <div class="time-option-{{ key }}" data-value="{{ '%02d' % m }}" onclick="selectTimeOption_{{ key }}('minute', '{{ '%02d' % m }}')">{{ '%02d' % m }}</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-                
-                <div class="time-picker-footer-{{ key }}">
-                    <button type="button" class="btn btn-secondary" onclick="cancelTimePicker_{{ key }}()">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="confirmTimePicker_{{ key }}()">确定</button>
+                    <div class="modal-footer border-top-0">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                        <button type="button" class="btn btn-primary px-4" onclick="confirmTimePicker_{{ key }}()">确定</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
     
     <style>
-        /* 为每个时间选择器创建独立的样式命名空间 */
-        .time-picker-container-{{ key }} {
-            position: relative;
-            width: 100%;
+        /* 修改模态框对话框的宽度和样式 */
+        .modal {
+            background: none !important;
         }
         
-        .time-display {
-            cursor: pointer;
+        .modal-backdrop {
+            display: none !important;
         }
         
-        .time-picker-dropdown-{{ key }} {
-            position: absolute;
-            z-index: 1050;
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
-            width: 300px;
-            overflow: hidden;
+        .time-picker-content {
+            border-radius: 16px !important;
+            border: none;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            background: var(--bs-modal-bg);
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease;
         }
         
-        [data-bs-theme="dark"] .time-picker-dropdown-{{ key }} {
-            background-color: #2b3035;
-            border: 1px solid #444;
+        .modal.show .time-picker-content {
+            transform: scale(1);
         }
         
-        .time-header-{{ key }} {
-            padding: 12px 16px;
-            text-align: center;
-            border-bottom: 1px solid #eee;
-            font-weight: 500;
+        .modal .time-picker-content {
+            transform: scale(0.95);
         }
         
-        [data-bs-theme="dark"] .time-header-{{ key }} {
-            border-bottom: 1px solid #444;
-        }
-        
-        .time-columns-container-{{ key }} {
-            padding: 16px;
-        }
-        
-        .time-column-label-{{ key }} {
-            text-align: center;
-            font-weight: 500;
-            margin-bottom: 12px;
-            font-size: 16px;
-        }
-        
+        /* 修改时间选择器容器样式 */
         .time-columns-{{ key }} {
             display: flex;
             height: 200px;
             overflow: hidden;
+            background: var(--bs-modal-bg);
+            border-radius: 12px;
+            padding: 8px;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.05);
+            width: 100%; /* 确保宽度100% */
+        }
+        
+        .time-columns-{{ key }} {
+            display: flex;
+            gap: 12px; /* 添加列之间的间距 */
+            padding: 0 12px; /* 增加左右内边距 */
         }
         
         .time-column-{{ key }} {
             flex: 1;
             overflow-y: auto;
+            overflow-x: hidden; /* 禁止横向滚动 */
             text-align: center;
             scrollbar-width: thin;
             padding: 0 4px;
+            position: relative;
+            min-width: 0; /* 防止内容溢出 */
         }
         
-        .time-column-{{ key }}::-webkit-scrollbar {
-            width: 4px;
+        /* 修改分隔符样式 */
+        .time-column-{{ key }}:first-child::after {
+            content: ':';
+            position: absolute;
+            right: -8px; /* 调整位置 */
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 20px;
+            color: var(--bs-primary);
+            font-weight: bold;
         }
         
-        .time-column-{{ key }}::-webkit-scrollbar-thumb {
-            background-color: #ccc;
-            border-radius: 4px;
-        }
-        
-        [data-bs-theme="dark"] .time-column-{{ key }}::-webkit-scrollbar-thumb {
-            background-color: #666;
-        }
-        
+        /* 调整选项样式 */
         .time-option-{{ key }} {
-            padding: 8px 0;
+            padding: 8px 4px;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: all 0.2s ease;
             font-size: 15px;
-            border-radius: 4px;
+            border-radius: 8px;
             margin: 2px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .time-option-{{ key }}:hover {
-            background-color: #f0f7ff;
+            background-color: rgba(var(--bs-primary-rgb), 0.1);
+            transform: translateX(2px);
         }
-        
-        [data-bs-theme="dark"] .time-option-{{ key }}:hover {
-            background-color: #3a4046;
-        }
-        
+
         .time-option-{{ key }}.selected {
-            background-color: #e6f0ff;
-            color: #0d6efd;
-            font-weight: 500;
-        }
-        
-        [data-bs-theme="dark"] .time-option-{{ key }}.selected {
-            background-color: #0d6efd;
+            background-color: var(--bs-primary);
             color: white;
+            transform: scale(1.05);
         }
         
-        .time-picker-footer-{{ key }} {
-            display: flex;
-            justify-content: flex-end;
-            padding: 10px 16px;
-            border-top: 1px solid #eee;
-            gap: 8px;
+        /* 调整模态框内容边距 */
+        .modal-body {
+            padding: 1rem 1rem !important; /* 减小内边距 */
         }
         
-        [data-bs-theme="dark"] .time-picker-footer-{{ key }} {
-            border-top: 1px solid #444;
+        /* 调整头部和底部按钮区域的内边距 */
+        .modal-header, .modal-footer {
+            padding: 1rem !important;
+        }
+        
+        /* 优化时间显示 */
+        .time-header-{{ key }} {
+            font-size: 2rem !important; /* 增大字号 */
+            letter-spacing: 2px; /* 增加字间距 */
         }
     </style>
     
     <script>
-        // 修改时间选择器的变量和函数
         let timeSelection_{{ key }} = {
             hour: '{{ config.value.split(":")[0] if ":" in config.value else "00" }}',
             minute: '{{ config.value.split(":")[1] if ":" in config.value and config.value.split(":")|length > 1 else "00" }}'
         };
         
-        // 显示时间选择器
+        // 修改显示时间选择器的函数
         function showTimePicker_{{ key }}() {
-            const picker = document.getElementById('time_picker_{{ key }}');
-            const input = document.getElementById('{{ key }}_display');
+            const modal = document.getElementById('timePickerModal_{{ key }}');
             
-            // 计算位置
-            const inputRect = input.getBoundingClientRect();
-            const viewportHeight = window.innerHeight;
-            const spaceBelow = viewportHeight - inputRect.bottom;
-            const pickerHeight = 320; // 估计的选择器高度
-            
-            // 重置位置样式
-            picker.style.top = '';
-            picker.style.bottom = '';
-            picker.style.left = '0';
-            
-            if (spaceBelow < pickerHeight && inputRect.top > pickerHeight) {
-                // 如果下方空间不足且上方空间足够，则在上方显示
-                picker.style.bottom = input.offsetHeight + 'px';
-            } else {
-                // 否则在下方显示
-                picker.style.top = input.offsetHeight + 'px';
-            }
-            
-            // 显示选择器
-            picker.style.display = 'block';
-            
-            // 获取当前值
-            const currentValue = document.getElementById('{{ key }}').value;
-            
+            // 计算页面中心位置
+            const windowHeight = window.innerHeight;
+            const modalHeight = 400;
+            const scrollPosition = window.pageYOffset;
+            const targetScrollPosition = scrollPosition + (windowHeight - modalHeight) / 2;
+
+            // 平滑滚动到目标位置
+            window.scrollTo({
+                top: targetScrollPosition,
+                behavior: 'smooth'
+            });
+
+            // 显示模态框
+            setTimeout(() => {
+                modal.style.display = 'block';
+                requestAnimationFrame(() => modal.classList.add('show'));
+            }, 300);
+
             // 初始化选择状态
+            const currentValue = document.getElementById('{{ key }}').value;
             if (currentValue) {
-                const parts = currentValue.split(':');
-                timeSelection_{{ key }}.hour = parts[0] || '00';
-                timeSelection_{{ key }}.minute = parts[1] || '00';
+                const [hour, minute] = currentValue.split(':');
+                timeSelection_{{ key }}.hour = hour || '00';
+                timeSelection_{{ key }}.minute = minute || '00';
                 
-                // 高亮当前选中的选项
                 highlightSelectedTime_{{ key }}();
-                
-                // 滚动到选中位置
                 scrollToSelected_{{ key }}();
             }
         }
         
         // 选择时间选项
         function selectTimeOption_{{ key }}(type, value) {
-            // 更新选择
+            const clickedOption = event.target;
+            clickedOption.classList.add('clicking');
+            
             timeSelection_{{ key }}[type] = value;
-            
-            // 高亮选中项
-            highlightSelectedTime_{{ key }}();
-            
-            // 更新显示的时间
             updateTimeDisplay_{{ key }}();
+            
+            // 移除点击效果并更新选中状态
+            setTimeout(() => {
+                clickedOption.classList.remove('clicking');
+                highlightSelectedTime_{{ key }}();
+            }, 200);
         }
         
         // 更新时间显示
         function updateTimeDisplay_{{ key }}() {
             const timeString = `${timeSelection_{{ key }}.hour}:${timeSelection_{{ key }}.minute}`;
-            document.querySelector('.time-header-{{ key }}').textContent = 
-                timeString;
+            document.querySelector('.time-header-{{ key }}').textContent = timeString;
         }
         
         // 高亮选中的时间
         function highlightSelectedTime_{{ key }}() {
             const columns = document.querySelectorAll('.time-column-{{ key }}');
             
-            // 移除所有高亮
             document.querySelectorAll('.time-option-{{ key }}').forEach(option => {
                 option.classList.remove('selected');
             });
             
-            // 添加高亮
             if (columns[0]) {
                 const hourOption = columns[0].querySelector(`.time-option-{{ key }}[data-value="${timeSelection_{{ key }}.hour}"]`);
                 if (hourOption) hourOption.classList.add('selected');
@@ -949,37 +1014,35 @@
             }
         }
         
-        // 确认时间选择
+        // 简化关闭时间选择器的函数
+        function closeTimePicker_{{ key }}() {
+            const modal = document.getElementById('timePickerModal_{{ key }}');
+            modal.classList.remove('show');
+            
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
+        }
+        
+        // 简化确认时间选择的函数
         function confirmTimePicker_{{ key }}() {
             const timeString = `${timeSelection_{{ key }}.hour}:${timeSelection_{{ key }}.minute}`;
-            
-            // 更新输入框和隐藏字段
             document.getElementById('{{ key }}_display').value = timeString;
             document.getElementById('{{ key }}').value = timeString;
-            
-            // 隐藏选择器
-            document.getElementById('time_picker_{{ key }}').style.display = 'none';
+            closeTimePicker_{{ key }}();
         }
         
-        // 取消时间选择
-        function cancelTimePicker_{{ key }}() {
-            document.getElementById('time_picker_{{ key }}').style.display = 'none';
-        }
-        
-        // 点击外部关闭时间选择器
-        document.addEventListener('click', function(event) {
-            const container = document.querySelector('.time-picker-container-{{ key }}');
-            const picker = document.getElementById('time_picker_{{ key }}');
-            
-            if (container && picker && !container.contains(event.target)) {
-                picker.style.display = 'none';
-            }
-        });
-        
-        // 初始化
+        // 添加关闭按钮事件监听
         document.addEventListener('DOMContentLoaded', function() {
-            // 初始化时间显示
-            updateTimeDisplay_{{ key }}();
+            const closeBtn = document.querySelector('#timePickerModal_{{ key }} .btn-close');
+            const cancelBtn = document.querySelector('#timePickerModal_{{ key }} .btn-light');
+            
+            if (closeBtn) {
+                closeBtn.onclick = () => closeTimePicker_{{ key }}();
+            }
+            if (cancelBtn) {
+                cancelBtn.onclick = () => closeTimePicker_{{ key }}();
+            }
         });
     </script>
 {% else %}
