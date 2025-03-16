@@ -1,11 +1,11 @@
 colorama
 Flask
 jieba
-openai
+openai>=1.0.0
 pandas
 psutil
 PyAutoGUI
-Requests
+requests
 snownlp
 SQLAlchemy
 tenacity
@@ -13,16 +13,41 @@ Werkzeug
 wxauto==3.9.11.17.5
 apscheduler
 schedule
-
-requests
+python-dotenv
 urllib3==1.26.3
 pydantic==1.10.21
-
 python-docx
-pandas
 openpyxl
 
-sentence-transformers
-faiss-cpu
-numpy
-openai
+# 嵌入和AI模型相关
+sentence-transformers==2.2.2
+faiss-cpu==1.7.4
+numpy==1.26.4
+ruamel.yaml
+transformers==4.30.2
+torch==2.0.1
+torchvision==0.15.2
+torchaudio==2.0.2
+huggingface-hub==0.16.4
+safetensors==0.4.1
+
+# Windows特定依赖
+pywin32
+pypiwin32
+
+# Flask相关依赖
+Flask-Login==0.6.2
+Flask-WTF==1.1.1
+Jinja2>=3.0.0
+itsdangerous>=2.0.0
+
+# 实用工具
+tqdm>=4.65.0
+pillow>=9.4.0
+aiohttp>=3.8.4
+jsonschema>=4.17.3
+pytz
+pyaudio
+pycryptodome
+chardet
+importlib_metadata
