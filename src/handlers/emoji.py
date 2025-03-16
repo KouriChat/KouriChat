@@ -16,26 +16,40 @@ import pyautogui
 import time
 from wxauto import WeChat
 from typing import Tuple, Optional
-from config import config
+from src.config.rag_config import config
+
+# 基础表情包触发概率配置（巧可酱快来写进前端）
+EMOJI_TRIGGER_RATE = 0.3 # 基础触发概率30%
+TRIGGER_RATE_INCREMENT = 0.15  # 未触发时概率增加量
+MAX_TRIGGER_RATE = 0.8  # 最大触发概率
 
 # 修改logger获取方式，确保与main模块一致
 logger = logging.getLogger('main')
 
 class EmojiHandler:
-    def __init__(self, root_dir, wx_instance=None):
+    def __init__(self, root_dir, wx_instance=None, sentiment_analyzer=None):
         self.root_dir = root_dir
         self.wx = wx_instance  # 使用传入的 WeChat 实例
+        self.sentiment_analyzer = sentiment_analyzer  # 情感分析器实例
         self.emoji_dir = os.path.join(root_dir, config.behavior.context.avatar_dir, "emojis")
         self.screenshot_dir = os.path.join(root_dir, 'screenshot')
         
-        # 情感分类映射（情感目录名: 关键词列表）
-        self.emotion_map = {
-            # 情感关键词映射，每个情感类别对应一组关键词
-            'happy': ['开心', '高兴', '哈哈', '笑', '嘻嘻', '可爱', '乐', '啊哈', '好', '愉快', '满意', '幸福', '喜悦', '兴奋', '爽', '棒', '感兴趣', '探讨', '一起', '随时', '有意思'],  # 表示快乐和友好的关键词
-            'sad': ['难过', '伤心', '哭', '委屈', '泪', '呜呜', '悲', '唉', '失落', '沮丧', '悲伤', '痛苦', '绝望', '伤感'],  # 表示悲伤的关键词
-            'angry': ['生气', '怒', '哼', '愤怒', '恼火', '气愤', '暴躁', '火大', '抓狂'],  # 表示愤怒的关键词
-            'neutral': ['平静', '冷静', '一般', '普通', '无聊', '随便', '还好', '正常', '一般般']  # 默认中性分类，表示没有明显情感波动的关键词
+        # 情感目录映射 
+        # 这个没办法了，要适配原先的目录结构，后续我会改掉的
+        # 争取能适配所有的表情包
+        self.emotion_dir_map = {
+            'Happy': 'happy',
+            'Sad': 'sad',
+            'Anger': 'angry',
+            'Neutral': 'neutral',
+            'Surprise': 'neutral',
+            'Fear': 'sad',
+            'Depress': 'sad',
+            'Dislike': 'angry'
         }
+        
+        # 触发概率状态维护 {user_id: current_prob}
+        self.trigger_states = {}
         
         # 确保目录存在
         os.makedirs(self.emoji_dir, exist_ok=True)
@@ -46,76 +60,52 @@ class EmojiHandler:
         emoji_keywords = ["来个表情包", "斗图", "gif", "动图"]
         return any(keyword in text.lower() for keyword in emoji_keywords)
 
-    def detect_emotion(self, text: str) -> str:
-        """从文本中检测情感分类"""
-        # 初始化情感得分
-        emotion_scores = {
-            'happy': 0,
-            'sad': 0,
-            'angry': 0,
-            'neutral': 0
-        }
-        
-        # 否定词列表
-        negation_words = ['不', '没', '别', '莫', '勿', '非', '无', '未', '休']
-        
-        # 检查是否包含否定词
-        has_negation = any(word in text for word in negation_words)
-        
-        # 计算每个情感类别的得分
-        for emotion, keywords in self.emotion_map.items():
-            if emotion == 'neutral':
-                continue
-                
-            # 计算匹配的关键词数量
-            matched_keywords = [keyword for keyword in keywords if keyword in text]
-            
-            # 根据匹配的关键词数量和位置计算得分
-            for keyword in matched_keywords:
-                # 基础分值
-                score = 1.0
-                
-                # 如果关键词出现在句子末尾，增加权重
-                if text.endswith(keyword):
-                    score *= 1.5
-                    
-                # 如果存在否定词，可能需要转换情感
-                if has_negation:
-                    # 检查否定词是否直接修饰当前关键词
-                    for neg_word in negation_words:
-                        neg_pos = text.find(neg_word)
-                        if neg_pos != -1 and 0 <= text.find(keyword) - neg_pos <= 5:
-                            # 如果否定词直接修饰情感词，转换情感
-                            if emotion == 'happy':
-                                emotion_scores['sad'] += score
-                            elif emotion == 'sad':
-                                emotion_scores['happy'] += score
-                            break
-                    else:
-                        # 否定词不直接修饰当前关键词
-                        emotion_scores[emotion] += score
-                else:
-                    emotion_scores[emotion] += score
-        
-        # 如果没有明显情感倾向，返回neutral
-        max_score = max(emotion_scores.values())
-        if max_score == 0:
-            return 'neutral'
-            
-        # 返回得分最高的情感
-        return max(emotion_scores.items(), key=lambda x: x[1])[0]
+    def _get_emotion_dir(self, emotion_type: str) -> str:
+        """将情感分析结果映射到目录"""
+        return self.emotion_dir_map.get(emotion_type, 'neutral')
 
-    def get_emotion_emoji(self, text: str) -> Optional[str]:
-        """根据AI回复内容的情感获取对应表情包"""
+    def _update_trigger_prob(self, user_id: str, triggered: bool):
+        """更新触发概率状态"""
+        current_prob = self.trigger_states.get(user_id, EMOJI_TRIGGER_RATE)
+        
+        if triggered:
+            # 触发后重置概率
+            new_prob = EMOJI_TRIGGER_RATE
+        else:
+            # 未触发时增加概率（使用指数衰减）
+            new_prob = min(current_prob + TRIGGER_RATE_INCREMENT * (1 - current_prob), MAX_TRIGGER_RATE)
+        
+        self.trigger_states[user_id] = new_prob
+        logger.debug(f"用户 {user_id} 触发概率更新: {current_prob:.2f} -> {new_prob:.2f}")
+
+    def should_send_emoji(self, user_id: str) -> bool:
+        """判断是否应该发送表情包"""
+        current_prob = self.trigger_states.get(user_id, EMOJI_TRIGGER_RATE)
+        if random.random() < current_prob:
+            self._update_trigger_prob(user_id, True)
+            return True
+        self._update_trigger_prob(user_id, False)
+        return False
+
+    def get_emotion_emoji(self, text: str, user_id: str) -> Optional[str]:
+        """根据情感分析结果获取对应表情包"""
         try:
-            # 检测情感分类
-            emotion = self.detect_emotion(text)
-            target_dir = os.path.join(self.emoji_dir, emotion)
+            if not self.sentiment_analyzer:
+                logger.warning("情感分析器未初始化")
+                return None
+                
+            # 获取情感分析结果
+            result = self.sentiment_analyzer.analyze(text)
+            emotion = result.get('sentiment_type', 'Neutral')
+            
+            # 映射到目录
+            target_emotion = self._get_emotion_dir(emotion)
+            target_dir = os.path.join(self.emoji_dir, target_emotion)
             
             # 回退机制处理
             if not os.path.exists(target_dir):
                 if os.path.exists(self.emoji_dir):
-                    logger.warning(f"情感目录 {emotion} 不存在，使用根目录")
+                    logger.warning(f"情感目录 {target_emotion} 不存在，使用根目录")
                     target_dir = self.emoji_dir
                 else:
                     logger.error(f"表情包根目录不存在: {self.emoji_dir}")
@@ -129,9 +119,14 @@ class EmojiHandler:
                 logger.warning(f"目录中未找到表情包: {target_dir}")
                 return None
                 
+            # 判断是否触发
+            if not self.should_send_emoji(user_id):
+                logger.info(f"未触发表情发送（用户 {user_id}）")
+                return None
+                
             # 随机选择并返回路径
             selected = random.choice(emoji_files)
-            logger.info(f"已选择 {emotion} 表情包: {selected}")
+            logger.info(f"已选择 {target_emotion} 表情包: {selected}")
             return os.path.join(target_dir, selected)
         except Exception as e:
             logger.error(f"获取表情包失败: {str(e)}", exc_info=True)
