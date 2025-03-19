@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: 📜 官方文档 | GO Ldap Admin Doc
-    url: https://kourichat.com/docs
-    about: 关于项目的功能用法以及设计考量，都会在官网进行呈现，提交问题之前，请先阅读官方文档，如果还不能满足，则再提问题。
-  - name: 👀 Github论坛 | GitHub Discussions
-    url: https://github.com/KouriChat/KouriChat/discussions
-    about: 如果您的问题不是功能或者错误，请转到讨论面板并在提交之前检索您的问题是否已经存在。
