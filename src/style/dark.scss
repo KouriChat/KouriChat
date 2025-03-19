@@ -1,0 +1,182 @@
+@use "element-plus/theme-chalk/src/dark/css-vars.scss" as *;
+
+/* 整体暗色风格适配 */
+html.dark {
+  $border-style: #303030;
+  $color-white: #fff;
+
+  /* 自定义深色背景颜色 */
+  // --el-bg-color: #020409;
+
+  /* 常用border-color 需要时可取用 */
+  --pure-border-color: rgb(253 253 253 / 12%);
+
+  /* switch关闭状态下的color 需要时可取用 */
+  --pure-switch-off-color: #ffffff3f;
+
+  .navbar,
+  .tags-view,
+  .contextmenu,
+  .sidebar-container,
+  .horizontal-header,
+  .sidebar-logo-container,
+  .horizontal-header .el-sub-menu__title,
+  .horizontal-header .submenu-title-noDropdown {
+    background: var(--el-bg-color) !important;
+  }
+
+  .app-main,
+  .app-main-nofixed-header {
+    background: #020409 !important;
+  }
+
+  /* 标签页 */
+  .tags-view {
+    .arrow-left,
+    .arrow-right {
+      border-right: 1px solid $border-style;
+      box-shadow: none;
+    }
+
+    .arrow-right {
+      border-left: 1px solid $border-style;
+    }
+
+    .scroll-item {
+      .el-icon-close {
+        &:hover {
+          color: rgb(255 255 255 / 85%) !important;
+          background-color: rgb(255 255 255 / 12%);
+        }
+      }
+
+      .chrome-tab {
+        .tag-title {
+          color: #666;
+        }
+
+        &:hover {
+          .chrome-tab__bg {
+            color: #333;
+          }
+
+          .tag-title {
+            color: #adadad;
+          }
+        }
+      }
+    }
+  }
+
+  /* 系统配置面板 */
+  .right-panel-items {
+    .el-divider__text {
+      --el-bg-color: var(--el-bg-color);
+    }
+
+    .el-divider--horizontal {
+      border-top: none;
+    }
+  }
+
+  .el-card {
+    --el-card-bg-color: var(--el-bg-color);
+  }
+
+  .el-backtop {
+    --el-backtop-bg-color: rgb(72 72 78);
+    --el-backtop-hover-bg-color: var(--el-color-primary);
+
+    transition: background-color 0.25s cubic-bezier(0.7, 0.3, 0.1, 1);
+  }
+
+  .el-dropdown-menu__item:not(.is-disabled):hover {
+    background: transparent;
+  }
+
+  /* 全局覆盖element-plus的el-dialog、el-drawer、el-message-box、el-notification组件右上角关闭图标的样式，表现更鲜明 */
+  .el-icon {
+    &.el-dialog__close,
+    &.el-drawer__close,
+    &.el-message-box__close,
+    &.el-notification__closeBtn {
+      &:hover {
+        color: rgb(255 255 255 / 85%) !important;
+        background-color: rgb(255 255 255 / 12%);
+
+        .pure-dialog-svg {
+          color: rgb(255 255 255 / 85%) !important;
+        }
+      }
+    }
+  }
+
+  /* 克隆并自定义 ElMessage 样式，不会影响 ElMessage 原本样式，在 src/utils/message.ts 中调用自定义样式 ElMessage 方法即可，整体浅色风格在 src/style/element-plus.scss 文件进行了适配 */
+  .pure-message {
+    background-color: rgb(36 37 37) !important;
+    background-image: initial !important;
+    box-shadow:
+      rgb(13 13 13 / 12%) 0 3px 6px -4px,
+      rgb(13 13 13 / 8%) 0 6px 16px 0,
+      rgb(13 13 13 / 5%) 0 9px 28px 8px !important;
+
+    & .el-message__content {
+      color: $color-white !important;
+      pointer-events: all !important;
+      background-image: initial !important;
+    }
+
+    & .el-message__closeBtn {
+      &:hover {
+        color: rgb(255 255 255 / 85%);
+        background-color: rgb(255 255 255 / 12%);
+      }
+    }
+  }
+
+  /* 自定义菜单搜索样式 */
+  .pure-search-dialog {
+    .el-dialog__footer {
+      box-shadow:
+        0 -1px 0 0 #555a64,
+        0 -3px 6px 0 rgb(69 98 155 / 12%);
+    }
+
+    .search-footer {
+      .search-footer-item {
+        color: rgb(235 235 235 / 60%);
+
+        .icon {
+          box-shadow: none;
+        }
+      }
+    }
+  }
+
+  /* ReSegmented 组件 */
+  .pure-segmented {
+    color: rgb(255 255 255 / 65%);
+    background-color: #000;
+
+    .pure-segmented-item-selected {
+      background-color: #1f1f1f;
+    }
+
+    .pure-segmented-item-disabled {
+      color: rgb(255 255 255 / 25%);
+    }
+  }
+
+  /* 仿 el-scrollbar 滚动条样式 支持大多数浏览器，如Chrome、Edge、Firefox、Safari等 */
+  .pure-scrollbar {
+    scrollbar-color: rgb(63 64 66) transparent;
+
+    ::-webkit-scrollbar-thumb {
+      background-color: rgb(63 64 66);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgb(92 93 96);
+    }
+  }
+}

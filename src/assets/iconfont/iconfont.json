@@ -1,0 +1,30 @@
+{
+  "id": "2208059",
+  "name": "pure-admin",
+  "font_family": "iconfont",
+  "css_prefix_text": "pure-iconfont-",
+  "description": "pure-admin-iconfont",
+  "glyphs": [
+    {
+      "icon_id": "20594647",
+      "name": "Tabs",
+      "font_class": "tabs",
+      "unicode": "e63e",
+      "unicode_decimal": 58942
+    },
+    {
+      "icon_id": "22129506",
+      "name": "PureLogo",
+      "font_class": "logo",
+      "unicode": "e620",
+      "unicode_decimal": 58912
+    },
+    {
+      "icon_id": "7795615",
+      "name": "New",
+      "font_class": "new",
+      "unicode": "e615",
+      "unicode_decimal": 58901
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+/* fade */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.28s;
+}
+
+.fade-enter,
+.fade-leave-active {
+  opacity: 0;
+}
+
+/* fade-transform */
+.fade-transform-leave-active,
+.fade-transform-enter-active {
+  transition: all 0.5s;
+}
+
+.fade-transform-enter-from {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+.fade-transform-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+/* breadcrumb transition */
+.breadcrumb-enter-active {
+  transition: all 0.4s;
+}
+
+.breadcrumb-leave-active {
+  position: absolute;
+  transition: all 0.3s;
+}
+
+.breadcrumb-enter-from,
+.breadcrumb-leave-active {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+/**
+ * @description 重置el-menu的展开收起动画时长
+ */
+.outer-most .el-collapse-transition-leave-active,
+.outer-most .el-collapse-transition-enter-active {
+  transition: 0.2s all ease-in-out !important;
+}
+
+.horizontal-collapse-transition {
+  transition: var(--pure-transition-duration) all !important;
+}

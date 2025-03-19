@@ -1,0 +1,189 @@
+.el-form-item__label {
+  font-weight: 700;
+}
+
+.el-breadcrumb__inner,
+.el-breadcrumb__inner a {
+  font-weight: 400 !important;
+}
+
+.el-dropdown-menu {
+  padding: 0 !important;
+}
+
+.is-dark {
+  z-index: 9999 !important;
+}
+
+/* 重置 el-button 中 icon 的 margin */
+.reset-margin [class*="el-icon"] + span {
+  margin-left: 2px !important;
+}
+
+/* 自定义 popover 的类名 */
+.pure-popper {
+  padding: 0 !important;
+}
+
+/* nprogress 适配 element-plus 的主题色 */
+#nprogress {
+  & .bar {
+    background-color: var(--el-color-primary) !important;
+  }
+
+  & .peg {
+    box-shadow:
+      0 0 10px var(--el-color-primary),
+      0 0 5px var(--el-color-primary) !important;
+  }
+
+  & .spinner-icon {
+    border-top-color: var(--el-color-primary);
+    border-left-color: var(--el-color-primary);
+  }
+}
+
+.pure-dialog {
+  .el-dialog__header.show-close {
+    padding-right: 16px;
+  }
+
+  .el-dialog__headerbtn {
+    top: 16px;
+    right: 12px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .pure-dialog-svg {
+    color: var(--el-color-info);
+  }
+
+  .el-dialog__footer {
+    padding-top: 0;
+  }
+}
+
+/* 全局覆盖element-plus的el-tour、el-dialog、el-drawer、el-message-box、el-notification组件右上角关闭图标和el-upload上传文件列表右侧关闭图标的样式，表现更鲜明 */
+.el-dialog__headerbtn,
+.el-message-box__headerbtn {
+  &:hover {
+    .el-dialog__close {
+      color: var(--el-color-info) !important;
+    }
+  }
+}
+
+.el-icon {
+  &.el-tour__close,
+  &.el-dialog__close,
+  &.el-drawer__close,
+  &.el-message-box__close,
+  &.el-notification__closeBtn,
+  .el-upload-list__item.is-ready &.el-icon--close {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    outline: none;
+    transition:
+      background-color 0.2s,
+      color 0.2s;
+
+    &:hover {
+      color: rgb(0 0 0 / 88%) !important;
+      text-decoration: none;
+      background-color: rgb(0 0 0 / 6%);
+
+      .pure-dialog-svg {
+        color: rgb(0 0 0 / 88%) !important;
+      }
+    }
+  }
+}
+
+/* 克隆并自定义 ElMessage 样式，不会影响 ElMessage 原本样式，在 src/utils/message.ts 中调用自定义样式 ElMessage 方法即可，整体暗色风格在 src/style/dark.scss 文件进行了适配 */
+.pure-message {
+  background: #fff !important;
+  border-width: 0 !important;
+  box-shadow:
+    0 3px 6px -4px #0000001f,
+    0 6px 16px #00000014,
+    0 9px 28px 8px #0000000d !important;
+
+  & .el-message__content {
+    color: #000000d9 !important;
+    pointer-events: all !important;
+    background-image: initial !important;
+  }
+
+  & .el-message__closeBtn {
+    border-radius: 4px;
+    outline: none;
+    transition:
+      background-color 0.2s,
+      color 0.2s;
+
+    &:hover {
+      background-color: rgb(0 0 0 / 6%);
+    }
+  }
+}
+
+/* 自定义菜单搜索样式 */
+.pure-search-dialog {
+  @media screen and (width > 760px) and (width <= 940px) {
+    .el-input__inner {
+      font-size: 12px;
+    }
+  }
+
+  @media screen and (width <= 470px) {
+    .el-input__inner {
+      font-size: 12px;
+    }
+  }
+
+  .el-dialog__header {
+    display: none;
+  }
+
+  .el-input__inner {
+    font-size: 1.2em;
+  }
+
+  .el-dialog__footer {
+    width: calc(100% + 32px);
+    padding: 10px 20px;
+    margin: auto -16px -16px;
+    box-shadow:
+      0 -1px 0 0 #e0e3e8,
+      0 -3px 6px 0 rgb(69 98 155 / 12%);
+  }
+}
+
+/* 仿 el-scrollbar 滚动条样式，支持大多数浏览器，如Chrome、Edge、Firefox、Safari等。整体暗色风格在 src/style/dark.scss 文件进行了适配 */
+.pure-scrollbar {
+  scrollbar-color: rgb(221 222 224) transparent; /* 滑块颜色、轨道颜色 */
+
+  /* Firefox */
+  scrollbar-width: thin; /* 可选值为 'auto', 'thin', 'none' */
+  ::-webkit-scrollbar {
+    width: 6px; /* 滚动条宽度 */
+  }
+
+  /* 滚动条轨道 */
+  ::-webkit-scrollbar-track {
+    background: transparent; /* 轨道颜色 */
+  }
+
+  /* 滚动条滑块 */
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(221 222 224);
+    border-radius: 4px;
+  }
+
+  /* 滚动条滑块：hover状态 */
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(199 201 203); /* 滑块hover颜色 */
+  }
+}
