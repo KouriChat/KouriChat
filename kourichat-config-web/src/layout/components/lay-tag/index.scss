@@ -1,0 +1,371 @@
+@keyframes schedule-in-width {
+  from {
+    width: 0;
+  }
+
+  to {
+    width: 100%;
+  }
+}
+
+@keyframes schedule-out-width {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0;
+  }
+}
+
+.tags-view {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+  background: #fff;
+  box-shadow: 0 0 1px #888;
+
+  .scroll-item {
+    position: relative;
+    display: inline-block;
+    height: 34px;
+    padding-left: 6px;
+    line-height: 34px;
+    cursor: pointer;
+    transition: all 0.4s;
+
+    &:not(:first-child) {
+      padding-right: 24px;
+    }
+
+    &.chrome-item {
+      padding-right: 0;
+      padding-left: 0;
+      margin-right: -18px;
+      box-shadow: none;
+    }
+
+    .el-icon-close {
+      position: absolute;
+      top: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      color: var(--el-color-primary);
+      cursor: pointer;
+      border-radius: 4px;
+      transition:
+        background-color 0.12s,
+        color 0.12s;
+      transform: translate(0, -50%);
+
+      &:hover {
+        color: rgb(0 0 0 / 88%) !important;
+        background-color: rgb(0 0 0 / 6%);
+      }
+    }
+  }
+
+  .tag-title {
+    padding: 0 4px;
+    color: var(--el-text-color-primary);
+    text-decoration: none;
+  }
+
+  .scroll-container {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+
+    &.chrome-scroll-container {
+      padding-top: 4px;
+
+      .fixed-tag {
+        padding: 0 !important;
+      }
+    }
+
+    .tab {
+      position: relative;
+      float: left;
+      overflow: visible;
+      white-space: nowrap;
+      list-style: none;
+
+      .scroll-item {
+        transition: all 0.2s cubic-bezier(0.645, 0.045, 0.355, 1);
+
+        &:nth-child(1) {
+          padding: 0 12px;
+        }
+
+        &.chrome-item {
+          &:nth-child(1) {
+            padding: 0;
+          }
+        }
+      }
+
+      .fixed-tag {
+        padding: 0 12px;
+      }
+    }
+  }
+
+  /* 右键菜单 */
+  .contextmenu {
+    position: absolute;
+    padding: 5px 0;
+    margin: 0;
+    font-size: 13px;
+    font-weight: normal;
+    color: var(--el-text-color-primary);
+    white-space: nowrap;
+    list-style-type: none;
+    background: #fff;
+    border-radius: 4px;
+    outline: 0;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+
+    li {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      padding: 7px 12px;
+      margin: 0;
+      cursor: pointer;
+
+      &:hover {
+        color: var(--el-color-primary);
+      }
+
+      svg {
+        display: block;
+        margin-right: 0.5em;
+      }
+    }
+  }
+}
+
+.el-dropdown-menu {
+  li {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    margin: 0;
+    cursor: pointer;
+
+    svg {
+      display: block;
+      margin-right: 0.5em;
+    }
+  }
+}
+
+.el-dropdown-menu__item:not(.is-disabled):hover {
+  color: #606266;
+  background: #f0f0f0;
+}
+
+:deep(.el-dropdown-menu__item) i {
+  margin-right: 10px;
+}
+
+:deep(.el-dropdown-menu__item--divided) {
+  margin: 1px 0;
+}
+
+.el-dropdown-menu__item--divided::before {
+  margin: 0;
+}
+
+.el-dropdown-menu__item.is-disabled {
+  cursor: not-allowed;
+}
+
+.scroll-item.is-active {
+  position: relative;
+  color: #fff;
+  box-shadow: 0 0 0.7px #888;
+
+  .chrome-tab {
+    z-index: 10;
+  }
+
+  .chrome-tab__bg {
+    color: var(--el-color-primary-light-9) !important;
+  }
+
+  .tag-title {
+    color: var(--el-color-primary) !important;
+  }
+
+  .chrome-close-btn {
+    color: var(--el-color-primary);
+
+    &:hover {
+      background-color: var(--el-color-primary);
+    }
+  }
+
+  .chrome-tab-divider {
+    opacity: 0;
+  }
+}
+
+.arrow-left,
+.arrow-right,
+.arrow-down {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 34px;
+  color: var(--el-text-color-primary);
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.arrow-left {
+  box-shadow: 5px 0 5px -6px #ccc;
+
+  &:hover {
+    cursor: w-resize;
+  }
+}
+
+.arrow-right {
+  border-right: 0.5px solid #ccc;
+  box-shadow: -5px 0 5px -6px #ccc;
+
+  &:hover {
+    cursor: e-resize;
+  }
+}
+
+/* 卡片模式下鼠标移入显示蓝色边框 */
+.card-in {
+  color: var(--el-color-primary);
+
+  .tag-title {
+    color: var(--el-color-primary);
+  }
+}
+
+/* 卡片模式下鼠标移出隐藏蓝色边框 */
+.card-out {
+  color: #666;
+  border: none;
+
+  .tag-title {
+    color: #666;
+  }
+}
+
+/* 灵动模式 */
+.schedule-active {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--el-color-primary);
+}
+
+/* 灵动模式下鼠标移入显示蓝色进度条 */
+.schedule-in {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--el-color-primary);
+  animation: schedule-in-width 200ms ease-in;
+}
+
+/* 灵动模式下鼠标移出隐藏蓝色进度条 */
+.schedule-out {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--el-color-primary);
+  animation: schedule-out-width 200ms ease-in;
+}
+
+/* 谷歌风格的页签 */
+.chrome-tab {
+  position: relative;
+  display: inline-flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  white-space: nowrap;
+  cursor: pointer;
+
+  .tag-title {
+    padding: 0;
+  }
+
+  .chrome-tab-divider {
+    position: absolute;
+    right: 7px;
+    width: 1px;
+    height: 14px;
+    background-color: #2b2d2f;
+  }
+
+  &:hover {
+    z-index: 10;
+
+    .chrome-tab__bg {
+      color: #dee1e6;
+    }
+
+    .tag-title {
+      color: #1f1f1f;
+    }
+
+    .chrome-tab-divider {
+      opacity: 0;
+    }
+  }
+
+  .chrome-tab__bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: -10;
+    width: 100%;
+    height: 100%;
+    color: transparent;
+    pointer-events: none;
+  }
+
+  .chrome-close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: #666;
+    border-radius: 50%;
+
+    &:hover {
+      color: white;
+      background-color: #b1b3b8;
+    }
+  }
+}

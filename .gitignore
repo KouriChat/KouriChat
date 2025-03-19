@@ -1,0 +1,25 @@
+kourichat-config-web/node_modules
+kourichat-config-web/.DS_Store
+kourichat-config-web/dist
+kourichat-config-web/dist-ssr
+kourichat-config-web/*.local
+kourichat-config-web/.eslintcache
+kourichat-config-web/report.html
+kourichat-config-web/vite.config.*.timestamp*
+
+kourichat-config-web/yarn.lock
+kourichat-config-web/npm-debug.log*
+kourichat-config-web/.pnpm-error.log*
+kourichat-config-web/.pnpm-debug.log
+kourichat-config-web/tests/**/coverage/
+
+# Editor directories and files
+kourichat-config-web/.idea
+kourichat-config-web/*.suo
+kourichat-config-web/*.ntvs*
+kourichat-config-web/*.njsproj
+kourichat-config-web/kourichat-config-web/*.sln
+kourichat-config-web/tsconfig.tsbuildinfo
+
+kourichat-config-server/.conda
+__pycache__

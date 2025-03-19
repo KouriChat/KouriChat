@@ -1,0 +1,19 @@
+{
+  "recommendations": [
+    "christian-kohler.path-intellisense",
+    "warmthsea.vscode-custom-code-color",
+    "vscode-icons-team.vscode-icons",
+    "davidanson.vscode-markdownlint",
+    "ms-azuretools.vscode-docker",
+    "stylelint.vscode-stylelint",
+    "bradlc.vscode-tailwindcss",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "redhat.vscode-yaml",
+    "csstools.postcss",
+    "mikestead.dotenv",
+    "eamodio.gitlens",
+    "antfu.iconify",
+    "Vue.volar"
+  ]
+}
