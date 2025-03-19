@@ -86,7 +86,7 @@ onMounted(async () => {
   // 立即执行一次
   await updateData();
   // 设置定时器，每5秒执行一次
-  timer = window.setInterval(updateData, 5000);
+  timer = window.setInterval(updateData, 2000);
 });
 
 // 组件卸载前清除计时器
