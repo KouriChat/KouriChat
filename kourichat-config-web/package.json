@@ -48,6 +48,7 @@
     "url": "https://github.com/xiaoxian521"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
     "@iconify-icons/ri": "^1.2.10",
     "@pureadmin/descriptions": "^1.2.1",
     "@pureadmin/table": "^3.2.1",
