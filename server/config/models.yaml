@@ -1,0 +1,133 @@
+version: 1.0.2
+update_url: https://static.kourichat.com/models/latest.json
+
+api_providers:
+  - id: kourichat
+    name: KouriChat API
+    url: https://api.kourichat.com/v1
+    register_url: https://api.kourichat.com/register
+    status: active
+    priority: 1
+
+  - id: siliconflow
+    name: 硅基流动 API
+    url: https://api.siliconflow.cn/v1/
+    register_url: https://www.siliconflow.cn
+    status: active
+    priority: 2
+
+  - id: deepseek
+    name: DeepSeek API
+    url: https://api.deepseek.com/v1
+    register_url: https://platform.deepseek.com
+    status: active
+    priority: 3
+
+  - id: ollama
+    name: 本地 Ollama
+    url: http://localhost:11434/api/chat
+    register_url: https://ollama.ai
+    status: active
+    priority: 4
+
+  - id: sealos
+    name: Sealos AI
+    url: https://aiproxy.bja.sealos.run/v1
+    register_url: https://bja.sealos.run/?uid=xTYRWw1vvT
+    status: active
+    priority: 5
+
+models:
+  kourichat:
+    - id: kourichat-v3
+      name: KouriChat V3
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: kourichat-r1
+      name: KouriChat R1
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: grok-2-latest
+      name: Grok 2代模型
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: glm-4-air
+      name: 智谱 GLM-4-Air模型（低费率）
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: glm-4-flash
+      name: 智谱 GLM-4-Flash模型（免费）
+      status: active
+      type: chat
+      context_length: 16000
+
+  siliconflow:
+    - id: deepseek-ai/DeepSeek-V3
+      name: 硅基格式V3模型（免费额度版）
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: deepseek-ai/DeepSeek-R1
+      name: 硅基格式R1模型（免费额度版）
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: Pro/deepseek-ai/DeepSeek-V3
+      name: 硅基格式V3模型（付费版）
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: Pro/deepseek-ai/DeepSeek-R1
+      name: 硅基格式R1模型（付费版）
+      status: active
+      type: chat
+      context_length: 16000
+
+  deepseek:
+    - id: deepseek-chat
+      name: deepseek官方V3模型
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: deepseek-reasoner
+      name: deepseek官方R1模型
+      status: active
+      type: chat
+      context_length: 16000
+
+  sealos:
+    - id: deepseek-chat
+      name: DeepSeek Chat
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: deepseek-reasoner
+      name: DeepSeek Reasoner
+      status: active
+      type: chat
+      context_length: 16000
+
+    - id: charglm-4
+      name: CharGLM-4
+      status: active
+      type: chat
+      context_length: 8192
+
+    - id: moonshot-v1-8k
+      name: Moonshot V1
+      status: active
+      type: chat
+      context_length: 8192
