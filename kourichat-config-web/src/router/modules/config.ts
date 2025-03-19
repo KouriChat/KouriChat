@@ -9,7 +9,7 @@ export default {
     {
       path: "/settings",
       name: "Settings",
-      component: () => import("@/views/settings/index.vue"),
+      component: () => import("@/views/settings/wx.vue"),
       meta: {
         title: "设置"
       }

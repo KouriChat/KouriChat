@@ -11,7 +11,7 @@ import { useApiStore } from "@/store/modules/api.js";
 import { ElMessage } from "element-plus";
 import { getToken } from "@/utils/auth";
 import { useRouter } from "vue-router";
-
+import ReLogViewer from "@/components/ReLogViewer";
 defineOptions({
   name: "Welcome"
 });
@@ -86,7 +86,7 @@ onMounted(async () => {
   // 立即执行一次
   await updateData();
   // 设置定时器，每5秒执行一次
-  timer = window.setInterval(updateData, 5000);
+  timer = window.setInterval(updateData, 2000);
 });
 
 // 组件卸载前清除计时器
@@ -178,6 +178,28 @@ onBeforeUnmount(() => {
         </el-card>
       </el-col>
     </el-row>
+    <el-row>
+      <el-col :span="24">
+        <ReLogViewer
+          :logs="['[Debug][10:00:25]系统启动']"
+          :default-auto-scroll="true"
+          :default-show-line-numbers="true"
+          width="100%"
+          height="700px"
+          @clear="() => {}"
+        >
+          <template #title>
+            <div class="log-title">
+              <el-text>机器人日志</el-text>
+              <div>
+                <el-button type="primary">启动机器人</el-button>
+                <el-button type="danger">停止机器人</el-button>
+              </div>
+            </div>
+          </template>
+        </ReLogViewer>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
@@ -220,5 +242,11 @@ onBeforeUnmount(() => {
 
 .card-icon {
   font-size: 20px;
+}
+
+.log-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 </style>
