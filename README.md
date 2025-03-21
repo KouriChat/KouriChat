@@ -14,7 +14,7 @@
 
 **最新整合包**：[夸克网盘下载](https://pan.quark.cn/s/c55dd13218ea)<br>
 **详细文档**：[项目官网](https://kourichat.com/docs/)<br>
-**角色广场已上线！**：[角色档案馆](https://avatars.kourichat.com/#/archive)
+**角色广场已上线！**：[角色档案馆](https://avatars.kourichat.com/#/archive)<br>
 **项目直属公益API（推荐，低价）**: [Kouri API](https://api.kourichat.com/)
 ----------------------------
 
