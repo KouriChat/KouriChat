@@ -1,8 +1,6 @@
 """
     消息模型：
         定义了一个消息传递的参数
-
-
 """
 
 from dataclasses import dataclass
