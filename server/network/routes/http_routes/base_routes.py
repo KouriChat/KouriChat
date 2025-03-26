@@ -1,10 +1,10 @@
 from flask import jsonify,request
 from config import SettingReader
-from config.token_config import TokenConfig
+from utils import token_config 
 
 setting = SettingReader()
 config = setting.get_config()
-token_config = TokenConfig()
+token_config = token_config.TokenConfig()
 
 class BaseRoutes:
     def __init__(self, app):
@@ -89,14 +89,51 @@ class BaseRoutes:
             }), 401
 
         
-        @self.app.route('/init_password',methods=['POST','GET'])
+        @self.app.route('/init_password',methods=['POST'])
         def init_password():
-            return jsonify({
-              'status': 'ok',
-              'message': 'init password success'
-            }), 200
-        
+            """初始化密码接口
+            接收客户端的初始化密码请求，必须包含以下字段：
+                - password: 登录密码
+            Returns:
+                - status: 状态，success 或 error
+                - message: 消息
+            """
+            from flask import session
+            from datetime import timedelta
+            import hashlib
 
+            def hash_password(password):
+                return hashlib.sha256(password.encode()).hexdigest()
+
+            # 检查是否已经初始化过密码
+            if config['categories']['auth_settings']['settings']['admin_password']['value']:
+                return jsonify({
+                   'status': 'error',
+                  'message': '密码已经初始化过了'  
+                })
+
+            data = request.get_json()
+            password = data.get('password')
+
+            if not password:
+                return jsonify({
+                   'status': 'error',
+                   'message': '密码不能为空'
+                }), 400
+
+            # 初始化密码
+            config['categories']['auth_settings']['settings']['admin_password']['value'] = hash_password(password)
+            setting.set_config(config)
+
+            # 生成token
+            token = token_config.generate_token('admin')
+            return jsonify({
+               'status':'success',
+               'message': 'init password success',
+                'token': token
+            }), 200
+
+        
         @self.app.route('/logout',methods=['GET'])
         def logout():
             return jsonify({
