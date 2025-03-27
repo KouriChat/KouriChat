@@ -1978,7 +1978,7 @@ class MessageHandler:
             """
             while True:
                 if self.auto_task_message_queue:
-                    if len(self.auto_send_message_queue) == 0:
+                    if len(self.auto_task_message_queue) == 0:
                         return
                     for chat_id, content in self.auto_task_message_queue:
                         messages = self.split_message_for_sending(content)
