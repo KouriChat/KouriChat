@@ -9,6 +9,7 @@ import os
 from .Io_util import IoUtil
 from .logger_util import LoggerConfig, debuggerLogger, infoLogger
 from .Io_util import IoUtil
+from .api_client import APIWrapper, APIEmbeddings
 
 def dir_path():
     """获取项目根目录路径
@@ -35,5 +36,7 @@ __all__ = [
     'debuggerLogger',  # 调试日志记录器
     'infoLogger',  # 信息日志记录器
     'IoUtil',  # IO操作工具类
-    'dir_path'  # 目录路径验证函数
+    'dir_path',  # 目录路径验证函数
+    'APIWrapper',  # API封装类
+    'APIEmbeddings',  # API嵌入类
 ]
