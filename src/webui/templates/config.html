@@ -1862,6 +1862,35 @@
                 });
             }
         });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取人设目录列表
+            fetch('/get_available_avatars')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const avatarSelect = document.getElementById('AVATAR_DIR');
+                        if (avatarSelect) {
+                            // 保存当前选中的值
+                            const currentValue = avatarSelect.value;
+                            // 清空现有选项
+                            avatarSelect.innerHTML = '';
+                            // 添加新选项
+                            data.avatars.forEach(avatar => {
+                                const option = document.createElement('option');
+                                option.value = avatar;
+                                option.textContent = avatar;
+                                avatarSelect.appendChild(option);
+                            });
+                            // 恢复之前选中的值
+                            if (currentValue) {
+                                avatarSelect.value = currentValue;
+                            }
+                        }
+                    }
+                })
+                .catch(error => console.error('获取人设目录列表失败:', error));
+        });
     </script>
 </head>
 
