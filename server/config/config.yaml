@@ -5,7 +5,7 @@ categories:
         description: 管理员密码
         is_secret: true
         type: string
-        value: ""
+        value: 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
     title: 认证设置
   behavior_settings:
     settings:
