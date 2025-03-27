@@ -781,7 +781,7 @@ class ChatBot:
                 # 如果是群聊@消息，再移除@部分
                 if emoji_handler.is_emoji_request(content):
                     logger.info("检测到表情包请求")
-                    emoji_path = emoji_handler.get_emotion_emoji(content, username)
+                    emoji_path = emoji_handler._get_emotion_emoji_impl(content, username)
                     if emoji_path:
                         logger.info(f"准备发送情感表情包: {emoji_path}")
                         self.message_handler.wx.SendFiles(emoji_path, chatName)
