@@ -45,6 +45,7 @@ class MessageHandler:
         self.user_queues = {}
         self.queue_lock = threading.Lock()
         self.chat_contexts = {}
+        self.auto_task_message_queue:List[Dict[str, str]] = []
 
         # 微信实例
         self.wx = wx
@@ -158,6 +159,8 @@ class MessageHandler:
         # 添加衰减相关参数
         self.decay_method = 'exponential'  # 或 'linear'
         self.decay_rate = 0.1  # 可以根据需要调整衰减率
+
+        self._init_auto_task_message()
 
     def _get_config_value(self, key, default_value):
         """从配置文件获取特定值，如果不存在则返回默认值"""
@@ -1966,6 +1969,24 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"处理文本消息失败: {str(e)}", exc_info=True)
             return "抱歉，处理您的消息时出现错误"
+
+    def _init_auto_task_message(self):
+        """初始化处理自动任务消息的线程"""
+        def _process_auto_task_message():
+            """
+            处理发送自动任务消息
+            """
+            while True:
+                if self.auto_task_message_queue:
+                    if len(self.auto_send_message_queue) == 0:
+                        return
+                    for chat_id, content in self.auto_task_message_queue:
+                        messages = self.split_message_for_sending(content)
+                        self._send_split_messages(messages, chat_id)
+                time.sleep(0.1)
+
+        threading.Timer(1, _process_auto_task_message).start()
+
 
     # 添加新的获取最大上下文轮数的方法
     def _get_max_context_turns(self):
