@@ -59,6 +59,7 @@ import win32event
 from src.configUtils.parse_config_groups import parse_config_groups, get_available_avatars
 # 导入配置更新函数
 from src.configUtils.update_config_value import update_config_value
+from pathlib import Path
 
 # 在文件开头添加全局变量声明
 bot_process = None
@@ -1837,6 +1838,7 @@ def get_config():
     """获取配置数据，特别处理LISTEN_LIST字段"""
     try:
         import yaml
+        from pathlib import Path
         # 直接从配置文件读取配置数据
         config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
         with open(config_path, 'r', encoding='utf-8') as f:
@@ -1870,7 +1872,21 @@ def get_config():
             else:
                 config_data_response['RAG_IS_RERANK'] = bool(rerank_value)
         
-        # 其他配置按需添加...
+        # 添加人设目录列表
+        avatars_dir = Path('data') / 'avatars'
+        if avatars_dir.exists():
+            avatars = [d.name for d in avatars_dir.iterdir() if d.is_dir()]
+            config_data_response['AVATAR_DIR'] = {
+                'value': config_data.get('AVATAR_DIR', ''),
+                'options': avatars
+            }
+            logger.debug(f"获取到的人设目录列表: {avatars}")
+        else:
+            config_data_response['AVATAR_DIR'] = {
+                'value': '',
+                'options': []
+            }
+            logger.warning("人设目录不存在")
         
         return jsonify({
             'status': 'success',
