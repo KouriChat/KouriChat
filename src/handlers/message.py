@@ -1989,6 +1989,7 @@ class MessageHandler:
                             self._send_split_messages(messages, chat_id)
                             messages = self._split_message_for_sending(content)
                             self._send_split_messages(messages, chat_id)
+                            self.auto_task_message_queue.remove(message_dict)
                 time.sleep(0.1)
 
         threading.Timer(1, _process_auto_task_message).start()
