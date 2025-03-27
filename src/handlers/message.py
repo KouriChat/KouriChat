@@ -1987,7 +1987,7 @@ class MessageHandler:
                                 content
                                 )
                             self._send_split_messages(messages, chat_id)
-                            messages = self.split_message_for_sending(content)
+                            messages = self._split_message_for_sending(content)
                             self._send_split_messages(messages, chat_id)
                 time.sleep(0.1)
 
