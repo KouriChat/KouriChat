@@ -2357,11 +2357,7 @@ class MessageHandler:
                 if self.auto_task_message_queue:
                     if len(self.auto_task_message_queue) == 0:
                         return
-                    logger.info(
-                        f"开始处理自动任务消息队列，当前队列长度: {
-                            len(self.auto_task_message_queue)
-                            }"
-                            )
+                    logger.info(f"开始处理自动任务消息队列，当前队列长度: {len(self.auto_task_message_queue)}")
                     for message_dict in self.auto_task_message_queue:
                         if "chat_id" in message_dict and "content" in message_dict:
                             logger.info(f"处理自动任务消息: {message_dict}")
