@@ -117,7 +117,7 @@ class AutoTasker:
                 try:
                     if self.tasks[task_id]['is_active']:
                         self.message_handler.auto_task_message_queue.append(
-                            {f"{chat_id}": content}
+                            {f"chat_id": chat_id, "content": content}
                         )
                         logger.info(f"执行定时任务 {task_id}")
                 except Exception as e:
