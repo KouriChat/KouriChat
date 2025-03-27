@@ -324,180 +324,77 @@ def index():
 
 @app.route('/save', methods=['POST'])
 def save_config():
-    """保存配置"""
     try:
-        import yaml
-        import importlib
-        import sys
-        # 修改为接收表单数据而不是JSON
-        form_data = request.form.to_dict()
-        logger.debug(f"接收到的配置数据: {form_data}")
-
-        # 记录安静时间设置
-        if 'QUIET_TIME_START' in form_data:
-            # 特殊处理：如果值为1320，自动转换为22:00
-            if form_data['QUIET_TIME_START'] == '1320':
-                form_data['QUIET_TIME_START'] = '22:00'
-                logger.info(f"安静时间开始值1320已自动转换为22:00")
-            # 如果格式不包含冒号，尝试转换
-            elif form_data['QUIET_TIME_START'] and ':' not in form_data['QUIET_TIME_START']:
-                try:
-                    hour = int(form_data['QUIET_TIME_START']) // 100
-                    minute = int(form_data['QUIET_TIME_START']) % 100
-                    form_data['QUIET_TIME_START'] = f"{hour:02d}:{minute:02d}"
-                    logger.info(f"转换安静时间开始格式: {form_data['QUIET_TIME_START']}")
-                except (ValueError, TypeError):
-                    logger.warning(f"无法转换安静时间开始格式: {form_data['QUIET_TIME_START']}")
-            logger.info(f"接收到安静时间开始设置: {form_data['QUIET_TIME_START']}")
-        if 'QUIET_TIME_END' in form_data:
-            # 特殊处理：如果值为1320，自动转换为08:00
-            if form_data['QUIET_TIME_END'] == '1320':
-                form_data['QUIET_TIME_END'] = '08:00'
-                logger.info(f"安静时间结束值1320已自动转换为08:00")
-            # 如果格式不包含冒号，尝试转换
-            elif form_data['QUIET_TIME_END'] and ':' not in form_data['QUIET_TIME_END']:
-                try:
-                    hour = int(form_data['QUIET_TIME_END']) // 100
-                    minute = int(form_data['QUIET_TIME_END']) % 100
-                    form_data['QUIET_TIME_END'] = f"{hour:02d}:{minute:02d}"
-                    logger.info(f"转换安静时间结束格式: {form_data['QUIET_TIME_END']}")
-                except (ValueError, TypeError):
-                    logger.warning(f"无法转换安静时间结束格式: {form_data['QUIET_TIME_END']}")
-            logger.info(f"接收到安静时间结束设置: {form_data['QUIET_TIME_END']}")
-        
-        # 特殊处理LISTEN_LIST字段
-        if 'LISTEN_LIST' in form_data:
-            # 确保将逗号分隔的字符串转为列表
-            listen_list_str = form_data['LISTEN_LIST']
-            form_data['LISTEN_LIST'] = [user.strip() for user in listen_list_str.split(',') if user.strip()]
-            logger.debug(f"处理LISTEN_LIST为列表: {form_data['LISTEN_LIST']}")
-            
-        # 特殊处理RAG_IS_RERANK，确保它是布尔值
-        if 'RAG_IS_RERANK' in form_data:
-            if isinstance(form_data['RAG_IS_RERANK'], str):
-                form_data['RAG_IS_RERANK'] = form_data['RAG_IS_RERANK'].lower() == 'true'
-            try:
-                form_data['RAG_IS_RERANK'] = bool(form_data['RAG_IS_RERANK'])
-                logger.debug(f"处理RAG_IS_RERANK为布尔值: {form_data['RAG_IS_RERANK']}")
-            except Exception as e:
-                logger.error(f"转换RAG_IS_RERANK为布尔值失败: {str(e)}")
-
         # 读取当前配置
         config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
         with open(config_path, 'r', encoding='utf-8') as f:
             current_config = yaml.safe_load(f)
-
-        # 确保 categories 和 schedule_settings 存在
-        if 'categories' not in current_config:
-            current_config['categories'] = {}
-
-        if 'schedule_settings' not in current_config['categories']:
-            current_config['categories']['schedule_settings'] = {
-                "title": "定时任务配置",
-                "settings": {
-                    "tasks": {
-                        "value": [],
-                        "type": "array",
-                        "description": "定时任务列表"
-                    }
-                }
-            }
-        elif 'settings' not in current_config['categories']['schedule_settings']:
-            current_config['categories']['schedule_settings']['settings'] = {
-                "tasks": {
-                    "value": [],
-                    "type": "array",
-                    "description": "定时任务列表"
-                }
-            }
-        elif 'tasks' not in current_config['categories']['schedule_settings']['settings']:
-            current_config['categories']['schedule_settings']['settings']['tasks'] = {
-                "value": [],
-                "type": "array",
-                "description": "定时任务列表"
-            }
-
+            
+        # 获取表单数据
+        form_data = request.form.to_dict()
+        
         # 更新配置
         for key, value in form_data.items():
-            # 特殊处理定时任务配置
-            if key == 'TASKS':
+            # 特殊处理时间格式
+            if key in ['QUIET_TIME_START', 'QUIET_TIME_END']:
                 try:
-                    tasks = value if isinstance(value, list) else (json.loads(value) if isinstance(value, str) else [])
-                    logger.debug(f"处理任务数据: {tasks}")
-                    current_config['categories']['schedule_settings']['settings']['tasks']['value'] = tasks
-                except Exception as e:
-                    logger.error(f"处理定时任务配置失败: {str(e)}")
-            # 处理其他配置项
-            elif key in ['LISTEN_LIST', 'DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY', 'MAX_TOKEN', 'TEMPERATURE',
-                         'MOONSHOT_API_KEY', 'MOONSHOT_BASE_URL', 'MOONSHOT_TEMPERATURE', 'MOONSHOT_MODEL',
-                         'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
-                         'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR',
-                         'RAG_API_KEY', 'RAG_BASE_URL', 'RAG_EMBEDDING_MODEL', 'RAG_IS_RERANK', 'RAG_RERANKER_MODEL',
-                         'RAG_TOP_K', 'AUTO_DOWNLOAD_LOCAL_MODEL', 'AUTO_ADAPT_SILICONFLOW']:
-                # 这里可以添加更多的配置项映射
-                update_config_value(current_config, key, value)
-
+                    datetime.strptime(value, '%H:%M')
+                except ValueError:
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'时间格式错误: {value}，请使用HH:MM格式'
+                    })
+            
+            # 特殊处理列表类型
+            if key == 'LISTEN_LIST':
+                value = [x.strip() for x in value.split(',') if x.strip()]
+            
+            # 更新RAG配置
+            if key.startswith('RAG_'):
+                rag_key = key.lower()
+                if 'rag_settings' not in current_config['categories']:
+                    current_config['categories']['rag_settings'] = {'settings': {}}
+                if rag_key not in current_config['categories']['rag_settings']['settings']:
+                    current_config['categories']['rag_settings']['settings'][rag_key] = {'value': None}
+                current_config['categories']['rag_settings']['settings'][rag_key]['value'] = value
+            else:
+                # 更新其他配置
+                for category in current_config['categories'].values():
+                    if 'settings' in category and key in category['settings']:
+                        category['settings'][key]['value'] = value
+                        break
+        
+        # 验证RAG配置
+        is_valid, message = validate_rag_config(current_config)
+        if not is_valid:
+            return jsonify({
+                'status': 'error',
+                'message': message
+            })
+        
         # 保存配置
         with open(config_path, 'w', encoding='utf-8') as f:
             yaml.dump(current_config, f, allow_unicode=True, sort_keys=False)
-
-        # 立即重新加载配置
-        g.config_data = current_config
-        
-        # 更新缓存
-        app.config['CONFIG_CACHE'] = current_config
-        app.config['CONFIG_CACHE_TIME'] = time.time()
-        
-        # 重新加载配置模块，确保更改立即生效
-        try:
-            # 重新加载配置模块
-            importlib.reload(sys.modules['src.config'])
-            # 使用 reload_from_file 方法重新加载配置
-            from src.config import config as settings
-            if hasattr(settings, 'reload_from_file'):
-                settings.reload_from_file()
-                logger.info("成功重新加载配置模块")
-            else:
-                logger.warning("配置模块没有 reload_from_file 方法")
-        except Exception as e:
-            logger.error(f"重新加载配置模块失败: {str(e)}")
-        
-        # 检查并记录RAG_IS_RERANK设置
-        try:
-            is_rerank = current_config['categories']['rag_settings']['settings']['is_rerank']['value']
-            logger.info(f"保存后的RAG_IS_RERANK值: {is_rerank}, 类型: {type(is_rerank)}")
-        except Exception as e:
-            logger.error(f"获取保存后的RAG_IS_RERANK值失败: {str(e)}")
             
-        # 记录安静时间设置
-        try:
-            quiet_time_start = current_config['categories']['behavior_settings']['settings']['quiet_time']['start']['value']
-            quiet_time_end = current_config['categories']['behavior_settings']['settings']['quiet_time']['end']['value']
-            logger.info(f"已更新安静时间设置: 开始={quiet_time_start}, 结束={quiet_time_end}")
-        except Exception as e:
-            logger.error(f"获取安静时间设置失败: {str(e)}")
-
-        # 重新初始化定时任务
-        try:
-            from src.main import initialize_auto_tasks, message_handler
-            auto_tasker = initialize_auto_tasks(message_handler)
-            if auto_tasker:
-                # 检查是否有任务
-                tasks = auto_tasker.get_all_tasks()
-                if tasks:
-                    logger.info(f"成功重新初始化定时任务，共 {len(tasks)} 个任务")
-                else:
-                    logger.info("成功重新初始化定时任务，但没有任务")
-        except Exception as e:
-            logger.error(f"重新初始化定时任务失败: {str(e)}")
-
+        # 重新加载配置
+        import src.config.config as config_module
+        importlib.reload(config_module)
+        
         # 重新初始化RAG记忆系统
-        reload_rag_memory()
-
+        from src.handlers.memories.core.rag import RagManager
+        rag_manager = RagManager()
+        rag_manager.initialize()
+        
+        # 重新初始化定时任务
+        from src.services.scheduler import scheduler
+        scheduler.reload_tasks()
+        
         return jsonify({
             'status': 'success',
-            'message': '配置已成功保存'
+            'message': '配置已成功保存',
+            'config': current_config  # 返回更新后的配置
         })
+        
     except Exception as e:
         logger.error(f"保存配置失败: {str(e)}")
         return jsonify({
