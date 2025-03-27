@@ -6200,6 +6200,186 @@
                 }
             }, 1000 );
         } );
+
+        // 添加配置变更监听函数
+        function watchConfigChanges() {
+            let lastConfig = null;
+            
+            setInterval(() => {
+                fetch('/get_config')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success' && data.config) {
+                            if (lastConfig && JSON.stringify(lastConfig) !== JSON.stringify(data.config)) {
+                                // 配置发生变化，更新UI
+                                updateAllConfigs(data.config);
+                                console.log("检测到配置变更，已更新UI");
+                            }
+                            lastConfig = data.config;
+                        }
+                    })
+                    .catch(error => {
+                        console.error("检查配置变更失败:", error);
+                    });
+            }, 5000); // 每5秒检查一次
+        }
+
+        // 页面加载时启动监听
+        document.addEventListener('DOMContentLoaded', () => {
+            watchConfigChanges();
+        });
+
+        // 添加配置刷新函数
+        function refreshConfig() {
+            fetch('/get_config')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.config) {
+                        // 更新所有配置项
+                        updateAllConfigs(data.config);
+                        // 更新特定配置项
+                        const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
+                        if (isRerankCheckbox) {
+                            isRerankCheckbox.checked = data.config.RAG_IS_RERANK;
+                            toggleRerankModelSection(data.config.RAG_IS_RERANK);
+                        }
+                        console.log("配置已刷新");
+                    }
+                })
+                .catch(error => {
+                    console.error("刷新配置失败:", error);
+                });
+        }
+
+        // 修改保存按钮的点击事件处理
+        document.getElementById('saveButton').addEventListener('click', function() {
+            // ... 现有的保存逻辑 ...
+            
+            // 在保存成功后调用刷新函数
+            setTimeout(() => {
+                refreshConfig();
+            }, 500);
+        });
+
+        // 添加RAG配置更新函数
+        function updateRagConfig(config) {
+            console.log("更新RAG配置:", config);
+            const ragSettings = config.rag_settings?.settings || {};
+            
+            // 更新所有RAG相关配置项
+            const ragConfig = {
+                isRerank: ragSettings.is_rerank?.value || false,
+                apiKey: ragSettings.api_key?.value || '',
+                baseUrl: ragSettings.base_url?.value || '',
+                embeddingModel: ragSettings.embedding_model?.value || 'bge-m3',
+                rerankerModel: ragSettings.reranker_model?.value || '',
+                topK: ragSettings.top_k?.value || 5,
+                savedTime: new Date().getTime()
+            };
+            
+            // 保存到localStorage
+            localStorage.setItem('ragConfig', JSON.stringify(ragConfig));
+            
+            // 更新UI
+            const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
+            if (isRerankCheckbox) {
+                isRerankCheckbox.checked = ragConfig.isRerank;
+                toggleRerankModelSection(ragConfig.isRerank);
+            }
+            
+            // 更新其他RAG配置项
+            const configMap = {
+                'RAG_API_KEY': ragConfig.apiKey,
+                'RAG_BASE_URL': ragConfig.baseUrl,
+                'RAG_EMBEDDING_MODEL': ragConfig.embeddingModel,
+                'RAG_RERANKER_MODEL': ragConfig.rerankerModel,
+                'RAG_TOP_K': ragConfig.topK
+            };
+            
+            for (const [id, value] of Object.entries(configMap)) {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.value = value;
+                }
+            }
+        }
+
+        // 修改配置刷新函数
+        function refreshConfigData() {
+            fetch('/get_config')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.config) {
+                        // 更新监听用户列表
+                        if (data.config.LISTEN_LIST) {
+                            console.log("自动刷新: 更新监听用户列表", data.config.LISTEN_LIST);
+                            updateListenUserList(data.config.LISTEN_LIST);
+                        }
+                        
+                        // 更新RAG配置
+                        if (data.config.rag_settings) {
+                            updateRagConfig(data.config);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error("自动刷新配置数据失败:", error);
+                });
+        }
+
+        // 修改RAG配置保存逻辑
+        document.getElementById('RAG_IS_RERANK').addEventListener('change', function(e) {
+            if (this.dataset.init === 'true') {
+                console.log(`用户手动更改重排序开关到: ${this.checked}`);
+                
+                // 获取当前所有RAG配置
+                const ragConfig = {
+                    isRerank: this.checked,
+                    apiKey: document.getElementById('RAG_API_KEY')?.value || '',
+                    baseUrl: document.getElementById('RAG_BASE_URL')?.value || '',
+                    embeddingModel: document.getElementById('RAG_EMBEDDING_MODEL')?.value || 'bge-m3',
+                    rerankerModel: document.getElementById('RAG_RERANKER_MODEL')?.value || '',
+                    topK: document.getElementById('RAG_TOP_K')?.value || 5,
+                    savedTime: new Date().getTime()
+                };
+                
+                // 保存到localStorage
+                localStorage.setItem('ragConfig', JSON.stringify(ragConfig));
+                console.log(`已更新localStorage中的RAG配置:`, ragConfig);
+            } else {
+                console.log(`程序设置重排序开关到: ${this.checked}`);
+                this.dataset.init = 'true';
+            }
+        });
+
+        // 页面加载时初始化RAG配置
+        document.addEventListener('DOMContentLoaded', function() {
+            // ... existing code ...
+            
+            // 初始化RAG配置
+            try {
+                const savedConfig = localStorage.getItem('ragConfig');
+                if (savedConfig) {
+                    const parsedConfig = JSON.parse(savedConfig);
+                    if (parsedConfig) {
+                        updateRagConfig({
+                            rag_settings: {
+                                settings: {
+                                    is_rerank: { value: parsedConfig.isRerank },
+                                    api_key: { value: parsedConfig.apiKey },
+                                    base_url: { value: parsedConfig.baseUrl },
+                                    embedding_model: { value: parsedConfig.embeddingModel },
+                                    reranker_model: { value: parsedConfig.rerankerModel },
+                                    top_k: { value: parsedConfig.topK }
+                                }
+                            }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error("初始化RAG配置失败:", e);
+            }
+        });
     </script>
 </body>
 
