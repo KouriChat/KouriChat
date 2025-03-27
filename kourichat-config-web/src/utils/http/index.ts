@@ -23,6 +23,7 @@ const defaultConfig: AxiosRequestConfig = {
     "Content-Type": "application/json",
     "X-Requested-With": "XMLHttpRequest"
   },
+  baseURL: import.meta.env.VITE_API_URL as string,
   // 数组格式参数序列化（https://github.com/axios/axios/issues/5142）
   paramsSerializer: {
     serialize: stringify as unknown as CustomParamsSerializer
@@ -74,6 +75,7 @@ class PureHttp {
         }
         /** 请求白名单，放置一些不需要`token`的接口（通过设置请求白名单，防止`token`过期后再请求造成的死循环问题） */
         const whiteList = ["/refresh-token", "/login"];
+        // debugger
         return whiteList.some(url => config.url.endsWith(url))
           ? config
           : new Promise(resolve => {
@@ -83,7 +85,7 @@ class PureHttp {
                 const expired = parseInt(data.expires) - now <= 0;
                 if (expired) {
                   if (!PureHttp.isRefreshing) {
-                    PureHttp.isRefreshing = true;
+                    PureHttp.isRefreshing = true;                    
                     // token过期刷新
                     useUserStoreHook()
                       .handRefreshToken({ refreshToken: data.refreshToken })
@@ -175,10 +177,10 @@ class PureHttp {
   /** 单独抽离的`post`工具函数 */
   public post<T, P>(
     url: string,
-    params?: AxiosRequestConfig<P>,
+    data?: P,  // 改为 data
     config?: PureHttpRequestConfig
   ): Promise<T> {
-    return this.request<T>("post", url, params, config);
+    return this.request<T>("post", url, { data }, config);  // 将数据放入 data 字段
   }
 
   /** 单独抽离的`get`工具函数 */

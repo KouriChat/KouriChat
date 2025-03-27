@@ -19,6 +19,4 @@
             - retrieval: 记忆检索
             - decision: 记忆决策
         
-        
-    
 """

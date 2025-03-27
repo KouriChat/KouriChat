@@ -55,7 +55,6 @@ class BaseRoutes:
                     'status': 'error',
                     'message': '需要先初始化密码'
                 }), 403
-
             data = request.get_json()
             password = data.get('password')
             remember_me = data.get('remember_me', False)
@@ -69,11 +68,6 @@ class BaseRoutes:
             # 验证密码
             stored_hash = config['categories']['auth_settings']['settings']['admin_password']['value']
             if hash_password(password) == stored_hash:
-                session.clear()  # 清除旧会话
-                session['logged_in'] = True
-                if remember_me:
-                    session.permanent = True
-                    self.app.permanent_session_lifetime = timedelta(days=30)
                 
                 # 生成token
                 token = token_config.generate_token('admin')

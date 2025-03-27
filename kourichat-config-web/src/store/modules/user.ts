@@ -9,7 +9,8 @@ import {
 } from "../utils";
 import { useMultiTagsStoreHook } from "./multiTags";
 import { type DataInfo, setToken, removeToken, userKey } from "@/utils/auth";
-import axios from "axios";
+import { http } from "@/utils/http";
+import { type LoginRes } from "../../../types/api"
 
 export const useUserStore = defineStore({
   id: "pure-user",
@@ -68,19 +69,23 @@ export const useUserStore = defineStore({
     /** 登入 */
     async login(data) {
       /* 登录方法，返回登录信息 */
-      return axios
-        .post(import.meta.env.VITE_API_BASE_URL + "/login", data)
-        .then(res => {
-          if (res.data.status === "success") {
-            setToken({
-              accessToken: res.data.token,
-              refreshToken: "",
-              expires: new Date(Date.now() + 2 * 60 * 60 * 1000)
-            });
-            this.SET_TOKEN(res.data.token);
-          }
-          return res.data;
-        });
+      console.log(data);
+
+      return http.post("/login", data, {
+        headers: {
+          'Content-Type': 'application/json' // 必须声明
+        }
+      }).then((res: LoginRes) => {
+        console.log(res);
+        if(res.status === "success"){
+          setToken({
+            accessToken: res.token,
+            refreshToken: "",
+            expires: new Date(Date.now() + 2 * 60 * 60 * 1000)
+          }); 
+          return res;
+        }
+      })
     },
     /** 前端登出（不调用接口） */
     logOut() {

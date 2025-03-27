@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any, Dict, Optional, List, Callable
 from flask import Flask, jsonify, request, session
+from flask_cors import CORS
 from werkzeug.serving import make_server
 from threading import Thread
 
@@ -31,6 +32,7 @@ class FlaskAdapter():
         self.host = host
         self.port = port
         self.app: Flask = Flask(__name__)
+        CORS(self.app)
         self.server = None
         # self.routes = {}
         # token 解析器
@@ -100,7 +102,6 @@ class FlaskAdapter():
         #        'message': 'Internal Server Error'
         #     }), 500
 
-        
         
         """web端接口"""
         """ web 端接口尽量与之前的接口保持一致"""

@@ -7,6 +7,8 @@ from time import sleep
 from _pytest import config
 from network import NetworkManager
 from config import SettingReader
+from globals.global_variable import GlobalVariable
+from core import EventBus
 
 
 # 添加项目根目录到系统路径
@@ -19,8 +21,12 @@ async def main():
     
     # 获取网络管理器实例
     network_manager = NetworkManager()
-    print(modols)
-    print(configs)
+    # 初始化全局变量
+    GlobalVariable.eventBus = EventBus() #初始化事件总线
+
+
+    # print(modols)
+    # print(configs)
     
     try:
         # 启动所有服务器

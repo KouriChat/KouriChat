@@ -4,7 +4,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  object-fit: cover;
+  object-fit: contain;
   z-index: -1;
 }
 
@@ -13,8 +13,11 @@
   height: 100vh;
   max-width: 100%;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding: 0 2rem;
+  position: relative;
+  z-index: 1;
+  
 }
 
 .login-box {
@@ -24,6 +27,8 @@
   overflow: hidden;
   margin-right: 5%;
   max-width: 400px;
+  /* border: solid 1px #000000; */
+  transform: translateX(50%);
 }
 
 .login-form {
@@ -44,6 +49,7 @@
   transform-origin: center center;
   transform: perspective(1000px) rotateX(0) rotateY(0);
   will-change: transform;
+  
 }
 
 .avatar:hover {
