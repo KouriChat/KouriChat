@@ -327,148 +327,148 @@ class MessageHandler:
 
         return False
     def auto_send_message(self, listen_list, robot_wx_name, get_personality_summary, is_quiet_time, start_countdown):
-            """自动发送消息"""
-            try:
-                # 检查是否在安静时间
-                if is_quiet_time():
-                    logger.info("当前是安静时间，不发送自动消息")
+        """自动发送消息"""
+        try:
+            # 检查是否在安静时间
+            if is_quiet_time():
+                logger.info("当前是安静时间，不发送自动消息")
+                start_countdown()  # 重新开始倒计时
+                return
+
+            # 获取人设摘要
+            prompt_content = get_personality_summary(self.prompt_content)
+
+            # 获取自动消息内容
+            from src.config import config
+
+            # 检查配置是否存在
+            if not hasattr(config, 'behavior') or not hasattr(config.behavior, 'auto_message') or not hasattr(config.behavior.auto_message, 'content'):
+                logger.error("配置文件中缺少behavior.auto_message.content设置")
+                auto_message = "你好，我是AI助手，有什么可以帮助你的吗？"
+                logger.info(f"使用默认自动消息: {auto_message}")
+            else:
+                auto_message = config.behavior.auto_message.content
+                logger.info(f"从配置读取的自动消息: {auto_message}")
+
+            # 随机选择一个用户
+            if not listen_list:
+                logger.warning("监听列表为空，无法发送自动消息")
+                start_countdown()  # 重新开始倒计时
+                return
+
+            target_user = random.choice(listen_list)
+            logger.info(f"选择的目标用户: {target_user}")
+
+            # 检查最近是否有聊天记录（30分钟内）
+            if recent_chat := self.deepseek.llm.user_recent_chat_time.get(target_user):
+                current_time = datetime.now()
+                time_diff = current_time - recent_chat
+                # 如果30分钟内有聊天，跳过本次主动消息
+                if time_diff.total_seconds() < 1800:  # 30分钟 = 1800秒
+                    logger.info(f"距离上次与 {target_user} 的聊天不到30分钟，跳过本次主动消息")
                     start_countdown()  # 重新开始倒计时
                     return
 
-                # 获取人设摘要
-                prompt_content = get_personality_summary(self.prompt_content)
+            # 发送消息
+            if self.wx:
+                # 确保微信窗口处于活动状态
+                try:
+                    self.wx.ChatWith(target_user)
+                    time.sleep(1)  # 等待窗口激活
 
-                # 获取自动消息内容
-                from src.config import config
+                    # 获取最近的对话记忆作为上下文
+                    context = ""
+                    if self.memory_handler:
+                        try:
+                            # 获取相关记忆
+                            current_time = datetime.now()
+                            query_text = f"与用户 {target_user} 相关的重要对话"
 
-                # 检查配置是否存在
-                if not hasattr(config, 'behavior') or not hasattr(config.behavior, 'auto_message') or not hasattr(config.behavior.auto_message, 'content'):
-                    logger.error("配置文件中缺少behavior.auto_message.content设置")
-                    auto_message = "你好，我是AI助手，有什么可以帮助你的吗？"
-                    logger.info(f"使用默认自动消息: {auto_message}")
-                else:
-                    auto_message = config.behavior.auto_message.content
-                    logger.info(f"从配置读取的自动消息: {auto_message}")
-
-                # 随机选择一个用户
-                if not listen_list:
-                    logger.warning("监听列表为空，无法发送自动消息")
-                    start_countdown()  # 重新开始倒计时
-                    return
-
-                target_user = random.choice(listen_list)
-                logger.info(f"选择的目标用户: {target_user}")
-
-                # 检查最近是否有聊天记录（30分钟内）
-                if recent_chat := self.deepseek.llm.user_recent_chat_time.get(target_user):
-                    current_time = datetime.now()
-                    time_diff = current_time - recent_chat
-                    # 如果30分钟内有聊天，跳过本次主动消息
-                    if time_diff.total_seconds() < 1800:  # 30分钟 = 1800秒
-                        logger.info(f"距离上次与 {target_user} 的聊天不到30分钟，跳过本次主动消息")
-                        start_countdown()  # 重新开始倒计时
-                        return
-
-                # 发送消息
-                if self.wx:
-                    # 确保微信窗口处于活动状态
-                    try:
-                        self.wx.ChatWith(target_user)
-                        time.sleep(1)  # 等待窗口激活
-
-                        # 获取最近的对话记忆作为上下文
-                        context = ""
-                        if self.memory_handler:
-                            try:
-                                # 获取相关记忆
-                                current_time = datetime.now()
-                                query_text = f"与用户 {target_user} 相关的重要对话"
-
-                                # 按照配置，决定是否使用语义搜索
-                                if self.use_semantic_search and self.rag_manager:
-                                    logger.info(f"使用语义搜索和时间衰减权重获取相关记忆")
-                                    # 获取原始记忆
-                                    raw_memories = self.memory_handler.get_relevant_memories(
+                            # 按照配置，决定是否使用语义搜索
+                            if self.use_semantic_search and self.rag_manager:
+                                logger.info(f"使用语义搜索和时间衰减权重获取相关记忆")
+                                # 获取原始记忆
+                                raw_memories = self.memory_handler.get_relevant_memories(
                                         query_text,
                                         target_user,
                                         top_k=20  # 获取更多记忆，后续会筛选
                                     )
 
-                                    # 应用权重并筛选记忆
-                                    memories = self._apply_weights_and_filter_context(
+                                # 应用权重并筛选记忆
+                                memories = self._apply_weights_and_filter_context(
                                         raw_memories,
                                         current_time=current_time,
                                         max_turns=10,
                                         current_user=target_user
                                     )
 
-                                    logger.info(f"应用权重后保留 {len(memories)} 条记忆")
-                                else:
-                                    # 使用普通方式获取相关记忆
-                                    memories = self.memory_handler.get_relevant_memories(
+                                logger.info(f"应用权重后保留 {len(memories)} 条记忆")
+                            else:
+                                # 使用普通方式获取相关记忆
+                                memories = self.memory_handler.get_relevant_memories(
                                         query_text,
                                         target_user,
                                         top_k=10
                                     )
 
-                                if memories:
-                                    memory_parts = []
-                                    for i, mem in enumerate(memories):
-                                        if mem.get('message') and mem.get('reply'):
-                                            # 计算时间衰减权重（用于日志）
-                                            time_weight = self._calculate_time_decay_weight(
+                            if memories:
+                                memory_parts = []
+                                for i, mem in enumerate(memories):
+                                    if mem.get('message') and mem.get('reply'):
+                                        # 计算时间衰减权重（用于日志）
+                                        time_weight = self._calculate_time_decay_weight(
                                                 mem.get('timestamp', ''),
                                                 current_time
                                             ) if self.use_time_decay else 1.0
 
-                                            # 添加权重信息到日志
-                                            logger.debug(f"记忆 #{i+1}: 权重={time_weight:.2f}, 内容={mem['message'][:30]}...")
+                                        # 添加权重信息到日志
+                                        logger.debug(f"记忆 #{i+1}: 权重={time_weight:.2f}, 内容={mem['message'][:30]}...")
 
-                                            memory_parts.append(f"对话{i+1}:\n用户: {mem['message']}\nAI: {mem['reply']}")
+                                        memory_parts.append(f"对话{i+1}:\n用户: {mem['message']}\nAI: {mem['reply']}")
 
-                                    if memory_parts:
-                                        context = "以下是之前的对话记录：\n\n" + "\n\n".join(memory_parts) + "\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容)\n\n"
-                                        logger.info(f"找到 {len(memory_parts)} 轮历史对话记录")
-                            except Exception as e:
-                                logger.error(f"获取历史对话记录失败: {str(e)}")
+                                if memory_parts:
+                                    context = "以下是之前的对话记录：\n\n" + "\n\n".join(memory_parts) + "\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容)\n\n"
+                                    logger.info(f"找到 {len(memory_parts)} 轮历史对话记录")
+                        except Exception as e:
+                            logger.error(f"获取历史对话记录失败: {str(e)}")
 
-                        # 构建系统指令和上下文
-                        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        system_instruction = f"{context}(此时时间为{current_time}) [系统指令] {auto_message}"
+                    # 构建系统指令和上下文
+                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    system_instruction = f"{context}(此时时间为{current_time}) [系统指令] {auto_message}"
 
-                        # 添加长度限制提示词 - 自动消息保持在50-100字符之间，2-3个句子
-                        length_prompt = "\n\n请注意：你的回复应当简洁明了，控制在50-100个字符和2-3个句子左右。"
-                        system_instruction += length_prompt
+                    # 添加长度限制提示词 - 自动消息保持在50-100字符之间，2-3个句子
+                    length_prompt = "\n\n请注意：你的回复应当简洁明了，控制在50-100个字符和2-3个句子左右。"
+                    system_instruction += length_prompt
 
-                        # 获取AI回复
-                        ai_response = self.get_api_response(
+                    # 获取AI回复
+                    ai_response = self.get_api_response(
                             message=system_instruction,
                             user_id=target_user,
                             sender_name=robot_wx_name
                         )
 
-                        if ai_response:
-                            # 将长消息分段发送
-                            message_parts = self._split_message_for_sending(ai_response)
-                            for part in message_parts['parts']:
-                                self._safe_send_msg(part, target_user)
-                                time.sleep(1.5)  # 添加短暂延迟避免发送过快
+                    if ai_response:
+                        # 将长消息分段发送
+                        message_parts = self._split_message_for_sending(ai_response)
+                        for part in message_parts['parts']:
+                            self._safe_send_msg(part, target_user)
+                            time.sleep(1.5)  # 添加短暂延迟避免发送过快
 
-                            logger.info(f"已发送主动消息到 {target_user}: {ai_response[:50]}...")
+                        logger.info(f"已发送主动消息到 {target_user}: {ai_response[:50]}...")
 
-                            # 记录主动消息到记忆
-                            if self.memory_handler:
-                                try:
-                                    # 检查是否是群聊ID
-                                    is_group_chat = False
-                                    if hasattr(self, 'group_chat_memory'):
-                                        is_group_chat = target_user in self.group_chat_memory.group_chats
+                        # 记录主动消息到记忆
+                        if self.memory_handler:
+                            try:
+                                # 检查是否是群聊ID
+                                is_group_chat = False
+                                if hasattr(self, 'group_chat_memory'):
+                                    is_group_chat = target_user in self.group_chat_memory.group_chats
 
-                                    if is_group_chat:
-                                        # 标记为系统发送的消息，确保机器人名称正确
-                                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                        # 将消息存入群聊记忆
-                                        self.group_chat_memory.add_message(
+                                if is_group_chat:
+                                    # 标记为系统发送的消息，确保机器人名称正确
+                                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    # 将消息存入群聊记忆
+                                    self.group_chat_memory.add_message(
                                             target_user,  # 群聊ID
                                             self.robot_name,  # 发送者为机器人
                                             system_instruction,  # 保存系统指令作为输入
@@ -476,27 +476,26 @@ class MessageHandler:
                                             timestamp,
                                             is_system=True  # 标记为系统消息
                                         )
-                                        logger.info(f"成功记录主动消息到群聊记忆: {target_user}")
-                                    else:
-                                        # 普通私聊消息记忆
-                                        self.memory_handler.remember(target_user, system_instruction, ai_response)
-                                        logger.info(f"成功记录主动消息到个人记忆")
-                                except Exception as e:
-                                    logger.error(f"记录主动消息到记忆失败: {str(e)}")
-                        else:
-                            logger.warning(f"AI未生成有效回复，跳过发送")
-                        # 重新开始倒计时
-                        start_countdown()
-                    except Exception as e:
-                        logger.error(f"发送自动消息失败: {str(e)}")
-                        start_countdown()  # 出错也重新开始倒计时
-                else:
-                    logger.error("WeChat对象为None，无法发送自动消息")
-                    start_countdown()  # 重新开始倒计时
-            except Exception as e:
-                logger.error(f"自动发送消息失败: {str(e)}")
-                start_countdown()  # 出错也重新开始倒计时
-
+                                    logger.info(f"成功记录主动消息到群聊记忆: {target_user}")
+                                else:
+                                    # 普通私聊消息记忆
+                                    self.memory_handler.remember(target_user, system_instruction, ai_response)
+                                    logger.info(f"成功记录主动消息到个人记忆")
+                            except Exception as e:
+                                logger.error(f"记录主动消息到记忆失败: {str(e)}")
+                    else:
+                        logger.warning(f"AI未生成有效回复，跳过发送")
+                    # 重新开始倒计时
+                    start_countdown()
+                except Exception as e:
+                    logger.error(f"发送自动消息失败: {str(e)}")
+                    start_countdown()  # 出错也重新开始倒计时
+            else:
+                logger.error("WeChat对象为None，无法发送自动消息")
+                start_countdown()  # 重新开始倒计时
+        except Exception as e:
+            logger.error(f"自动发送消息失败: {str(e)}")
+            start_countdown()  # 出错也重新开始倒计时
 
     def handle_user_message(self, content: str, chat_id: str, sender_name: str,
                             username: str, is_group: bool = False, is_image_recognition: bool = False,
@@ -1980,13 +1979,19 @@ class MessageHandler:
                 if self.auto_task_message_queue:
                     if len(self.auto_task_message_queue) == 0:
                         return
-                    for chat_id, content in self.auto_task_message_queue:
-                        messages = self.split_message_for_sending(content)
-                        self._send_split_messages(messages, chat_id)
+                    for message_dict in self.auto_task_message_queue:
+                        if "chat_id" in message_dict and "content" in message_dict:
+                            chat_id = message_dict["chat_id"]
+                            content = message_dict["content"]
+                            messages = self._split_message_for_sending(
+                                content
+                                )
+                            self._send_split_messages(messages, chat_id)
+                            messages = self.split_message_for_sending(content)
+                            self._send_split_messages(messages, chat_id)
                 time.sleep(0.1)
 
         threading.Timer(1, _process_auto_task_message).start()
-
 
     # 添加新的获取最大上下文轮数的方法
     def _get_max_context_turns(self):
