@@ -6,13 +6,15 @@ import logging
 import yaml
 import os
 
+from src.handlers.message import MessageHandler
+
 logger = logging.getLogger(__name__)
 
 class AutoTasker:
-    def __init__(self, message_handler, task_file_path="src/config/config.yaml"):
+    def __init__(self, message_handler: MessageHandler, task_file_path="src/config/config.yaml"):
         """
         初始化自动任务管理器
-        
+
         Args:
             message_handler: 消息处理器实例，用于发送消息
             task_file_path: 任务配置文件路径
@@ -21,13 +23,13 @@ class AutoTasker:
         self.task_file_path = task_file_path
         self.scheduler = BackgroundScheduler()
         self.tasks = {}
-        
+
         # 确保任务文件目录存在
         os.makedirs(os.path.dirname(task_file_path), exist_ok=True)
-        
+
         # 加载已存在的任务
         self.load_tasks()
-        
+
         # 启动调度器
         self.scheduler.start()
         logger.info("AutoTasker 初始化完成")
@@ -38,7 +40,7 @@ class AutoTasker:
             if os.path.exists(self.task_file_path):
                 with open(self.task_file_path, 'r', encoding='utf-8') as f:
                     tasks_data = yaml.load(f, Loader=yaml.FullLoader)
-                
+
                 # 检查配置文件结构
                 if "categories" in tasks_data and "schedule_settings" in tasks_data["categories"]:
                     if "settings" in tasks_data["categories"]["schedule_settings"] and "tasks" in tasks_data["categories"]["schedule_settings"]["settings"]:
@@ -93,7 +95,7 @@ class AutoTasker:
     def add_task(self, task_id, chat_id, content, schedule_type, schedule_time,is_active=True):
         """
         添加新任务
-        
+
         Args:
             task_id: 任务ID
             chat_id: 接收消息的聊天ID
@@ -114,12 +116,8 @@ class AutoTasker:
             def task_func():
                 try:
                     if self.tasks[task_id]['is_active']:
-                        self.message_handler.add_to_queue(
-                            chat_id=chat_id,
-                            content=content,
-                            sender_name="System",
-                            username="AutoTasker",
-                            is_group=False
+                        self.message_handler.auto_task_message_queue.append(
+                            {f"{chat_id}": content}
                         )
                         logger.info(f"执行定时任务 {task_id}")
                 except Exception as e:
@@ -144,7 +142,7 @@ class AutoTasker:
 
             self.save_tasks()
             logger.info(f"添加任务成功: {task_id}")
-            
+
         except Exception as e:
             logger.error(f"添加任务失败: {str(e)}")
             raise
@@ -169,7 +167,7 @@ class AutoTasker:
                 raise ValueError(f"任务不存在: {task_id}")
 
             task = self.tasks[task_id]
-            
+
             # 更新任务参数
             for key, value in kwargs.items():
                 if key in task:
@@ -188,9 +186,9 @@ class AutoTasker:
                 )
             else:
                 self.save_tasks()
-                
+
             logger.info(f"更新任务成功: {task_id}")
-            
+
         except Exception as e:
             logger.error(f"更新任务失败: {str(e)}")
             raise

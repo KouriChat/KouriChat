@@ -20,8 +20,8 @@ logger = logging.getLogger('main')
 
 class LLMService:
     def __init__(self, api_key: str, base_url: str, model: str,
-                 max_token: int, temperature: float, max_groups: int, 
-                 sys_prompt: str = None):
+                max_token: int, temperature: float, max_groups: int,
+                sys_prompt: str = None):
         """
         强化版AI服务初始化
 
@@ -34,7 +34,7 @@ class LLMService:
         """
         # 记录配置信息
         logger.info(f"LLMService初始化 - 模型: {model}, URL: {base_url}")
-        
+
         # 使用OpenAILLM作为内核，启用单例模式
         self.llm = OpenAILLM(
             logger=logger,
@@ -48,14 +48,14 @@ class LLMService:
             system_prompt=sys_prompt,
             singleton=True  # 使用单例模式
         )
-        
+
         self.config = {
             "model": model,
             "max_token": max_token,
             "temperature": temperature,
             "max_groups": max_groups,
         }
-        
+
         # 安全字符白名单（可根据需要扩展）
         self.safe_pattern = re.compile(r'[\x00-\x1F\u202E\u200B]')
 
@@ -90,16 +90,16 @@ class LLMService:
                 current_dir = os.path.dirname(os.path.abspath(__file__))  # src/services/ai
                 project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))  # 项目根目录
                 base_prompt_path = os.path.join(project_root, "data", "base", "base.md")
-                
+
                 with open(base_prompt_path, "r", encoding="utf-8") as f:
                     base_content = f.read()
             except Exception as e:
                 logger.error(f"基础Prompt文件读取失败: {str(e)}")
                 base_content = ""
-            
+
             # 合并系统提示词
             full_system_prompt = f"{system_prompt}\n{base_content}"
-            
+
             # 设置系统提示词
             if self.llm.system_prompt != full_system_prompt:
                 # 重置上下文并设置新的系统提示词
@@ -107,27 +107,27 @@ class LLMService:
                 if full_system_prompt:
                     self.llm.context.append({"role": "system", "content": full_system_prompt})
                     self.llm.system_prompt = full_system_prompt
-            
+
             # 使用OpenAILLM处理请求
-            response = self.llm.handel_prompt(message)
-            
+            response = self.llm.handel_prompt(message, user_id)
+
             # 清理响应内容
             clean_content = self._sanitize_response(response)
-            
+
             # 移除[memory_number:...]标记
             clean_content = re.sub(r'\s*\[memory_number:.*?\]$', '', clean_content)
-            
+
             # 返回清理后的内容
             return clean_content or ""
-        
+
         except APIError as e:
             logger.error(f"API错误: {str(e)}, 请检查网络配置")
             return "API服务暂时不可用，请稍后再试。"
-            
+
         except APITimeoutError as e:
             logger.error(f"API超时: {str(e)}, 请检查网络配置")
             return "请求超时，请检查网络连接后重试。"
-            
+
         except Exception as e:
             logger.error("大语言模型服务调用失败: %s", str(e), exc_info=True)
             return random.choice([
@@ -145,11 +145,11 @@ class LLMService:
             system_prompt = None
             if self.llm.context and self.llm.context[0]["role"] == "system":
                 system_prompt = self.llm.context[0]["content"]
-            
+
             self.llm.context = []
             if system_prompt:
                 self.llm.context.append({"role": "system", "content": system_prompt})
-            
+
             logger.info("已清除用户对话历史")
             return True
         except Exception as e:
@@ -159,11 +159,11 @@ class LLMService:
     def chat(self, messages: list, **kwargs) -> str:
         """
         发送聊天请求并获取回复
-        
+
         Args:
             messages: 消息列表，每个消息是包含 role 和 content 的字典
             **kwargs: 额外的参数配置
-            
+
         Returns:
             str: AI的回复内容
         """
@@ -171,15 +171,15 @@ class LLMService:
             # 临时设置上下文
             original_context = self.llm.context.copy()
             self.llm.context = messages[:-1]  # 除了最后一条用户消息
-            
+
             # 处理最后一条用户消息
             response = self.llm.handel_prompt(messages[-1]["content"])
-            
+
             # 恢复原始上下文
             self.llm.context = original_context
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"Chat completion failed: {str(e)}")
             return ""
@@ -200,7 +200,7 @@ class LLMService:
                 full_system_prompt = self.llm.system_prompt
             if system_prompt:
                 full_system_prompt = full_system_prompt + "\n" + system_prompt if full_system_prompt else system_prompt
-            
+
             # 设置系统提示词
             if self.llm.system_prompt != full_system_prompt:
                 # 重置上下文并设置新的系统提示词
@@ -208,27 +208,27 @@ class LLMService:
                 if full_system_prompt:
                     self.llm.context.append({"role": "system", "content": full_system_prompt})
                     self.llm.system_prompt = full_system_prompt
-            
+
             # 使用OpenAILLM处理请求
-            response = self.llm.handel_prompt(message)
-            
+            response = self.llm.handel_prompt(message, user_id)
+
             # 清理响应内容
             clean_content = self._sanitize_response(response)
-            
+
             # 移除[memory_number:...]标记
             clean_content = re.sub(r'\s*\[memory_number:.*?\]$', '', clean_content)
-            
+
             # 返回清理后的内容
             return clean_content or ""
-        
+
         except APIError as e:
             logger.error(f"API错误: {str(e)}, 请检查网络配置")
             return "API服务暂时不可用，请稍后再试。"
-            
+
         except APITimeoutError as e:
             logger.error(f"API超时: {str(e)}, 请检查网络配置")
             return "请求超时，请检查网络连接后重试。"
-            
+
         except Exception as e:
             logger.error("大语言模型服务调用失败: %s", str(e), exc_info=True)
             return random.choice([
