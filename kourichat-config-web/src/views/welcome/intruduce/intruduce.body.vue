@@ -8,6 +8,10 @@ import {
   Download
 } from "@element-plus/icons-vue";
 
+const toPath = (path: string) => {
+  window.open(path, "_blank");
+};
+
 // 使用在线图标代替本地图标集
 </script>
 
@@ -69,31 +73,40 @@ import {
         <li class="quick-link-item">
           <a href="#" class="quick-link">
             <el-icon class="link-icon"><QuestionFilled /></el-icon>
-            <span>问题反馈</span>
+            <span
+              @click="toPath('https://github.com/KouriChat/KouriChat/issues')"
+              >问题反馈</span
+            >
           </a>
         </li>
         <li class="quick-link-item">
           <a href="#" class="quick-link">
             <el-icon class="link-icon"><Document /></el-icon>
-            <span>官方文档</span>
+            <span @click="toPath('https://kourichat.com/docs/')">官方文档</span>
           </a>
         </li>
         <li class="quick-link-item">
           <a href="#" class="quick-link">
             <el-icon class="link-icon"><Connection /></el-icon>
-            <span>API 服务</span>
+            <span @click="toPath('https://api.kourichat.com/')">API 服务</span>
           </a>
         </li>
         <li class="quick-link-item">
           <a href="#" class="quick-link">
             <el-icon class="link-icon"><SetUp /></el-icon>
-            <span>提交PR</span>
+            <span
+              @click="toPath('https://github.com/KouriChat/KouriChat/pulls')"
+              >提交PR</span
+            >
           </a>
         </li>
         <li class="quick-link-item">
           <a href="#" class="quick-link">
             <el-icon class="link-icon"><Download /></el-icon>
-            <span>下载发布版</span>
+            <span
+              @click="toPath('https://github.com/KouriChat/KouriChat/releases')"
+              >下载发布版</span
+            >
           </a>
         </li>
       </ul>
