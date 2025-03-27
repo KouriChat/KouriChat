@@ -55,6 +55,10 @@ import src.services.ai.llms.llm  # 添加LLM模块导入
 from src.handlers.memories.core.rag import LocalEmbeddingModel
 from flask_compress import Compress  # 添加响应压缩
 import win32event
+# 导入解析配置函数
+from src.configUtils.parse_config_groups import parse_config_groups, get_available_avatars
+# 导入配置更新函数
+from src.configUtils.update_config_value import update_config_value
 
 # 在文件开头添加全局变量声明
 bot_process = None
@@ -142,185 +146,10 @@ app.secret_key = secrets.token_hex(16)
 app.register_blueprint(avatar_manager)
 app.register_blueprint(avatar_bp)
 
-
-def get_available_avatars() -> List[str]:
-    """获取可用的人设目录列表"""
-    avatar_base_dir = os.path.join(ROOT_DIR, "data/avatars")
-    if not os.path.exists(avatar_base_dir):
-        return []
-
-    # 获取所有包含 avatar.md 和 emojis 目录的有效人设目录
-    avatars = []
-    for item in os.listdir(avatar_base_dir):
-        avatar_dir = os.path.join(avatar_base_dir, item)
-        if os.path.isdir(avatar_dir):
-            if os.path.exists(os.path.join(avatar_dir, "avatar.md")) and \
-                    os.path.exists(os.path.join(avatar_dir, "emojis")):
-                # 只添加人设目录名，不包含路径
-                avatars.append(item)
-
-    return avatars
-
-
-def parse_config_groups() -> Dict[str, Dict[str, Any]]:
-    """解析配置文件，将配置项按组分类"""
-    from src.config import config
-    # 用于缓存结果的静态变量
-    if not hasattr(parse_config_groups, 'cache'):
-        parse_config_groups.cache = None
-        parse_config_groups.cache_time = 0
-        
-    # 检查缓存是否过期
-    current_time = time.time()
-    if (parse_config_groups.cache is not None and 
-        (current_time - parse_config_groups.cache_time) < CONFIG_CACHE_EXPIRE):
-        return parse_config_groups.cache
-
-    try:
-        # 基础配置组
-        config_groups = {
-            "基础配置": {},
-            "图像识别API配置": {},
-            "主动消息配置": {},
-            "Prompt配置": {},
-        }
-
-        # 基础配置
-        config_groups["基础配置"].update(
-            {
-                "LISTEN_LIST": {
-                    "value": config.user.listen_list,
-                    "description": "用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！)",
-                },
-                "DEEPSEEK_BASE_URL": {
-                    "value": config.llm.base_url,
-                    "description": "API注册地址",
-                },
-                "MODEL": {"value": config.llm.model, "description": "AI模型选择"},
-                "DEEPSEEK_API_KEY": {
-                    "value": config.llm.api_key,
-                    "description": "API密钥",
-                },
-                "MAX_TOKEN": {
-                    "value": config.llm.max_tokens,
-                    "description": "回复最大token数",
-                    "type": "number",
-                },
-                "TEMPERATURE": {
-                    "value": float(config.llm.temperature),  # 确保是浮点数
-                    "type": "number",
-                    "description": "温度参数",
-                    "min": 0.0,
-                    "max": 1.7,
-                },
-            }
-        )
-
-        # 图像识别API配置
-        config_groups["图像识别API配置"].update(
-            {
-                "MOONSHOT_API_KEY": {
-                    "value": config.media.image_recognition.api_key,
-                    "description": "识图API密钥",
-                },
-                "MOONSHOT_BASE_URL": {
-                    "value": config.media.image_recognition.base_url,
-                    "description": "识图功能 API基础URL",
-                },
-                "MOONSHOT_TEMPERATURE": {
-                    "value": config.media.image_recognition.temperature,
-                    "description": "识图功能 温度参数",
-                },
-                "MOONSHOT_MODEL": {
-                    "value": config.media.image_recognition.model,
-                    "description": "识图功能  AI模型",
-                }
-            }
-        )
-
-        # 主动消息配置
-        config_groups["主动消息配置"].update(
-            {
-                "AUTO_MESSAGE": {
-                    "value": config.behavior.auto_message.content,
-                    "description": "自动消息内容",
-                },
-                "MIN_COUNTDOWN_HOURS": {
-                    "value": config.behavior.auto_message.min_hours,
-                    "description": "最小倒计时时间（小时）",
-                },
-                "MAX_COUNTDOWN_HOURS": {
-                    "value": config.behavior.auto_message.max_hours,
-                    "description": "最大倒计时时间（小时）",
-                },
-                "QUIET_TIME_START": {
-                    "value": config.behavior.quiet_time.start,
-                    "description": "安静时间开始",
-                },
-                "QUIET_TIME_END": {
-                    "value": config.behavior.quiet_time.end,
-                    "description": "安静时间结束",
-                },
-            }
-        )
-
-        # Prompt配置
-        available_avatars = get_available_avatars()
-        config_groups["Prompt配置"].update(
-            {
-                "MAX_GROUPS": {
-                    "value": config.behavior.context.max_groups,
-                    "description": "最大的上下文轮数",
-                },
-                "AVATAR_DIR": {
-                    "value": config.behavior.context.avatar_dir,
-                    "description": "人设目录（自动包含 avatar.md 和 emojis 目录）",
-                    "options": available_avatars,
-                    "type": "select"
-                }
-            }
-        )
-
-        # 直接从配置文件读取定时任务数据
-        tasks = []
-        try:
-            config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config_data = yaml.safe_load(f)
-                if 'categories' in config_data and 'schedule_settings' in config_data['categories']:
-                    if 'settings' in config_data['categories']['schedule_settings'] and 'tasks' in \
-                            config_data['categories']['schedule_settings']['settings']:
-                        tasks = config_data['categories']['schedule_settings']['settings']['tasks'].get('value', [])
-        except Exception as e:
-            logger.error(f"读取任务数据失败: {str(e)}")
-
-        # 将定时任务配置添加到 config_groups 中
-        config_groups['定时任务配置'] = {
-            'tasks': {
-                'value': tasks,
-                'type': 'array',
-                'description': '定时任务列表'
-            }
-        }
-
-        logger.debug(f"解析后的定时任务配置: {tasks}")
-
-        # 缓存结果
-        parse_config_groups.cache = config_groups
-        parse_config_groups.cache_time = current_time
-
-        return config_groups
-
-    except Exception as e:
-        logger.error(f"解析配置组失败: {str(e)}")
-        return {}
-
-
 @app.route('/')
 def index():
     """重定向到控制台"""
     return redirect(url_for('dashboard'))
-
 
 @app.route('/save', methods=['POST'])
 def save_config():
@@ -504,74 +333,6 @@ def save_config():
             'status': 'error',
             'message': f'保存配置失败: {str(e)}'
         })
-
-
-def update_config_value(config_data, key, value):
-    """更新配置值到正确的位置"""
-    try:
-        # 配置项映射表
-        mapping = {
-            'LISTEN_LIST': ['categories', 'user_settings', 'settings', 'listen_list', 'value'],
-            'DEEPSEEK_BASE_URL': ['categories', 'llm_settings', 'settings', 'base_url', 'value'],
-            'MODEL': ['categories', 'llm_settings', 'settings', 'model', 'value'],
-            'DEEPSEEK_API_KEY': ['categories', 'llm_settings', 'settings', 'api_key', 'value'],
-            'MAX_TOKEN': ['categories', 'llm_settings', 'settings', 'max_tokens', 'value'],
-            'TEMPERATURE': ['categories', 'llm_settings', 'settings', 'temperature', 'value'],
-            'MOONSHOT_API_KEY': ['categories', 'media_settings', 'settings', 'image_recognition', 'api_key', 'value'],
-            'MOONSHOT_BASE_URL': ['categories', 'media_settings', 'settings', 'image_recognition', 'base_url', 'value'],
-            'MOONSHOT_TEMPERATURE': ['categories', 'media_settings', 'settings', 'image_recognition', 'temperature', 'value'],
-            'MOONSHOT_MODEL': ['categories', 'media_settings', 'settings', 'image_recognition', 'model', 'value'],
-            'AUTO_MESSAGE': ['categories', 'behavior_settings', 'settings', 'auto_message', 'content', 'value'],
-            'MIN_COUNTDOWN_HOURS': ['categories', 'behavior_settings', 'settings', 'auto_message', 'countdown', 'min_hours', 'value'],
-            'MAX_COUNTDOWN_HOURS': ['categories', 'behavior_settings', 'settings', 'auto_message', 'countdown', 'max_hours', 'value'],
-            'QUIET_TIME_START': ['categories', 'behavior_settings', 'settings', 'quiet_time', 'start', 'value'],
-            'QUIET_TIME_END': ['categories', 'behavior_settings', 'settings', 'quiet_time', 'end', 'value'],
-            'MAX_GROUPS': ['categories', 'behavior_settings', 'settings', 'context', 'max_groups', 'value'],
-            'AVATAR_DIR': ['categories', 'behavior_settings', 'settings', 'context', 'avatar_dir', 'value'],
-            'RAG_API_KEY': ['categories', 'rag_settings', 'settings', 'api_key', 'value'],
-            'RAG_BASE_URL': ['categories', 'rag_settings', 'settings', 'base_url', 'value'],
-            'RAG_EMBEDDING_MODEL': ['categories', 'rag_settings', 'settings', 'embedding_model', 'value'],
-            'RAG_IS_RERANK': ['categories', 'rag_settings', 'settings', 'is_rerank', 'value'],
-            'RAG_RERANKER_MODEL': ['categories', 'rag_settings', 'settings', 'reranker_model', 'value'],
-            'RAG_TOP_K': ['categories', 'rag_settings', 'settings', 'top_k', 'value'],
-            'AUTO_DOWNLOAD_LOCAL_MODEL': ['categories', 'rag_settings', 'settings', 'auto_download_local_model', 'value'],
-            'AUTO_ADAPT_SILICONFLOW': ['categories', 'rag_settings', 'settings', 'auto_adapt_siliconflow', 'value']
-        }
-        
-        # 数值类型配置项
-        numeric_keys = {
-            'MAX_TOKEN': int,
-            'TEMPERATURE': float,
-            'MOONSHOT_TEMPERATURE': float,
-            'MIN_COUNTDOWN_HOURS': float,
-            'MAX_COUNTDOWN_HOURS': float,
-            'MAX_GROUPS': int,
-            'RAG_TOP_K': int
-        }
-        
-        if key in mapping:
-            path = mapping[key]
-            target = config_data
-            
-            # 遍历路径到倒数第二个元素
-            for part in path[:-1]:
-                if part not in target:
-                    target[part] = {}
-                target = target[part]
-            
-            # 处理数值类型
-            if key in numeric_keys:
-                try:
-                    value = numeric_keys[key](value)
-                except (ValueError, TypeError):
-                    logger.error(f"无法将{key}的值'{value}'转换为{numeric_keys[key].__name__}类型")
-                    return
-            
-            # 设置最终值
-            target[path[-1]] = value
-            
-    except Exception as e:
-        logger.error(f"更新配置值时出错: {str(e)}")
 
 
 # 添加上传处理路由
