@@ -10,8 +10,11 @@ from src.handlers.message import MessageHandler
 
 logger = logging.getLogger(__name__)
 
+
 class AutoTasker:
-    def __init__(self, message_handler: MessageHandler, task_file_path="src/config/config.yaml"):
+    def __init__(
+        self, message_handler: MessageHandler, task_file_path="src/config/config.yaml"
+    ):
         """
         初始化自动任务管理器
 
@@ -38,22 +41,31 @@ class AutoTasker:
         """从文件加载任务配置"""
         try:
             if os.path.exists(self.task_file_path):
-                with open(self.task_file_path, 'r', encoding='utf-8') as f:
+                with open(self.task_file_path, "r", encoding="utf-8") as f:
                     tasks_data = yaml.load(f, Loader=yaml.FullLoader)
 
                 # 检查配置文件结构
-                if "categories" in tasks_data and "schedule_settings" in tasks_data["categories"]:
-                    if "settings" in tasks_data["categories"]["schedule_settings"] and "tasks" in tasks_data["categories"]["schedule_settings"]["settings"]:
-                        tasks = tasks_data["categories"]["schedule_settings"]["settings"]["tasks"]["value"]
+                if (
+                    "categories" in tasks_data
+                    and "schedule_settings" in tasks_data["categories"]
+                ):
+                    if (
+                        "settings" in tasks_data["categories"]["schedule_settings"]
+                        and "tasks"
+                        in tasks_data["categories"]["schedule_settings"]["settings"]
+                    ):
+                        tasks = tasks_data["categories"]["schedule_settings"][
+                            "settings"
+                        ]["tasks"]["value"]
                         if tasks:
                             for task in tasks:
                                 self.add_task(
                                     task_id=task["task_id"],
-                                    chat_id=task['chat_id'],
-                                    content=task['content'],
-                                    schedule_type=task['schedule_type'],
-                                    schedule_time=task['schedule_time'],
-                                    is_active=task['is_active']
+                                    chat_id=task["chat_id"],
+                                    content=task["content"],
+                                    schedule_type=task["schedule_type"],
+                                    schedule_time=task["schedule_time"],
+                                    is_active=task["is_active"],
                                 )
                             logger.info(f"成功加载 {len(tasks)} 个任务")
                         else:
@@ -74,25 +86,29 @@ class AutoTasker:
         try:
             tasks_data = [
                 {
-                    'task_id': task_id,
-                    'chat_id': task['chat_id'],
-                    'content': task['content'],
-                    'schedule_type': task['schedule_type'],
-                    'schedule_time': task['schedule_time'],
-                    'is_active': task['is_active']
+                    "task_id": task_id,
+                    "chat_id": task["chat_id"],
+                    "content": task["content"],
+                    "schedule_type": task["schedule_type"],
+                    "schedule_time": task["schedule_time"],
+                    "is_active": task["is_active"],
                 }
                 for task_id, task in self.tasks.items()
             ]
-            with open(self.task_file_path, 'r', encoding='utf-8') as f:
+            with open(self.task_file_path, "r", encoding="utf-8") as f:
                 configYaml = yaml.load(f, Loader=yaml.FullLoader)
-            configYaml["categories"]["schedule_settings"]["settings"]["tasks"]["value"] = tasks_data
-            with open(self.task_file_path, 'w', encoding='utf-8') as f:
+            configYaml["categories"]["schedule_settings"]["settings"]["tasks"][
+                "value"
+            ] = tasks_data
+            with open(self.task_file_path, "w", encoding="utf-8") as f:
                 yaml.dump(configYaml, f, allow_unicode=True)
             logger.info("任务配置已保存")
         except Exception as e:
             logger.error(f"保存任务失败: {str(e)}")
 
-    def add_task(self, task_id, chat_id, content, schedule_type, schedule_time,is_active=True):
+    def add_task(
+        self, task_id, chat_id, content, schedule_type, schedule_time, is_active=True
+    ):
         """
         添加新任务
 
@@ -105,21 +121,27 @@ class AutoTasker:
             is_active: 是否激活任务
         """
         try:
-            if schedule_type == 'cron':
+            if task_id in self.tasks:
+                logger.warning(f"任务ID已存在: {task_id}，将覆盖现有任务")
+                self.remove_task(task_id)
+            if schedule_type == "cron":
                 trigger = CronTrigger.from_crontab(schedule_time)
-            elif schedule_type == 'interval':
+            elif schedule_type == "interval":
                 trigger = IntervalTrigger(seconds=int(schedule_time))
             else:
                 raise ValueError(f"不支持的调度类型: {schedule_type}")
-
-            # 创建任务执行函数
             def task_func():
                 try:
-                    if self.tasks[task_id]['is_active']:
+                    if self.tasks[task_id]["is_active"]:
                         self.message_handler.auto_task_message_queue.append(
-                            {f"chat_id": chat_id, "content": content}
+                            {
+                                "chat_id": chat_id,
+                                "content": content,
+                            }
                         )
-                        logger.info(f"执行定时任务 {task_id}")
+                        logger.info(
+                            f"执行定时任务 {task_id} 于 {datetime.now().isoformat()}"
+                        )
                 except Exception as e:
                     logger.error(f"执行任务 {task_id} 失败: {str(e)}")
 
@@ -127,31 +149,32 @@ class AutoTasker:
             job = self.scheduler.add_job(
                 task_func,
                 trigger=trigger,
-                id=task_id
+                id=task_id,
+                replace_existing=True,  # 确保相同ID的任务会被替换而不是重复添加
             )
 
             # 保存任务信息
             self.tasks[task_id] = {
-                'chat_id': chat_id,
-                'content': content,
-                'schedule_type': schedule_type,
-                'schedule_time': schedule_time,
-                'is_active': is_active,
-                'job': job
+                "chat_id": chat_id,
+                "content": content,
+                "schedule_type": schedule_type,
+                "schedule_time": schedule_time,
+                "is_active": is_active,
+                "job": job,
             }
 
             self.save_tasks()
             logger.info(f"添加任务成功: {task_id}")
+            return True
 
         except Exception as e:
             logger.error(f"添加任务失败: {str(e)}")
-            raise
 
     def remove_task(self, task_id):
         """删除任务"""
         try:
             if task_id in self.tasks:
-                self.tasks[task_id]['job'].remove()
+                self.tasks[task_id]["job"].remove()
                 del self.tasks[task_id]
                 self.save_tasks()
                 logger.info(f"删除任务成功: {task_id}")
@@ -174,15 +197,15 @@ class AutoTasker:
                     task[key] = value
 
             # 如果需要更新调度
-            if 'schedule_type' in kwargs or 'schedule_time' in kwargs:
+            if "schedule_type" in kwargs or "schedule_time" in kwargs:
                 self.remove_task(task_id)
                 self.add_task(
                     task_id=task_id,
-                    chat_id=task['chat_id'],
-                    content=task['content'],
-                    schedule_type=task['schedule_type'],
-                    schedule_time=task['schedule_time'],
-                    is_active=task['is_active']
+                    chat_id=task["chat_id"],
+                    content=task["content"],
+                    schedule_type=task["schedule_type"],
+                    schedule_time=task["schedule_time"],
+                    is_active=task["is_active"],
                 )
             else:
                 self.save_tasks()
@@ -197,9 +220,9 @@ class AutoTasker:
         """切换任务的激活状态"""
         try:
             if task_id in self.tasks:
-                self.tasks[task_id]['is_active'] = not self.tasks[task_id]['is_active']
+                self.tasks[task_id]["is_active"] = not self.tasks[task_id]["is_active"]
                 self.save_tasks()
-                status = "激活" if self.tasks[task_id]['is_active'] else "暂停"
+                status = "激活" if self.tasks[task_id]["is_active"] else "暂停"
                 logger.info(f"任务 {task_id} 已{status}")
             else:
                 logger.warning(f"任务不存在: {task_id}")
@@ -213,13 +236,11 @@ class AutoTasker:
     def get_all_tasks(self):
         """获取所有任务信息"""
         return {
-            task_id: {
-                k: v for k, v in task_info.items() if k != 'job'
-            }
+            task_id: {k: v for k, v in task_info.items() if k != "job"}
             for task_id, task_info in self.tasks.items()
         }
 
     def __del__(self):
         """清理资源"""
-        if hasattr(self, 'scheduler'):
+        if hasattr(self, "scheduler"):
             self.scheduler.shutdown()
