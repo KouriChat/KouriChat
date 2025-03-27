@@ -17,6 +17,10 @@ defineProps<{
   githubUrl?: string;
   forkUrl?: string;
 }>();
+
+const toPath = (path: string) => {
+  window.open(path, "_blank");
+};
 </script>
 
 <template>
@@ -28,7 +32,7 @@ defineProps<{
       <div class="intruduce-info">
         <div class="intruduce-title">
           <h1>{{ title || "KouriChat" }}</h1>
-          <p>Dev by <a>KouriTeam</a></p>
+          <p>Dev by <a href="https://github.com/KouriChat">KouriTeam</a></p>
         </div>
         <div class="intruduce-stats">
           <a :href="githubUrl" target="_blank" class="stat-item">
@@ -55,7 +59,7 @@ defineProps<{
         <el-button
           type="primary"
           class="project-button"
-          :href="githubUrl"
+          :href="'https://github.com/KouriChat/KouriChat'"
           target="_blank"
         >
           <IconifyIconOffline :icon="GithubIcon" class="button-icon" />
@@ -66,7 +70,7 @@ defineProps<{
         <el-button
           type="default"
           class="project-button"
-          :href="forkUrl"
+          :href="'https://github.com/KouriChat/KouriChat/fork'"
           target="_blank"
         >
           <IconifyIconOffline :icon="GitBranchIcon" class="button-icon" />

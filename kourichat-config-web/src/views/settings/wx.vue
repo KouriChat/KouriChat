@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LogViewerDemo from "../log-viewer-demo.vue";
 defineOptions({
   // name 作为一种规范最好必须写上并且和路由的name保持一致
   name: "Settings"
@@ -6,5 +7,5 @@ defineOptions({
 </script>
 
 <template>
-  <h1>设置</h1>
+  <log-viewer-demo />
 </template>
