@@ -64,7 +64,7 @@ categories:
       base_url:
          value: ''
          type: string
-         description: 嵌入API基础URL（留空使用LLM模块配置）
+         description: 嵌入API基础URL
       
 
       embedding_model:
@@ -84,7 +84,7 @@ categories:
       reranker_model:
         value: ""
         type: string
-        description: 重排模型名称（留空使用当前LLM模型）
+        description: 重排模型名称
         
       local_embedding_model_path:
         value: "paraphrase-multilingual-MiniLM-L12-v2"

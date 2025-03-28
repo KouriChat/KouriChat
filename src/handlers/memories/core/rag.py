@@ -886,39 +886,57 @@ class RagManager:
             return False
 
     # 在RagManager类中添加群聊上下文相关方法
-    async def group_chat_query(self, group_id: str, current_timestamp: str = None, top_k: int = 7) -> List[Dict]:
+    async def group_chat_query(self, group_id: str, current_timestamp: str, context_size: int = 7) -> List[Dict]:
         """
-        查询群聊最近的对话消息
+        获取群聊上下文消息，返回最近的N轮对话
         
         Args:
             group_id: 群聊ID
-            current_timestamp: 当前消息时间戳，如果提供则会排除该消息
-            top_k: 返回的上下文消息数量，默认为7轮
+            current_timestamp: 当前消息时间戳，用于排除当前消息
+            context_size: 获取的上下文消息数量
             
         Returns:
-            List[Dict]: 最近的消息列表
+            List[Dict]: 按时间排序的上下文消息
         """
         try:
-            if not hasattr(self.storage, 'data') or 'group_chats' not in self.storage.data:
-                logger.warning(f"群聊存储未初始化")
+            if not hasattr(self.storage, 'data'):
+                return []
+            
+            if 'group_chats' not in self.storage.data:
                 return []
             
             if group_id not in self.storage.data['group_chats']:
-                logger.warning(f"群聊 {group_id} 在RAG存储中不存在")
                 return []
             
-            messages = self.storage.data['group_chats'][group_id]
-            messages.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+            # 获取所有群聊消息
+            all_messages = self.storage.data['group_chats'][group_id]
             
-            if current_timestamp:
-                messages = [msg for msg in messages if msg.get('timestamp') != current_timestamp]
+            # 过滤掉当前消息
+            filtered_messages = [
+                msg for msg in all_messages
+                if msg.get('timestamp') != current_timestamp
+            ]
             
-            recent_messages = messages[:top_k]
-            recent_messages.sort(key=lambda x: x.get('timestamp', ''))
+            # 按时间戳排序，最新的在前面
+            sorted_messages = sorted(
+                filtered_messages,
+                key=lambda x: x.get('timestamp', ''),
+                reverse=True
+            )
             
-            return recent_messages
+            # 返回指定数量的消息（最近的N条）
+            recent_messages = sorted_messages[:context_size]
+            
+            # 再按时间顺序排序，时间早的在前面
+            time_ordered_messages = sorted(
+                recent_messages,
+                key=lambda x: x.get('timestamp', '')
+            )
+            
+            return time_ordered_messages
+        
         except Exception as e:
-            logger.error(f"查询群聊上下文失败: {str(e)}")
+            logger.error(f"获取群聊上下文消息失败: {str(e)}")
             return []
     
     async def add_group_chat_message(self, group_id: str, message: Dict) -> bool:
@@ -960,6 +978,7 @@ class RagManager:
                     "group_id": group_id,
                     "timestamp": timestamp,
                     "sender_name": sender_name,
+                    "sender_id": sender_name,  # 使用sender_name作为sender_id
                     "is_at": is_at,
                     "ai_name": ai_name,
                     "human_message": human_message,
@@ -1071,65 +1090,116 @@ class RagManager:
             float: 时间衰减权重 (0~1)
         """
         try:
+            # 如果时间戳为空，返回默认中等权重
             if not timestamp_str:
                 return 0.5
             
+            # 初始化当前时间
             if current_time is None:
                 current_time = datetime.now()
             elif isinstance(current_time, str):
                 try:
-                    current_time = datetime.strptime(current_time, '%Y-%m-%d %H:%M')
+                    # 尝试解析字符串时间
+                    current_time = datetime.strptime(current_time, '%Y-%m-%d %H:%M:%S')
                 except ValueError:
-                    current_time = datetime.now()
-                
-            # 尝试多种时间格式
+                    try:
+                        current_time = datetime.strptime(current_time, '%Y-%m-%d %H:%M')
+                    except ValueError:
+                        # 如果都失败，使用当前时间
+                        current_time = datetime.now()
+                        logger.debug(f"无法解析当前时间字符串: {current_time}，使用系统当前时间")
+            
+            # 尝试解析时间戳字符串
             timestamp = None
+            
+            # 定义可能的时间格式列表，按照优先级排序
             formats_to_try = [
-                '%Y-%m-%d %H:%M',     # 无秒格式（主要格式）
-                '%Y-%m-%d %H:%M:%S',  # 标准格式
-                '%Y/%m/%d %H:%M',     # 使用/分隔符无秒
-                '%Y/%m/%d %H:%M:%S',  # 使用/分隔符
-                '%Y-%m-%dT%H:%M',     # ISO格式无秒
-                '%Y-%m-%dT%H:%M:%S',  # ISO格式
-                '%Y%m%d%H%M'          # 紧凑格式
+                '%Y-%m-%d %H:%M:%S',  # 标准格式（带秒）
+                '%Y-%m-%d %H:%M',     # 标准格式（不带秒）
+                '%Y/%m/%d %H:%M:%S',  # 斜杠分隔（带秒）
+                '%Y/%m/%d %H:%M',     # 斜杠分隔（不带秒）
+                '%Y-%m-%dT%H:%M:%S',  # ISO格式（带秒）
+                '%Y-%m-%dT%H:%M',     # ISO格式（不带秒）
+                '%Y%m%d%H%M%S',       # 紧凑型（带秒）
+                '%Y%m%d%H%M'          # 紧凑型（不带秒）
             ]
             
+            # 尝试使用每种格式解析时间戳
             for time_format in formats_to_try:
                 try:
                     timestamp = datetime.strptime(timestamp_str, time_format)
-                    break
+                    break  # 成功解析，跳出循环
                 except ValueError:
-                    continue
-                    
+                    continue  # 尝试下一种格式
+            
+            # 如果无法使用预定义格式解析，尝试正则表达式提取日期部分
             if timestamp is None:
-                # 如果所有格式都失败，尝试从字符串中提取日期部分
                 try:
-                    # 使用正则表达式提取日期时间部分
-                    date_match = re.search(r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})[T\s]?(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?', timestamp_str)
+                    # 提取年月日时分秒
+                    date_match = re.search(r'(\d{4})[-/\.](\d{1,2})[-/\.](\d{1,2})[T\s]?(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?', timestamp_str)
                     if date_match:
                         year, month, day, hour, minute = map(int, date_match.groups()[:5])
                         second = int(date_match.group(6)) if date_match.group(6) else 0
-                        timestamp = datetime(year, month, day, hour, minute, second)
+                        try:
+                            timestamp = datetime(year, month, day, hour, minute, second)
+                        except ValueError as e:
+                            # 处理无效日期/时间值
+                            logger.warning(f"从字符串中提取的日期时间值无效: {e}")
+                            return 0.5
                     else:
-                        return 0.5  # 无法解析，使用中等权重
+                        # 如果没有匹配到日期时间格式，返回中等权重
+                        logger.debug(f"无法识别的时间戳格式: {timestamp_str}")
+                        return 0.5
                 except Exception as e:
-                    logger.error(f"无法从字符串中提取日期: {timestamp_str}, 错误: {str(e)}")
-                    return 0.5  # 无法解析，使用中等权重
+                    logger.warning(f"解析时间戳时出错: {str(e)}")
+                    return 0.5
+            
+            # 如果到这里还是无法解析，返回默认权重
+            if timestamp is None:
+                logger.debug(f"无法解析时间戳: {timestamp_str}")
+                return 0.5
             
             # 计算时间差（小时）
-            time_diff = (current_time - timestamp).total_seconds() / 3600
+            try:
+                time_diff_seconds = (current_time - timestamp).total_seconds()
+                # 如果时间差为负数，可能是时区问题或时钟不同步，使用绝对值
+                time_diff_seconds = abs(time_diff_seconds)
+                time_diff_hours = time_diff_seconds / 3600.0
+            except Exception as e:
+                logger.warning(f"计算时间差异时出错: {str(e)}")
+                return 0.5
             
-            # 计算衰减权重（随时间指数衰减）
-            # 1天 = 0.9, 1周 = 0.5, 2周 = 0.3, 1个月 = 0.1
-            decay_rate = 0.05  # 控制衰减速率的参数
-            weight = math.exp(-decay_rate * time_diff)
+            # 最大时间差为3天(72小时)
+            max_hours = 72.0  # 3天
+            time_diff_hours = min(time_diff_hours, max_hours)
             
-            # 限制权重范围在 0.1 ~ 1.0
-            weight = max(0.1, min(1.0, weight))
+            # 分段式衰减函数
+            # 1. 24小时内: 缓慢衰减
+            # 2. 24-72小时: 快速衰减
+            # 3. 72小时后: 稳定在略高于最小阈值
+            
+            min_weight = 0.15  # 最小权重阈值
+            
+            if time_diff_hours <= 24.0:
+                # 24小时内缓慢衰减：从1.0到0.7
+                weight = 1.0 - (0.3 * time_diff_hours / 24.0)
+            elif time_diff_hours <= max_hours:
+                # 24-72小时快速衰减：从0.7到min_weight
+                remaining_decay = 0.7 - min_weight
+                normalized_time = (time_diff_hours - 24.0) / (max_hours - 24.0)
+                weight = 0.7 - (remaining_decay * normalized_time)
+            else:
+                # 72小时后稳定在最小值
+                weight = min_weight
+            
+            # 限制权重范围在0.1~1.0之间
+            weight = max(min_weight, min(1.0, weight))
             
             return weight
+            
         except Exception as e:
             logger.error(f"计算时间衰减权重失败: {str(e)}")
+            # 返回中等权重作为默认值
             return 0.5
 
 # 嵌入模型实现

@@ -185,7 +185,26 @@ class MessageHandler:
         self.decay_method = "exponential"  # 或 'linear'
         self.decay_rate = 0.1  # 可以根据需要调整衰减率
 
+        # 添加时间衰减控制
+        self.use_time_decay = True  # 默认启用时间衰减
+
         self._init_auto_task_message()
+
+        # 初始化群聊记忆处理器
+        if hasattr(self, "group_chat_memory") and not self.group_chat_memory:
+            try:
+                from src.handlers.memories.group_chat_memory import GroupChatMemory
+                self.group_chat_memory = GroupChatMemory(
+                    root_dir=self.root_dir,
+                    avatar_name=self.avatar_name,
+                    group_chats=self.config.behavior.context.group_ids,
+                    api_wrapper=self.api_wrapper,
+                    message_handler=self  # 传递自身以使用clean_memory_content方法
+                )
+                logger.info("群聊记忆处理器初始化成功")
+            except Exception as e:
+                logger.error(f"初始化群聊记忆处理器失败: {str(e)}")
+                self.group_chat_memory = None
 
     def _get_config_value(self, key, default_value):
         """从配置文件获取特定值，如果不存在则返回默认值"""
@@ -394,7 +413,7 @@ class MessageHandler:
                 or not hasattr(config.behavior.auto_message, "content")
             ):
                 logger.error("配置文件中缺少behavior.auto_message.content设置")
-                auto_message = "你好，我是AI助手，有什么可以帮助你的吗？"
+                auto_message = "你好，有什么可以帮助你的吗？"
                 logger.info(f"使用默认自动消息: {auto_message}")
             else:
                 auto_message = config.behavior.auto_message.content
@@ -669,7 +688,7 @@ class MessageHandler:
             quote_match = re.search(
                 r"(?:引用|回复)\s+([^\s]+)\s+的(?:消息)?[:：]?\s*(.+?)(?=\n|$)", content
             )
-            if quote_match and is_at_from_param:
+            if quote_match:
                 quoted_sender = quote_match.group(1)
                 quoted_content = quote_match.group(2).strip()
                 logger.info(
@@ -681,6 +700,9 @@ class MessageHandler:
                     "",
                     content,
                 ).strip()
+                
+                # 无论是否引用消息，都需要根据is_at_from_param判断是否处理
+                # 引用消息不再自动触发回复，必须同时有@才行
 
             # 备用检测：如果传入参数为False，再尝试本地检测
             if not is_at_from_param:
@@ -1011,7 +1033,7 @@ class MessageHandler:
                     )
                     if quoted_context:
                         logger.info(f"找到引用消息的上下文: {quoted_context}")
-                        # 将引用内容添加到当前消息的上下文中
+                        # 将引用内容添加到当前消息的上下文中，但确保回复的是当前发送消息的人
                         content = f"(引用消息: {quoted_sender} 说: {quoted_content})\n{content}"
 
             # 获取当前时间
@@ -1142,11 +1164,11 @@ class MessageHandler:
                         )
 
                 if context_parts:
-                    context = "<context>" + "\n".join(context_parts) + "</context>\n\n"
+                    context = "[上下文]\n" + "\n".join(context_parts) + "\n[/上下文]\n\n"
 
             # 构建API请求内容，明确标识当前@发送者
             current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
-            api_content = f"<time>{current_time_str}</time>\n<group>{group_id}</group>\n<sender>{sender_name}</sender>\n{context}<input>{content}</input>"
+            api_content = f"[时间]{current_time_str}[/时间]\n[群组]{group_id}[/群组]\n[发送者]{sender_name}[/发送者]\n{context}[消息内容]{content}[/消息内容]"
 
             # 在日志中明确记录谁@了机器人
             logger.info(
@@ -1161,7 +1183,7 @@ class MessageHandler:
                 # 清理回复内容
                 reply = self._clean_ai_response(reply)
 
-                # 在回复中显式提及发送者，确保回复的是正确的人
+                # 在回复中显式提及发送者，确保回复的是正确的人（当前发消息的人）
                 if not reply.startswith(f"@{sender_name}"):
                     reply = f"@{sender_name} {reply}"
 
@@ -1201,23 +1223,25 @@ class MessageHandler:
         """清理消息内容，去除时间戳和前缀"""
         # 匹配并去除时间戳和前缀
         patterns = [
-            r"^\(?\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\)?\s+ta私聊对你说\s*",
-            r"^\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\]\s+ta私聊对你说\s*",
-            r"^\(此时时间为\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\)\s+ta(私聊|在群聊里)对你说\s*",
-            r"^.*?ta私聊对你说\s*",
-            r"^.*?ta在群聊里对你说\s*",  # 添加群聊消息模式
+            r'^\(?\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\)?\s+ta私聊对你说\s*',
+            r'^\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\]\s+ta私聊对你说\s*',
+            r'^\(此时时间为\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\)\s+ta(私聊|在群聊里)对你说\s*',
+            r'^.*?ta私聊对你说\s*',
+            r'^.*?ta在群聊里对你说\s*',  # 添加群聊消息模式
+            r'^\[?\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(:\d{2})?\]?\s+', # 匹配纯时间戳格式
+            r'^\(?\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(:\d{2})?\)?\s+'  # 匹配带小括号的时间戳格式
         ]
 
         actual_content = content
 
         # 保存@信息
-        at_match = re.search(r"(@[^\s]+)", actual_content)
-        at_content = at_match.group(1) if at_match else ""
+        at_match = re.search(r'(@[^\s]+)', actual_content)
+        at_content = at_match.group(1) if at_match else ''
 
         # 清理时间戳和前缀
         for pattern in patterns:
             if re.search(pattern, actual_content):
-                actual_content = re.sub(pattern, "", actual_content)
+                actual_content = re.sub(pattern, '', actual_content)
                 break
 
         # 如果有@信息且在清理过程中被移除，重新添加到开头
@@ -1651,34 +1675,113 @@ class MessageHandler:
             return 1.0  # 长消息保持相同长度
 
     def _filter_action_emotion(self, text: str) -> str:
+        """处理动作描写和表情符号，确保格式一致"""
+        if not text:
+            return ""
+            
+        # 1. 先移除文本中的引号，避免引号包裹非动作文本
+        text = text.replace('"', '').replace('"', '').replace('"', '')
+        
+        # 2. 保护已经存在的括号内容
+        protected_parts = {}
+        
+        # 匹配所有类型的括号及其内容
+        bracket_pattern = r'[\(\[（【][^\(\[（【\)\]）】]*[\)\]）】]'
+        brackets = list(re.finditer(bracket_pattern, text))
+        
+        # 保护已有的括号内容
+        for i, match in enumerate(brackets):
+            placeholder = f"__PROTECTED_{i}__"
+            protected_parts[placeholder] = match.group()
+            text = text.replace(match.group(), placeholder)
+        
+        # 3. 保护颜文字 - 使用更宽松的匹配规则
+        # 定义常用颜文字字符集
+        emoticon_chars_set = set(
+            '（()）~～‿⁀∀︿⌒▽△□◇○●ˇ＾∇＿゜◕ω・ノ丿╯╰つ⊂＼／┌┐┘└°△▲▽▼◇◆○●◎■□▢▣▤▥▦▧▨▩♡♥ღ☆★✡⁂✧✦❈❇✴✺✹✸✷✶✵✳✳✲✱✰✯✮✭✬✫✪✩✨✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁✀✿✾✽✼✻✺✹✸✷✶✵✴✳✲✱✰✯✮✭✬✫✪✩✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁❤♪♫♬♩♭♮♯°○◎●◯◐◑◒◓◔◕◖◗¤☼☀☁☂☃☄★☆☎☏⊙◎☺☻☯☭♠♣♧♡♥❤❥❣♂♀☿❀❁❃❈❉❊❋❖☠☢☣☤☥☦☧☨☩☪☫☬☭☮☯☸☹☺☻☼☽☾☿♀♁♂♃♄♆♇♈♉♊♋♌♍♎♏♐♑♒♓♔♕♖♗♘♙♚♛♜♝♞♟♠♡♢♣♤♥♦♧♨♩♪♫♬♭♮♯♰♱♲♳♴♵♶♷♸♹♺♻♼♽♾♿⚀⚁⚂⚃⚄⚆⚇⚈⚉⚊⚋⚌⚍⚎⚏⚐⚑⚒⚓⚔⚕⚖⚗⚘⚙⚚⚛⚜⚝⚞⚟*^_^')
+        
+        emoji_patterns = [
+            # 括号类型的颜文字
+            r'\([\w\W]{1,10}?\)',  # 匹配较短的括号内容
+            r'（[\w\W]{1,10}?）',  # 中文括号
+            
+            # 符号组合类型
+            r'[＼\\\/\*\-\+\<\>\^\$\%\!\?\@\#\&\|\{\}\=\;\:\,\.]{2,}',  # 常见符号组合
+            
+            # 常见表情符号
+            r'[◕◑◓◒◐•‿\^▽\◡\⌒\◠\︶\ω\´\`\﹏\＾\∀\°\◆\□\▽\﹃\△\≧\≦\⊙\→\←\↑\↓\○\◇\♡\❤\♥\♪\✿\★\☆]{1,}',
+            
+            # *号组合
+            r'\*[\w\W]{1,5}?\*'  # 星号强调内容
+        ]
+        
+        for pattern in emoji_patterns:
+            emojis = list(re.finditer(pattern, text))
+            for i, match in enumerate(emojis):
+                # 避免处理过长的内容，可能是动作描写而非颜文字
+                if len(match.group()) <= 15 and not any(p in match.group() for p in protected_parts.values()):
+                    # 检查是否包含足够的表情符号字符
+                    chars_count = sum(1 for c in match.group() if c in emoticon_chars_set)
+                    if chars_count >= 2 or len(match.group()) <= 5:
+                        placeholder = f"__EMOJI_{i}__"
+                        protected_parts[placeholder] = match.group()
+                        text = text.replace(match.group(), placeholder)
+        
+        # 4. 处理分隔符 - 保留原样
+        parts = text.split('$')
+        new_parts = []
+        
+        for i, part in enumerate(parts):
+            part = part.strip()
+            if not part:  # 跳过空部分
+                continue
+                
+            # 直接添加部分，不添加括号
+            new_parts.append(part)
+        
+        # 5. 特殊处理：同时兼容原来的 \ 分隔符
+        if len(new_parts) == 1:  # 如果没有找到 $ 分隔符，尝试处理 \ 分隔符
+            parts = text.split('\\')
+            if len(parts) > 1:  # 确认有实际分隔
+                new_parts = []
+                for i, part in enumerate(parts):
+                    part = part.strip()
+                    if not part:
+                        continue
+                    # 直接添加部分，不添加括号
+                    new_parts.append(part)
+        
+        # 6. 重新组合文本
+        result = "$".join(new_parts)
+        
+        # 7. 恢复所有保护的内容
+        for placeholder, content in protected_parts.items():
+            result = result.replace(placeholder, content)
+            
+        return result
+
+    def _clean_memory_content(self, assistant_message: str) -> str:
         """
-        过滤掉文本中的动作和情感描述（通常在括号内）
+        清理助手回复，以便存储到记忆中
+        移除无用的分隔符和标点符号
 
         Args:
-            text: 原始文本
+            assistant_message: 助手回复内容
 
         Returns:
-            str: 过滤后的文本
+            str: 清理后的内容
         """
-        # 过滤方括号内的内容
-        text = re.sub(r"\[([^\]]*)\]", "", text)
-        # 过滤圆括号内的内容
-        text = re.sub(r"\(([^\)]*)\)", "", text)
-        # 过滤【】内的内容
-        text = re.sub(r"【([^】]*)】", "", text)
-        # 清理可能留下的多余空格
-        text = re.sub(r"\s+", " ", text)
-        return text.strip()
-
-    def _clean_memory_content(self, content: str) -> str:
-        """清理记忆内容中的特殊标记"""
-        if not content:
+        if not assistant_message:
             return ""
-        # 清理XML标记
-        content = re.sub(r"<[^>]+>", "", content)
-        # 清理其他系统标记
-        content = re.sub(r"\[系统.*?\]", "", content)
-        return content.strip()
+            
+        # 使用相同的分隔符清理逻辑
+        cleaned_content = self._clean_delimiter_punctuation(assistant_message)
+        
+        # 处理回复，添加分隔符并清理标点
+        processed = self._process_for_sending_and_memory(cleaned_content)
+        
+        # 返回处理后的记忆内容
+        return processed.get("memory_content", cleaned_content)
 
     def _clean_ai_response(self, response: str) -> str:
         """清理AI回复中的所有系统标记和提示词"""
@@ -1686,80 +1789,211 @@ class MessageHandler:
             return ""
 
         # 移除所有XML样式的标记
-        response = re.sub(r"<[^>]+>", "", response)
+        response = re.sub(r'<[^>]+>', '', response)
+        
+        # 移除所有方括号样式的标记
+        response = re.sub(r'\[时间\].*?\[/时间\]', '', response)
+        response = re.sub(r'\[群组\].*?\[/群组\]', '', response)
+        response = re.sub(r'\[发送者\].*?\[/发送者\]', '', response)
+        response = re.sub(r'\[消息内容\].*?\[/消息内容\]', '', response)
+        response = re.sub(r'\[上下文\].*?\[/上下文\]', '', response, flags=re.DOTALL)
 
         # 清理其他系统标记和提示词
         patterns_to_remove = [
-            r"\[系统提示\].*?\[/系统提示\]",
-            r"\[系统指令\].*?\[/系统指令\]",
-            r"记忆\d+:\s*\n用户:.*?\nAI:.*?(?=\n\n|$)",
-            r"以下是之前的对话记录：.*?(?=\n\n)",
-            r"\(以上是历史对话内容[^)]*\)",
-            r"memory_number:.*?(?=\n|$)",
-            r"\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(?::\d{2})?\]",
-            r"请注意：.*?(?=\n|$)",
-            r"请(?:简短|简洁)回复.*?(?=\n|$)",
-            r"请.*?控制在.*?(?=\n|$)",
-            r"请你回应用户的结束语",
-            r"^你：|^对方：|^AI：",
-            r"ta(?:私聊|在群聊里)对你说[：:]\s*",
+            r'\[系统提示\].*?\[/系统提示\]',
+            r'\[系统指令\].*?\[/系统指令\]',
+            r'记忆\d+:\s*\n用户:.*?\nAI:.*?(?=\n\n|$)',
+            r'以下是之前的对话记录：.*?(?=\n\n)',
+            r'\(以上是历史对话内容[^)]*\)',
+            r'memory_number:.*?(?=\n|$)',
+            r'\[\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(?::\d{2})?\]',
+            r'请注意：.*?(?=\n|$)',
+            r'请(?:简短|简洁)回复.*?(?=\n|$)',
+            r'请.*?控制在.*?(?=\n|$)',
+            r'请你回应用户的结束语',
+            r'^你：|^对方：|^AI：',
+            r'ta(?:私聊|在群聊里)对你说[：:]\s*',
         ]
 
         for pattern in patterns_to_remove:
-            response = re.sub(pattern, "", response, flags=re.DOTALL | re.IGNORECASE)
+            response = re.sub(pattern, '', response, flags=re.DOTALL|re.IGNORECASE)
+        
+        # 移除引用格式
+        response = re.sub(r'\(引用消息:.*?\)\s*', '', response)
+        
+        # 移除@标记
+        response = re.sub(r'@[^\s]+\s*', '', response)
+        
+        # 移除代码块标记
+        response = re.sub(r'```.*?```', '', response, flags=re.DOTALL)
 
         # 移除多余的空白字符
-        response = re.sub(r"\s+", " ", response)
+        response = re.sub(r'\s+', ' ', response)
         return response.strip()
 
-    def _filter_punctuation(self, text: str, is_last_sentence: bool = False) -> str:
+    def _clean_delimiter_punctuation(self, text: str) -> str:
         """
-        过滤标点符号，保留问号、感叹号、省略号、书名号、括号、引号
-        如果是最后一句，并过滤掉句尾的句号
+        清理分隔符$和￥周围的标点符号
+        这些标点会干扰分割和发送流程
+        同时保护部分标点符号，如感叹号、问号和括号
+        
+        Args:
+            text: 待处理文本
+            
+        Returns:
+            str: 处理后的文本
         """
         if not text:
             return ""
 
-        # 定义需要保留的标点符号集合
-        keep_punctuation = set(
-            [
-                "?",
-                "!",
-                "？",
-                "！",
-                "…",
-                "《",
-                "》",
-                "(",
-                ")",
-                "（",
-                "）",
-                '"',
-                '"',
-                """, """,
-                "「",
-                "」",
-            ]
-        )
-
-        # 需要过滤的标点符号（除了保留的那些）
-        filter_punctuation = set(
-            ["。", "，", "、", "：", "；", "·", "~", ",", ".", ":", ";"]
-        )
-
-        # 如果是最后一句，且以句号结尾，移除句尾的句号
-        if is_last_sentence and text[-1] in ["。", "."]:
-            text = text[:-1]
-
-        # 处理文本中的标点
-        result = ""
-        for char in text:
-            if char in filter_punctuation:
-                # 过滤掉需要过滤的标点
-                continue
-            result += char
+        # 1. 创建用于保护特定标记的字典
+        protected_marks = {}
+        placeholder_index = 0
+        
+        # 保护括号对
+        bracket_types = [
+            (r'\(', r'\)'),   # 小括号
+            (r'\[', r'\]'),   # 中括号
+            (r'\{', r'\}'),   # 大括号
+            (r'（', r'）'),   # 中文小括号
+            (r'【', r'】'),   # 中文中括号
+            (r'「', r'」'),   # 中文书名号
+            (r'『', r'』'),   # 中文书名号
+            (r'《', r'》'),   # 中文角括号
+        ]
+        
+        # 保护完整的括号对
+        for left, right in bracket_types:
+            # 查找所有成对的括号
+            pattern = f"{left}(.*?){right}"
+            matches = re.finditer(pattern, text, re.DOTALL)
+            for match in matches:
+                # 检查是否需要在括号后添加分隔符
+                full_match = match.group(0)
+                end_pos = match.end()
+                
+                # 如果括号后面没有分隔符且不是在行尾，添加分隔符$
+                if end_pos < len(text) and text[end_pos:end_pos+1] != '$' and text[end_pos:end_pos+1] != '￥':
+                    # 将括号和分隔符一起保护
+                    placeholder = f"__BRACKET_{placeholder_index}__"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = full_match + '$'
+                    text = text[:match.start()] + placeholder + text[end_pos:]
+                else:
+                    # 正常保护括号
+                    placeholder = f"__BRACKET_{placeholder_index}__"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = full_match
+                    text = text.replace(full_match, placeholder)
+        
+        # 如果文本以括号开头，特殊处理
+        for left, _ in bracket_types:
+            if re.match(f"^\\s*{left}", text):
+                pattern = f"^\\s*{left}.*?(?=$|\\$|￥)"
+                match = re.search(pattern, text, re.DOTALL)
+                if match:
+                    placeholder = f"__BRACKET_START_{placeholder_index}__"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = match.group(0)
+                    text = text.replace(match.group(0), placeholder)
+        
+        # 如果文本以括号结尾，特殊处理
+        for _, right in bracket_types:
+            if re.search(f"{right}\\s*$", text):
+                pattern = f"(?<=^|\\$|￥).*?{right}\\s*$"
+                match = re.search(pattern, text, re.DOTALL)
+                if match:
+                    placeholder = f"__BRACKET_END_{placeholder_index}__"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = match.group(0)
+                    text = text.replace(match.group(0), placeholder)
+        
+        # 2. 标记并保护特定符号
+        for char in "!！?？.,，。;；:：":
+            # 处理$分隔符前的特殊标点
+            pattern = re.escape(char) + r'+\s*\$'
+            matches = re.finditer(pattern, text)
+            for match in matches:
+                placeholder = f"__PROTECT_{placeholder_index}__"
+                placeholder_index += 1
+                protected_marks[placeholder] = char + '$'
+                text = text.replace(match.group(0), placeholder)
+                
+            # 处理￥分隔符前的特殊标点
+            pattern = re.escape(char) + r'+\s*￥'
+            matches = re.finditer(pattern, text)
+            for match in matches:
+                placeholder = f"__PROTECT_{placeholder_index}__"
+                placeholder_index += 1
+                protected_marks[placeholder] = char + '￥'
+                text = text.replace(match.group(0), placeholder)
+        
+        # 3. 清理需要过滤的标点符号（普通标点）
+        filter_punctuation = "、—_-+=*&#@~"
+        
+        # 清理分隔符$前的标点
+        result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*\$', '$', text)
+        
+        # 清理分隔符$后的标点
+        result = re.sub(r'\$\s*[' + re.escape(filter_punctuation) + r']+', '$', result)
+        
+        # 清理分隔符￥前的标点
+        result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*￥', '￥', result)
+        
+        # 清理分隔符￥后的标点
+        result = re.sub(r'￥\s*[' + re.escape(filter_punctuation) + r']+', '￥', result)
+        
+        # 4. 恢复所有保护的标记
+        for placeholder, content in protected_marks.items():
+            result = result.replace(placeholder, content)
+        
+        # 5. 处理分隔符周围可能存在的空格问题
+        result = re.sub(r'\s*\$\s*', '$', result)
+        result = re.sub(r'\s*￥\s*', '￥', result)
 
         return result
+    
+    def _clean_part_punctuation(self, part: str) -> str:
+        """
+        清理分段后的文本部分的标点符号，主要处理分段开头和结尾
+        同时清理@用户名及其后面的空格（包括微信特殊的U+2005空格）
+        保留括号等成对标点符号
+        
+        Args:
+            part: 文本部分
+            
+        Returns:
+            str: 清理后的文本
+        """
+        if not part:
+            return ""
+            
+        # 定义需要过滤的标点符号（不包括括号和引号等成对符号）
+        punct_chars = "、~—_-+=*&#@"
+        
+        # 首先清理所有@用户名（包括其后的空格和周围的标点符号）
+        # 1. 查找所有@开头的用户名及其后的特殊空格
+        cleaned_part = re.sub(r'@\S+[\u2005\u0020\u3000]?', '', part)
+        
+        # 2. 处理可能残留的@符号
+        cleaned_part = re.sub(r'@\S+', '', cleaned_part)
+        
+        # 3. 清理可能残留的特殊空格
+        cleaned_part = re.sub(r'[\u2005\u3000]+', ' ', cleaned_part)
+        
+        # 清理部分开头和结尾的标点符号（只清理特定标点，保留括号等）
+        cleaned_part = cleaned_part.strip()
+        
+        # 使用正则表达式一次性清理开头的指定标点
+        cleaned_part = re.sub(f'^[{re.escape(punct_chars)}]+', '', cleaned_part).strip()
+    
+        # 使用正则表达式一次性清理结尾的指定标点
+        cleaned_part = re.sub(f'[{re.escape(punct_chars)}]+$', '', cleaned_part).strip()
+        
+        # 删除可能因清理造成的多余空格
+        cleaned_part = re.sub(r'\s+', ' ', cleaned_part).strip()
+        
+        return cleaned_part
 
     def _process_for_sending_and_memory(self, content: str) -> dict:
         """
@@ -1774,58 +2008,36 @@ class MessageHandler:
                 "sentence_count": 0,
             }
 
-        # 首先按照$符号分割消息，但保留连续的多个$只当作一个分隔符
-        # 替换连续的多个$为一个特殊标记
-        content_with_markers = re.sub(r"\${2,}", "###MULTI_DOLLAR###", content)
-
-        # 过滤掉$和￥符号周围的标点符号
-        # 定义需要过滤的标点符号集合（包括中英文标点）
-        filter_punctuation = (
-            r"。，、；：·~\.,;:，、"
-            '"!！?？…()（）""\'\'""'
-            "【】[]{}《》<>『』「」—_-+=*&#@"
-        )
-
-        # 过滤$符号前面的标点符号
-        content_with_markers = re.sub(
-            r"[" + filter_punctuation + r"]+\s*\$", "$", content_with_markers
-        )
-        # 过滤$符号后面的标点符号
-        content_with_markers = re.sub(
-            r"\$\s*[" + filter_punctuation + r"]+", "$", content_with_markers
-        )
-
-        # 过滤￥符号前面的标点符号
-        content_with_markers = re.sub(
-            r"[" + filter_punctuation + r"]+\s*￥", "￥", content_with_markers
-        )
-        # 过滤￥符号后面的标点符号
-        content_with_markers = re.sub(
-            r"￥\s*[" + filter_punctuation + r"]+", "￥", content_with_markers
-        )
-
-        # 处理$符号周围可能存在的空格问题
-        # 将" $ "、"$ "和" $"标准化为单个$符号进行分割
-        content_with_markers = re.sub(r"\s*\$\s*", "$", content_with_markers)
-
-        # 移除可能存在的￥符号周围的空格
-        content_with_markers = re.sub(r"\s*￥\s*", "￥", content_with_markers)
-
-        # 然后按照单个$分割
+        # 先将连续的换行符替换为特殊标记
+        content = re.sub(r'\n{2,}', '###DOUBLE_NEWLINE###', content)
+        # 将单个换行符替换为$分隔符
+        content = content.replace('\n', '$')
+        # 将特殊标记也转为$分隔符，确保每个句子单独一段
+        content = content.replace('###DOUBLE_NEWLINE###', '$')
+        
+        # 首先使用_clean_delimiter_punctuation处理分隔符周围的标点符号
+        cleaned_content = self._clean_delimiter_punctuation(content)
+        
+        # 替换连续的多个$为单个$
+        content_with_markers = re.sub(r"\${2,}", "$", cleaned_content)
+        
+        # 分割消息成不同部分
         dollar_parts = re.split(r"\$", content_with_markers)
+        
+        # 剔除空部分
+        dollar_parts = [part for part in dollar_parts if part.strip()]
 
-        # 如果没有找到$分隔符，或者只有一部分，则使用原始分段逻辑
+        # 如果没有找到$分隔符，或者只有一部分，尝试使用句号等标点符号分割
         if len(dollar_parts) <= 1:
             # 检查是否包含表情符号或特殊字符
             has_emoji = bool(
                 re.search(r"[\U00010000-\U0010ffff\u2600-\u26FF\u2700-\u27BF]", content)
             )
 
-            # 对于包含表情符号的内容，使用不同的处理策略
+            # 根据是否含有表情符号，选择不同的处理策略
             if has_emoji:
-                # 直接使用句子作为分割单位，不再使用标点符号分割
-                # 可能包含表情符号的句子，按照换行符或者句号分割
-                sentences = re.split(r"([。！？\.\!\?\n])", content)
+                # 对于包含表情符号的内容，按照换行符或句号分割
+                sentences = re.split(r"([。！？\.\!\?])", content)
 
                 # 重组句子
                 complete_sentences = []
@@ -1843,18 +2055,15 @@ class MessageHandler:
                 if not complete_sentences:
                     complete_sentences = [content]
 
-                # 直接将每个句子作为一部分，不进行标点过滤
+                # 使用_clean_part_punctuation处理每个句子
                 processed_parts = []
                 memory_parts = []
 
                 for i, sentence in enumerate(complete_sentences):
-                    clean_sentence = sentence.strip()
+                    # 清理每个部分
+                    clean_sentence = self._clean_part_punctuation(sentence)
+                    
                     if clean_sentence:
-                        # 恢复特殊标记为连续的$
-                        clean_sentence = clean_sentence.replace(
-                            "###MULTI_DOLLAR###", "$$"
-                        )
-
                         # 添加到处理结果
                         processed_parts.append(clean_sentence)
 
@@ -1864,7 +2073,54 @@ class MessageHandler:
                         else:
                             memory_parts.append(clean_sentence)
 
-                # 为记忆内容添加$分隔符 - 不使用空格
+                # 为记忆内容添加$分隔符
+                memory_content = "$".join(memory_parts)
+
+                return {
+                    "parts": processed_parts,
+                    "memory_content": memory_content,
+                    "total_length": sum(len(part) for part in processed_parts),
+                    "sentence_count": len(processed_parts),
+                }
+            else:
+                # 对于不含表情符号的内容，使用正则表达式识别句子
+                sentences = re.split(r"([。！？\.\!\?])", content)
+
+                # 重组句子
+                complete_sentences = []
+                for i in range(0, len(sentences) - 1, 2):
+                    if i + 1 < len(sentences):
+                        # 将句子和标点符号重新组合
+                        sentence = sentences[i] + sentences[i + 1]
+                        complete_sentences.append(sentence)
+
+                # 处理最后一个可能没有标点的片段
+                if len(sentences) % 2 == 1 and sentences[-1].strip():
+                    complete_sentences.append(sentences[-1])
+
+                # 如果没有分离出句子，则视为一个完整句子
+                if not complete_sentences and content.strip():
+                    complete_sentences = [content]
+
+                # 使用_clean_part_punctuation处理每个句子
+                processed_parts = []
+                memory_parts = []
+
+                for i, sentence in enumerate(complete_sentences):
+                    # 清理每个部分
+                    clean_sentence = self._clean_part_punctuation(sentence)
+
+                    if clean_sentence:
+                        # 添加到处理结果
+                        processed_parts.append(clean_sentence)
+                        
+                        # 为记忆内容准备，最后一句添加￥
+                        if i == len(complete_sentences) - 1:
+                            memory_parts.append(clean_sentence + "￥")
+                        else:
+                            memory_parts.append(clean_sentence)
+                
+                # 为记忆内容添加$分隔符
                 memory_content = "$".join(memory_parts)
 
                 return {
@@ -1874,97 +2130,24 @@ class MessageHandler:
                     "sentence_count": len(processed_parts),
                 }
 
-            # 没有表情符号的情况，使用原来的处理逻辑
-            # 使用正则表达式识别句子
-            sentences = re.split(r"([。！？\.\!\?])", content)
-
-            # 重组句子
-            complete_sentences = []
-            for i in range(0, len(sentences) - 1, 2):
-                if i + 1 < len(sentences):
-                    # 将句子和标点符号重新组合
-                    sentence = sentences[i] + sentences[i + 1]
-                    complete_sentences.append(sentence)
-
-            # 处理最后一个可能没有标点的片段
-            if len(sentences) % 2 == 1 and sentences[-1].strip():
-                complete_sentences.append(sentences[-1])
-
-            # 如果没有分离出句子，则视为一个完整句子
-            if not complete_sentences and content.strip():
-                complete_sentences = [content]
-
-            # 处理每个句子，添加分隔符，过滤标点
-            processed_parts = []
-            memory_parts = []
-
-            # 将每个句子作为单独的部分处理
-            for i, sentence in enumerate(complete_sentences):
-                is_last = i == len(complete_sentences) - 1
-                # 过滤标点符号
-                filtered_sentence = self._filter_punctuation(sentence, is_last)
-
-                # 如果句子不为空，添加到处理结果中
-                if filtered_sentence.strip():
-                    # 恢复特殊标记为连续的$
-                    filtered_sentence = filtered_sentence.replace(
-                        "###MULTI_DOLLAR###", "$$"
-                    )
-
-                    # 处理记忆内容，给最后一句添加￥
-                    memory_sentence = filtered_sentence
-                    if is_last:
-                        memory_sentence = memory_sentence + "￥"
-
-                    processed_parts.append(filtered_sentence)
-                    memory_parts.append(memory_sentence)
-
-            # 为记忆内容添加$分隔符 - 不使用空格
-            memory_content = "$".join(memory_parts)
-
-            return {
-                "parts": processed_parts,
-                "memory_content": memory_content,
-                "total_length": sum(len(part) for part in processed_parts),
-                "sentence_count": len(processed_parts),
-            }
-
-        # 现在处理$分隔的部分
+        # 处理$分隔的多个部分
         processed_parts = []
         memory_parts = []
 
         for i, part in enumerate(dollar_parts):
-            # 恢复特殊标记为连续的$
-            part = part.replace("###MULTI_DOLLAR###", "$$")
-
-            # 清理和准备部分，进行标点过滤
-            clean_part = part.strip()
+            # 清理每个部分
+            clean_part = self._clean_part_punctuation(part)
+            
             if clean_part:
-                # 对非空部分应用标点过滤
-                is_last = i == len(dollar_parts) - 1
-                filtered_part = self._filter_punctuation(clean_part, is_last)
+                processed_parts.append(clean_part)
 
-                # 再次检查分隔符前后的标点符号（保证彻底清理）
-                if i > 0:  # 不是第一部分，检查开头的标点
-                    filtered_part = re.sub(
-                        r"^[" + filter_punctuation + r"]+", "", filtered_part
-                    )
+                # 为记忆内容准备，最后一部分添加￥
+                if i == len(dollar_parts) - 1:
+                    memory_parts.append(clean_part + "￥")
+                else:
+                    memory_parts.append(clean_part)
 
-                if i < len(dollar_parts) - 1:  # 不是最后部分，检查结尾的标点
-                    filtered_part = re.sub(
-                        r"[" + filter_punctuation + r"]+$", "", filtered_part
-                    )
-
-                if filtered_part.strip():
-                    processed_parts.append(filtered_part)
-
-                    # 为记忆内容准备，最后一部分添加￥
-                    if i == len(dollar_parts) - 1:
-                        memory_parts.append(filtered_part + "￥")
-                    else:
-                        memory_parts.append(filtered_part)
-
-        # 为记忆内容添加$分隔符 - 直接连接，不添加空格
+        # 为记忆内容添加$分隔符
         memory_content = "$".join(memory_parts)
 
         return {
@@ -1979,41 +2162,18 @@ class MessageHandler:
         if not text:
             return {"parts": [], "total_length": 0, "sentence_count": 0}
 
-        # 使用新的处理函数
+        # 使用处理函数获取分段和记忆内容
         processed = self._process_for_sending_and_memory(text)
 
-        # 添加更详细的日志，用于调试
-        logger.info(f'消息分割: 原文 "{text[:100]}..."')
-        logger.info(f"消息分割: 分成了 {len(processed['parts'])} 个部分")
-
-        for i, part in enumerate(processed["parts"]):
-            # 增加日志详细度，显示每个部分的实际内容和长度
-            logger.info(f'消息分割部分 {i+1}: "{part}" (长度: {len(part)}字符)')
-
-        if "memory_content" in processed:
-            # 显示处理后的记忆内容和长度
-            mem_content = processed["memory_content"]
-            logger.info(
-                f'记忆内容: "{mem_content[:100]}..." (总长度: {len(mem_content)}字符)'
-            )
-
-            # 添加分隔符调试信息
-            dollar_count = mem_content.count("$")
-            yen_count = mem_content.count("￥")
-            logger.debug(
-                f"记忆内容中的分隔符: $符号数量={dollar_count}, ￥符号数量={yen_count}"
-            )
-
-        return {
-            "parts": processed["parts"],
-            "total_length": processed["total_length"],
-            "sentence_count": processed["sentence_count"],
-            "memory_content": processed["memory_content"],
-        }
+        # 添加简要日志
+        logger.info(f"消息分割: 共 {len(processed['parts'])} 个部分")
+        
+        # 返回处理结果
+        return processed
 
     def _send_split_messages(self, messages, chat_id):
-        """发送分割后的消息，不进行重试和失败检查"""
-        if not messages or not isinstance(messages, dict):
+        """发送分割后的消息"""
+        if not messages or not isinstance(messages, dict) or not messages.get("parts"):
             return False
 
         # 添加发送锁，确保一个消息的所有部分发送完毕后才能发送下一个消息
@@ -2032,14 +2192,12 @@ class MessageHandler:
             first_part = messages["parts"][0] if messages["parts"] else ""
             already_has_at = bool(re.search(r"^@[^\s]+", first_part))
 
-            # 检查是否是群聊消息（通过chat_id是否包含群聊标识）
+            # 检查是否是群聊消息
             is_group_chat = False
             sender_name = None
 
             # 只有当消息不包含@标记时才尝试添加
-            if not already_has_at:
-                # 从chat_id中提取群聊信息
-                if hasattr(self, "group_chat_memory"):
+            if not already_has_at and hasattr(self, "group_chat_memory"):
                     is_group_chat = chat_id in self.group_chat_memory.group_chats
                     if is_group_chat:
                         # 从最近的群聊消息中获取发送者名称
@@ -2049,33 +2207,31 @@ class MessageHandler:
                         if recent_messages:
                             sender_name = recent_messages[0].get("sender_name")
 
+            # 发送每一部分消息
             for i, part in enumerate(messages["parts"]):
                 if part not in sent_messages and part.strip():
                     # 处理消息中的$分隔符
                     processed_part = part
 
-                    # 移除消息开头的$符号
-                    if processed_part.startswith("$"):
-                        processed_part = processed_part[1:].strip()
+                    # 移除消息中所有的$符号
+                    processed_part = processed_part.replace("$", "")
+                    processed_part = processed_part.strip()
+                    
+                    # 如果清理后为空，则跳过此部分
+                    if not processed_part:
+                        continue
 
-                    # 不再移除消息中的$符号，因为它们已经被用作分隔符
-                    # processed_part = processed_part.replace(' $ ', ' ').replace('$ ', ' ').replace(' $', ' ')
+                    # 模拟自然发送行为
+                    time.sleep(base_interval)
 
-                    # 模拟真实用户输入行为
-                    time.sleep(base_interval)  # 基础间隔
-
-                    # 只有在第一条消息、是群聊、有发送者名称且消息不已经包含@时才添加@
+                    # 处理群聊@提及
                     if i == 0 and is_group_chat and sender_name and not already_has_at:
                         send_content = f"@{sender_name}\u2005{processed_part}"
                     else:
                         send_content = processed_part
 
-                    # 发送消息，不检查结果
-                    logger.info(
-                        f"发送消息片段 {i+1}/{len(messages['parts'])}: {send_content[:20]}..."
-                    )
-
-                    # 不捕获异常，不检查结果，假设所有消息都已成功发送
+                    # 发送消息
+                    logger.info(f"发送消息片段 {i+1}/{len(messages['parts'])}")
                     self.wx.SendMsg(send_content, chat_id)
                     sent_messages.add(part)
 
@@ -2085,7 +2241,6 @@ class MessageHandler:
                     )
                     time.sleep(wait_time)
 
-        # 所有消息都假设已成功发送
         return True
 
     def get_private_api_response(
@@ -2103,26 +2258,22 @@ class MessageHandler:
             # 清理API回复，移除系统标记和提示词
             cleaned_response = self._clean_ai_response(deepseek_response)
 
-            # 处理回复，添加$和￥分隔符，过滤标点符号
-            processed = self._process_for_sending_and_memory(cleaned_response)
+            # 处理回复，添加分隔符并清理标点
+            processed = self._split_message_for_sending(cleaned_response)
 
             # 如果设置了memory_id，更新记忆
             if hasattr(self, "memory_handler") and memory_id:
                 try:
                     # 使用memory_content作为存储内容
                     memory_content = processed.get("memory_content", cleaned_response)
-                    # 使用修改后的API响应更新记忆
+                    # 更新记忆
                     self.memory_handler.update_memory(memory_id, memory_content)
                     logger.info(f"记忆已更新: {memory_id}")
                 except Exception as memory_e:
                     logger.error(f"更新记忆失败: {str(memory_e)}")
 
-            # 返回分割后的消息对象，以便主函数处理发送
-            return {
-                "parts": processed.get("parts", [cleaned_response]),
-                "total_length": processed.get("total_length", len(cleaned_response)),
-                "sentence_count": processed.get("sentence_count", 1),
-            }
+            # 返回分割后的消息对象
+            return processed
 
         except Exception as e:
             logger.error(f"获取私聊API响应失败: {str(e)}")
@@ -2451,16 +2602,31 @@ class MessageHandler:
             # 将时间差转换为小时
             time_diff_hours = time_diff_seconds / 3600.0
 
-            # 根据配置的衰减方法计算权重
-            if self.decay_method == "exponential":
-                # 指数衰减: weight = exp(-λ * t)
-                weight = math.exp(-self.decay_rate * time_diff_hours)
+            # 最大时间差为3天(72小时)
+            max_hours = 72.0
+            time_diff_hours = min(time_diff_hours, max_hours)
+            
+            # 分段式衰减函数
+            # 1. 24小时内: 缓慢衰减
+            # 2. 24-72小时: 快速衰减
+            # 3. 72小时后: 稳定在略高于最小阈值
+            
+            min_weight = 0.15  # 最小权重阈值
+            
+            if time_diff_hours <= 24.0:
+                # 24小时内缓慢衰减：从1.0到0.7
+                weight = 1.0 - (0.3 * time_diff_hours / 24.0)
+            elif time_diff_hours <= max_hours:
+                # 24-72小时快速衰减：从0.7到min_weight
+                remaining_decay = 0.7 - min_weight
+                normalized_time = (time_diff_hours - 24.0) / (max_hours - 24.0)
+                weight = 0.7 - (remaining_decay * normalized_time)
             else:
-                # 线性衰减: weight = max(0, 1 - λ * t)
-                weight = max(0.0, 1.0 - self.decay_rate * time_diff_hours)
+                # 72小时后稳定在最小值
+                weight = min_weight
 
-            # 确保权重在[0, 1]范围内
-            weight = max(0.0, min(1.0, weight))
+            # 确保权重在[min_weight, 1]范围内
+            weight = max(min_weight, min(1.0, weight))
 
             return weight
 
@@ -2481,145 +2647,78 @@ class MessageHandler:
             current_user: 当前交互的用户名，用于增强相关消息的权重
 
         Returns:
-            list: 经过权重排序和筛选后的上下文消息
+            list: 经过时间排序和筛选后的上下文消息
         """
         if not context_messages:
+            logger.debug("上下文消息列表为空，返回空列表")
             return []
 
         # 如果未指定max_turns，使用配置的值
         if max_turns is None:
             max_turns = self.group_context_turns
 
-        # 如果未启用时间衰减和语义搜索，按时间排序并截取最近的max_turns条
-        if not self.use_time_decay and not self.use_semantic_search:
-            # 按时间戳排序（从旧到新）
-            sorted_msgs = sorted(context_messages, key=lambda x: x.get("timestamp", ""))
-            # 返回最新的max_turns条消息
-            return sorted_msgs[-max_turns:]
+        logger.debug(f"将获取最近的 {max_turns} 条消息作为上下文")
 
-        # 当前时间
-        if current_time is None:
-            current_time = datetime.now()
-
-        # 为每条消息计算权重
-        weighted_msgs = []
-        for msg in context_messages:
-            # 1. 基础权重 - 时间衰减
-            time_weight = self._calculate_time_decay_weight(
-                msg.get("timestamp", ""), current_time
+        try:
+            # 无差别获取群聊中最近的消息，不再按用户过滤
+            # 确保每条消息都有timestamp字段
+            for msg in context_messages:
+                if "timestamp" not in msg or not msg["timestamp"]:
+                    # 如果消息没有时间戳，设置一个默认的较早时间戳
+                    msg["timestamp"] = "2000-01-01 00:00:00"
+                    logger.warning(f"发现没有时间戳的消息: {msg.get('content', '无内容')[:30]}...")
+            
+            # 按时间戳排序（从早到晚）
+            sorted_msgs = sorted(
+                context_messages, 
+                key=lambda x: x.get("timestamp", "2000-01-01 00:00:00")
             )
+            
+            # 获取最近的max_turns条消息
+            recent_msgs = sorted_msgs[-max_turns:] if max_turns > 0 else sorted_msgs
+            
+            logger.debug(f"共筛选出 {len(recent_msgs)} 条最近消息作为上下文")
+            
+            # 记录一些消息的时间戳信息，用于调试
+            if recent_msgs and len(recent_msgs) > 0:
+                first_ts = recent_msgs[0].get("timestamp", "unknown")
+                last_ts = recent_msgs[-1].get("timestamp", "unknown")
+                logger.debug(f"上下文消息时间范围: {first_ts} 至 {last_ts}")
+            
+            return recent_msgs
+            
+        except Exception as e:
+            logger.error(f"筛选上下文消息时出错: {str(e)}")
+            # 发生错误时，尝试返回原始消息列表的最后max_turns条
+            try:
+                return context_messages[-max_turns:] if max_turns > 0 and len(context_messages) > max_turns else context_messages
+            except:
+                return []
 
-            # 2. 用户相关性权重
-            user_weight = 1.0  # 默认权重
-            if current_user:
-                # 如果消息的发送者与当前用户匹配，增加权重
-                msg_sender = msg.get("sender_name", "").lower()
-                current_user_lower = current_user.lower()
-
-                # 完全匹配给予最高权重
-                if msg_sender == current_user_lower:
-                    user_weight = 2.0
-                # 部分匹配（如昵称包含用户名）也提高权重
-                elif (
-                    current_user_lower in msg_sender or msg_sender in current_user_lower
-                ):
-                    user_weight = 1.5
-                # 如果是机器人回复当前用户的消息，也提高权重
-                elif (
-                    msg.get("human_message", "")
-                    and msg.get("assistant_message", "")
-                    and current_user_lower in msg.get("human_message", "").lower()
-                ):
-                    user_weight = 1.3
-
-            # 3. 语义相关性权重
-            semantic_weight = 0.5  # 默认中等语义相关性
-            if self.use_semantic_search and "semantic_score" in msg:
-                semantic_weight = msg["semantic_score"]
-
-            # 组合权重 - 使用配置的权重比例
-            if self.use_semantic_search:
-                # 组合三种权重
-                final_weight = (
-                    self.time_weight * time_weight
-                    + self.user_weight * user_weight
-                    + self.semantic_weight * semantic_weight
-                )
-            else:
-                # 只使用时间和用户权重
-                final_weight = time_weight * user_weight
-
-            weighted_msgs.append(
-                {
-                    "message": msg,
-                    "weight": final_weight,
-                    "is_relevant_user": user_weight > 1.0,
-                    "time_weight": time_weight,
-                    "user_weight": user_weight,
-                    "semantic_weight": semantic_weight,
-                }
-            )
-
-        # 按权重从高到低排序
-        weighted_msgs.sort(key=lambda x: x["weight"], reverse=True)
-
-        # 记录权重计算情况（仅记录top 3用于调试）
-        for i, item in enumerate(weighted_msgs[:3]):
-            msg = item["message"]
-            logger.debug(
-                f"消息权重 #{i+1}: 权重={item['weight']:.2f}, 时间={item['time_weight']:.2f}, 用户={item['user_weight']:.2f}, 语义={item['semantic_weight']:.2f}, 内容={msg.get('human_message', '')[:30]}..."
-            )
-
-        # 过滤掉权重低于阈值的消息
-        filtered_msgs = [
-            item["message"]
-            for item in weighted_msgs
-            if item["weight"] >= self.weight_threshold
-        ]
-
-        # 确保消息的多样性：保留一定数量的相关用户消息和其他用户消息
-        if current_user and len(filtered_msgs) < max_turns:
-            # 分离相关用户和其他用户的消息
-            relevant_msgs = [
-                m
-                for m in weighted_msgs
-                if m["is_relevant_user"] and m["message"] not in filtered_msgs
-            ]
-            other_msgs = [
-                m
-                for m in weighted_msgs
-                if not m["is_relevant_user"] and m["message"] not in filtered_msgs
-            ]
-
-            # 计算需要补充的消息数量
-            remaining_slots = max_turns - len(filtered_msgs)
-
-            # 预留至少30%的槽位给其他用户的消息，确保对话的多样性
-            min_other_slots = max(1, int(remaining_slots * 0.3))
-            max_relevant_slots = remaining_slots - min_other_slots
-
-            # 添加相关用户消息
-            filtered_msgs.extend(
-                [m["message"] for m in relevant_msgs[:max_relevant_slots]]
-            )
-
-            # 再添加其他用户消息
-            filtered_msgs.extend([m["message"] for m in other_msgs[:min_other_slots]])
-
-        # 如果仍然不足max_turns，继续添加剩余消息
-        if len(filtered_msgs) < max_turns:
-            remaining_msgs = [
-                item["message"]
-                for item in weighted_msgs
-                if item["message"] not in filtered_msgs
-            ]
-            filtered_msgs.extend(remaining_msgs[: max_turns - len(filtered_msgs)])
-
-        # 最后再按时间排序，确保上下文时间顺序正确
-        filtered_msgs.sort(key=lambda x: x.get("timestamp", ""))
-
-        # 限制最大消息数量
-        return filtered_msgs[-max_turns:]
+    def increment_unanswered_counter(self, username: str):
+        """
+        增加指定用户的未回答计数器
+        
+        Args:
+            username: 用户名
+        """
+        try:
+            with self.queue_lock:
+                # 初始化计数器（如果不存在）
+                if username not in self.unanswered_counters:
+                    self.unanswered_counters[username] = 0
+                
+                # 增加计数器
+                self.unanswered_counters[username] += 1
+                
+                # 记录日志
+                logger.info(f"增加用户 {username} 的未回答计数器，当前值: {self.unanswered_counters[username]}")
+                
+                # 如果未回答次数超过阈值，可以在这里添加额外处理逻辑
+                if self.unanswered_counters[username] >= 3:
+                    logger.warning(f"用户 {username} 的未回答计数已达到3次，考虑后续处理")
+        except Exception as e:
+            logger.error(f"增加未回答计数器失败: {str(e)}")
 
     def QQ_handle_text_message(self, content: str, qqid: str, sender_name: str) -> dict:
         """
@@ -2805,6 +2904,7 @@ class MessageHandler:
                             "human_message": metadata.get("human_message", ""),
                             "assistant_message": metadata.get("assistant_message", ""),
                             "score": result.get("score", 0.0),
+                            "sender_id": metadata.get("user_id", ""),  # 使用user_id作为sender_id
                         }
                     )
                 elif (
@@ -2820,6 +2920,7 @@ class MessageHandler:
                             "human_message": metadata.get("human_message", ""),
                             "assistant_message": metadata.get("assistant_message", ""),
                             "score": result.get("score", 0.0),
+                            "sender_id": metadata.get("user_id", ""),  # 使用user_id作为sender_id
                         }
                     )
 

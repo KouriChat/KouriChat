@@ -17,20 +17,33 @@ from src.utils.logger import get_logger
 logger = logging.getLogger('main')
 
 class GroupChatMemory:
-    def __init__(self, root_dir: str, avatar_name: str, group_chats: List[str], api_wrapper = None):
+    def __init__(self, root_dir: str, avatar_name: str = None, group_chats: List[str] = None, api_wrapper = None, message_handler = None):
         """
         初始化群聊记忆处理器
         
         Args:
             root_dir: 项目根目录
-            avatar_name: 角色名称
-            group_chats: 群聊ID列表
+            avatar_name: 角色名称（可选，如不提供则从config获取）
+            group_chats: 群聊ID列表（可选，如不提供则使用空列表）
             api_wrapper: API调用包装器，用于嵌入向量生成
+            message_handler: 消息处理器实例，用于清理消息内容
         """
         self.root_dir = root_dir
-        self.avatar_name = avatar_name
-        self.group_chats = group_chats
         self.api_wrapper = api_wrapper
+        self.group_chats = group_chats or []
+        self.message_handler = message_handler
+        
+        # 与rag.py保持一致，直接从config获取角色名
+        if avatar_name:
+            self.avatar_name = avatar_name
+        else:
+            try:
+                from src.config import config
+                self.avatar_name = config.behavior.context.avatar_dir
+                logger.info(f"从config获取到角色名: {self.avatar_name}")
+            except Exception as e:
+                logger.error(f"获取角色名失败: {str(e)}")
+                self.avatar_name = "default"
         
         # 为每个群聊创建独立的 RAG 管理器
         self.rag_managers: Dict[str, RagManager] = {}
@@ -101,7 +114,7 @@ class GroupChatMemory:
             safe_id = "default_group"
         return safe_id
             
-    def add_message(self, group_id: str, sender_name: str, message: str, is_at: bool = False) -> str:
+    def add_message(self, group_id: str, sender_name: str, message: str, assistant_message: str = None, timestamp: str = None, is_at: bool = False, is_system: bool = False) -> str:
         """
         添加群聊消息到记忆
         
@@ -109,7 +122,10 @@ class GroupChatMemory:
             group_id: 群聊ID
             sender_name: 发送者名称
             message: 消息内容
-            is_at: 是否@机器人
+            assistant_message: 助手回复内容（可选）
+            timestamp: 消息时间戳（可选，默认为当前时间）
+            is_at: 是否@机器人（可选，默认为False）
+            is_system: 是否系统消息（可选，默认为False）
             
         Returns:
             str: 消息时间戳
@@ -138,6 +154,7 @@ class GroupChatMemory:
                 
                 # 确保目录存在
                 os.makedirs(group_storage_dir, exist_ok=True)
+                logger.info(f"创建群聊存储目录: {group_storage_dir}")
 
                 # 检查memory.json是否存在，如果不存在则创建
                 memory_json_path = os.path.join(group_storage_dir, "memory.json")
@@ -166,16 +183,30 @@ class GroupChatMemory:
                     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
             # 创建记忆条目
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if timestamp is None:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 清理助手回复内容
+            cleaned_assistant_message = None
+            if assistant_message and self.message_handler:
+                try:
+                    cleaned_assistant_message = self.message_handler._clean_memory_content(assistant_message)
+                    logger.info(f"已清理助手回复内容用于存储: {cleaned_assistant_message[:50]}...")
+                except Exception as e:
+                    logger.error(f"清理助手回复内容失败: {str(e)}")
+                    cleaned_assistant_message = assistant_message
+            else:
+                cleaned_assistant_message = assistant_message
             
             # 构建消息对象
             message_data = {
                 "timestamp": timestamp,
                 "sender_name": sender_name,
                 "human_message": message,
-                "assistant_message": None,  # 初始为None，等待回复时更新
+                "assistant_message": cleaned_assistant_message,
                 "ai_name": self.avatar_name,
-                "is_at": is_at
+                "is_at": is_at,
+                "is_system": is_system
             }
             
             # 同时更新memory.json文件和RAG系统
@@ -201,34 +232,84 @@ class GroupChatMemory:
                     if group_id not in memory_data:
                         memory_data[group_id] = []
                     
-                    # 添加新消息
-                    memory_data[group_id].append(message_data)
+                    # 检查是否存在重复消息
+                    # 同一发送者在短时间内（60秒内）发送的相同消息被视为重复
+                    is_duplicate = False
                     
-                    # 保存更新后的数据
-                    with open(memory_json_path, "w", encoding="utf-8") as f:
-                        json.dump(memory_data, f, ensure_ascii=False, indent=2)
+                    # 将当前时间戳转换为datetime对象，用于时间差计算
+                    current_time = None
+                    try:
+                        current_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        try:
+                            current_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
+                        except:
+                            current_time = datetime.now()
                     
-                    logger.info(f"已保存新消息到群聊 {group_id} 的memory.json文件")
+                    for existing_msg in memory_data[group_id]:
+                        # 检查发送者是否相同
+                        if existing_msg.get("sender_name") != sender_name:
+                            continue
+                            
+                        # 检查消息内容是否相似
+                        existing_message = existing_msg.get("human_message", "")
+                        if message.strip() != existing_message.strip():
+                            continue
+                            
+                        # 检查时间差是否在60秒内
+                        existing_time = None
+                        try:
+                            existing_time = datetime.strptime(
+                                existing_msg.get("timestamp", "2000-01-01 00:00:00"), 
+                                "%Y-%m-%d %H:%M:%S"
+                            )
+                        except ValueError:
+                            try:
+                                existing_time = datetime.strptime(
+                                    existing_msg.get("timestamp", "2000-01-01 00:00"), 
+                                    "%Y-%m-%d %H:%M"
+                                )
+                            except:
+                                continue
+                                
+                        if existing_time and current_time:
+                            time_diff = abs((current_time - existing_time).total_seconds())
+                            if time_diff < 60:  # 60秒内的重复消息
+                                is_duplicate = True
+                                logger.info(f"检测到重复消息，时间差 {time_diff:.1f}秒，不再添加")
+                                return existing_msg.get("timestamp")
+                    
+                    if not is_duplicate:
+                        # 添加新消息
+                        memory_data[group_id].append(message_data)
+                        
+                        # 保存更新后的数据
+                        with open(memory_json_path, "w", encoding="utf-8") as f:
+                            json.dump(memory_data, f, ensure_ascii=False, indent=2)
+                        
+                        logger.info(f"已保存新消息到群聊 {group_id} 的memory.json文件")
                 except Exception as e:
                     logger.error(f"更新群聊 {group_id} 的memory.json文件失败: {str(e)}")
             
-            # 异步添加到RAG系统
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-            if loop.is_running():
-                future = asyncio.run_coroutine_threadsafe(
-                    self.rag_managers[group_id].add_group_chat_message(group_id, message_data),
-                    loop
-                )
-                future.result()
-            else:
-                loop.run_until_complete(self.rag_managers[group_id].add_group_chat_message(group_id, message_data))
-                
+            # 只有非重复消息才添加到RAG系统
+            if not is_duplicate:
+                # 异步添加到RAG系统
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                if loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.rag_managers[group_id].add_group_chat_message(group_id, message_data),
+                        loop
+                    )
+                    future.result()
+                else:
+                    loop.run_until_complete(self.rag_managers[group_id].add_group_chat_message(group_id, message_data))
+                    
             return timestamp
             
         except Exception as e:
@@ -251,6 +332,18 @@ class GroupChatMemory:
             if group_id not in self.rag_managers:
                 logger.warning(f"群聊 {group_id} 未初始化 RAG 系统")
                 return False
+            
+            # 清理助手回复内容
+            cleaned_response = None
+            if response and self.message_handler:
+                try:
+                    cleaned_response = self.message_handler._clean_memory_content(response)
+                    logger.info(f"已清理助手回复内容用于更新: {cleaned_response[:50]}...")
+                except Exception as e:
+                    logger.error(f"清理助手回复内容失败: {str(e)}")
+                    cleaned_response = response
+            else:
+                cleaned_response = response
             
             # 更新memory.json文件
             safe_group_id = self._get_safe_group_id(group_id)
@@ -280,7 +373,7 @@ class GroupChatMemory:
                     for i, memory in enumerate(memory_data[group_id]):
                         if isinstance(memory, dict) and memory.get("timestamp") == timestamp:
                             # 更新现有消息
-                            memory["assistant_message"] = response
+                            memory["assistant_message"] = cleaned_response
                             found = True
                             break
                     
@@ -291,7 +384,7 @@ class GroupChatMemory:
                             "timestamp": timestamp,
                             "sender_name": "未知用户",  # 这里可能缺少发送者信息
                             "human_message": "",  # 这里可能缺少原始消息
-                            "assistant_message": response,
+                            "assistant_message": cleaned_response,
                             "ai_name": self.avatar_name,
                             "is_at": False
                         })
@@ -314,12 +407,12 @@ class GroupChatMemory:
                 
             if loop.is_running():
                 future = asyncio.run_coroutine_threadsafe(
-                    self.rag_managers[group_id].update_group_chat_response(group_id, timestamp, response),
+                    self.rag_managers[group_id].update_group_chat_response(group_id, timestamp, cleaned_response),
                     loop
                 )
                 future.result()
             else:
-                loop.run_until_complete(self.rag_managers[group_id].update_group_chat_response(group_id, timestamp, response))
+                loop.run_until_complete(self.rag_managers[group_id].update_group_chat_response(group_id, timestamp, cleaned_response))
             
             return True
             
@@ -530,4 +623,100 @@ class GroupChatMemory:
             
         except Exception as e:
             logger.error(f"根据内容查找消息失败: {str(e)}")
-            return None 
+            return None
+
+    def clean_duplicate_messages(self, group_id: str) -> int:
+        """
+        清理群聊中的重复消息
+        
+        Args:
+            group_id: 群聊ID
+            
+        Returns:
+            int: 清理的消息数量
+        """
+        try:
+            if group_id not in self.rag_managers:
+                logger.warning(f"群聊 {group_id} 未初始化 RAG 系统")
+                return 0
+                
+            safe_group_id = self._get_safe_group_id(group_id)
+            memory_json_path = os.path.join(
+                self.root_dir,
+                "data",
+                "avatars",
+                self.avatar_name,
+                "groups",
+                safe_group_id,
+                "memory.json"
+            )
+            
+            if not os.path.exists(memory_json_path):
+                logger.warning(f"群聊 {group_id} 的memory.json文件不存在")
+                return 0
+                
+            # 读取现有内容
+            with open(memory_json_path, "r", encoding="utf-8") as f:
+                memory_data = json.load(f)
+                
+            # 确保群聊ID存在
+            if group_id not in memory_data:
+                logger.warning(f"群聊 {group_id} 在memory.json中不存在")
+                return 0
+                
+            # 获取当前消息列表
+            messages = memory_data[group_id]
+            original_count = len(messages)
+            
+            if original_count == 0:
+                logger.info(f"群聊 {group_id} 没有消息，无需清理")
+                return 0
+                
+            # 用于存储不重复的消息
+            unique_messages = []
+            # 用于检查重复的消息指纹
+            message_fingerprints = set()
+            
+            for msg in messages:
+                # 创建消息指纹（发送者+消息内容+近似时间）
+                sender = msg.get("sender_name", "")
+                content = msg.get("human_message", "").strip()
+                
+                # 获取时间的小时和分钟部分用于近似比较
+                timestamp = msg.get("timestamp", "")
+                time_part = ""
+                try:
+                    dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                    time_part = dt.strftime("%H:%M")  # 只保留小时和分钟
+                except:
+                    time_part = timestamp[-5:] if len(timestamp) >= 5 else timestamp
+                
+                # 创建消息指纹
+                fingerprint = f"{sender}|{content}|{time_part}"
+                
+                # 如果指纹不在集合中，添加消息并更新指纹集合
+                if fingerprint not in message_fingerprints:
+                    message_fingerprints.add(fingerprint)
+                    unique_messages.append(msg)
+            
+            # 计算删除的消息数量
+            removed_count = original_count - len(unique_messages)
+            
+            if removed_count > 0:
+                # 更新memory.json文件
+                memory_data[group_id] = unique_messages
+                with open(memory_json_path, "w", encoding="utf-8") as f:
+                    json.dump(memory_data, f, ensure_ascii=False, indent=2)
+                
+                logger.info(f"已清理群聊 {group_id} 的 {removed_count} 条重复消息")
+                
+                # 重新初始化RAG系统（如果需要的话）
+                # 这里可以添加重新同步RAG系统的代码
+            else:
+                logger.info(f"群聊 {group_id} 没有发现重复消息")
+                
+            return removed_count
+            
+        except Exception as e:
+            logger.error(f"清理群聊重复消息失败: {str(e)}")
+            return 0 
