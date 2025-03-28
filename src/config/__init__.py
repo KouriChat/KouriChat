@@ -563,6 +563,21 @@ class SettingReader:
         else:
             settings = object.__getattribute__(self, 'settings')
             settings[key] = value
+            
+    def get(self, key, default=None):
+        """获取配置项，支持默认值
+        
+        Args:
+            key: 配置项键名
+            default: 配置项不存在时返回的默认值
+            
+        Returns:
+            配置项值或默认值
+        """
+        try:
+            return self.__getattr__(key)
+        except AttributeError:
+            return default
     
     def reload_from_file(self):
         """从配置文件重新加载配置"""
