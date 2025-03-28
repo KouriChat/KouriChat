@@ -37,7 +37,11 @@ def update_config_value(config_data, key, value):
             'RAG_RERANKER_MODEL': ['categories', 'rag_settings', 'settings', 'reranker_model', 'value'],
             'RAG_TOP_K': ['categories', 'rag_settings', 'settings', 'top_k', 'value'],
             'AUTO_DOWNLOAD_LOCAL_MODEL': ['categories', 'rag_settings', 'settings', 'auto_download_local_model', 'value'],
-            'AUTO_ADAPT_SILICONFLOW': ['categories', 'rag_settings', 'settings', 'auto_adapt_siliconflow', 'value']
+            'AUTO_ADAPT_SILICONFLOW': ['categories', 'rag_settings', 'settings', 'auto_adapt_siliconflow', 'value'],
+            'RAG_EMBEDDING_URL': ['categories', 'rag_settings', 'settings', 'embedding_url', 'value'],
+            'RAG_RERANK_URL': ['categories', 'rag_settings', 'settings', 'rerank_url', 'value'],
+            'LOCAL_MODEL_ENABLED': ['categories', 'rag_settings', 'settings', 'local_model_enabled', 'value'],
+            'LOCAL_EMBEDDING_MODEL_PATH': ['categories', 'rag_settings', 'settings', 'local_embedding_model_path', 'value']
         }
         
         # 数值类型配置项

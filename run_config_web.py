@@ -53,7 +53,6 @@ import httpx
 from openai import OpenAI
 import src.services.ai.llms.llm  # 添加LLM模块导入
 from src.handlers.memories.core.rag import LocalEmbeddingModel
-from flask_compress import Compress  # 添加响应压缩
 import win32event
 # 导入解析配置函数
 from src.configUtils.parse_config_groups import parse_config_groups, get_available_avatars
@@ -120,10 +119,6 @@ sys.dont_write_bytecode = True
 app = Flask(__name__,
             template_folder=os.path.join(ROOT_DIR, 'src/webui/templates'),
             static_folder=os.path.join(ROOT_DIR, 'src/webui/static'))
-
-# 添加响应压缩
-compress = Compress()
-compress.init_app(app)
 
 # 添加配置
 app.config['UPLOAD_FOLDER'] = os.path.join(ROOT_DIR, 'src/webui/background_image')
@@ -211,6 +206,48 @@ def save_config():
                 logger.debug(f"处理RAG_IS_RERANK为布尔值: {form_data['RAG_IS_RERANK']}")
             except Exception as e:
                 logger.error(f"转换RAG_IS_RERANK为布尔值失败: {str(e)}")
+                
+        # 特殊处理LOCAL_MODEL_ENABLED，确保它是布尔值
+        if 'LOCAL_MODEL_ENABLED' in form_data:
+            if isinstance(form_data['LOCAL_MODEL_ENABLED'], str):
+                form_data['LOCAL_MODEL_ENABLED'] = form_data['LOCAL_MODEL_ENABLED'].lower() == 'true'
+            try:
+                form_data['LOCAL_MODEL_ENABLED'] = bool(form_data['LOCAL_MODEL_ENABLED'])
+                logger.debug(f"处理LOCAL_MODEL_ENABLED为布尔值: {form_data['LOCAL_MODEL_ENABLED']}")
+            except Exception as e:
+                logger.error(f"转换LOCAL_MODEL_ENABLED为布尔值失败: {str(e)}")
+                
+        # 特殊处理AUTO_ADAPT_SILICONFLOW，确保它是布尔值
+        if 'AUTO_ADAPT_SILICONFLOW' in form_data:
+            if isinstance(form_data['AUTO_ADAPT_SILICONFLOW'], str):
+                form_data['AUTO_ADAPT_SILICONFLOW'] = form_data['AUTO_ADAPT_SILICONFLOW'].lower() == 'true'
+            try:
+                form_data['AUTO_ADAPT_SILICONFLOW'] = bool(form_data['AUTO_ADAPT_SILICONFLOW'])
+                logger.debug(f"处理AUTO_ADAPT_SILICONFLOW为布尔值: {form_data['AUTO_ADAPT_SILICONFLOW']}")
+            except Exception as e:
+                logger.error(f"转换AUTO_ADAPT_SILICONFLOW为布尔值失败: {str(e)}")
+                
+        # 处理嵌入模型和重排序模型的URLs
+        if 'RAG_EMBEDDING_URL' in form_data:
+            logger.debug(f"接收到嵌入URL: {form_data['RAG_EMBEDDING_URL']}")
+            
+        if 'RAG_RERANK_URL' in form_data:
+            logger.debug(f"接收到重排序URL: {form_data['RAG_RERANK_URL']}")
+            
+        # 处理嵌入模型名称
+        if 'RAG_EMBEDDING_MODEL' in form_data:
+            embedding_model = form_data['RAG_EMBEDDING_MODEL']
+            logger.debug(f"接收到嵌入模型: {embedding_model}")
+            
+        # 处理重排序模型名称
+        if 'RAG_RERANKER_MODEL' in form_data:
+            reranker_model = form_data['RAG_RERANKER_MODEL']
+            logger.debug(f"接收到重排序模型: {reranker_model}")
+            
+        # 处理本地嵌入模型路径
+        if 'LOCAL_EMBEDDING_MODEL_PATH' in form_data:
+            local_model_path = form_data['LOCAL_EMBEDDING_MODEL_PATH']
+            logger.debug(f"接收到本地嵌入模型路径: {local_model_path}")
 
         # 读取当前配置
         config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
@@ -263,7 +300,8 @@ def save_config():
                          'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
                          'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR',
                          'RAG_API_KEY', 'RAG_BASE_URL', 'RAG_EMBEDDING_MODEL', 'RAG_IS_RERANK', 'RAG_RERANKER_MODEL',
-                         'RAG_TOP_K', 'AUTO_DOWNLOAD_LOCAL_MODEL', 'AUTO_ADAPT_SILICONFLOW']:
+                         'RAG_TOP_K', 'AUTO_DOWNLOAD_LOCAL_MODEL', 'AUTO_ADAPT_SILICONFLOW',
+                         'RAG_EMBEDDING_URL', 'RAG_RERANK_URL', 'LOCAL_MODEL_ENABLED', 'LOCAL_EMBEDDING_MODEL_PATH']:
                 # 这里可以添加更多的配置项映射
                 update_config_value(current_config, key, value)
 
@@ -299,6 +337,27 @@ def save_config():
         except Exception as e:
             logger.error(f"获取保存后的RAG_IS_RERANK值失败: {str(e)}")
             
+        # 检查并记录嵌入模型设置
+        try:
+            embedding_model = current_config['categories']['rag_settings']['settings']['embedding_model']['value']
+            logger.info(f"保存后的RAG_EMBEDDING_MODEL值: {embedding_model}")
+        except Exception as e:
+            logger.error(f"获取保存后的RAG_EMBEDDING_MODEL值失败: {str(e)}")
+            
+        # 检查并记录重排序模型设置
+        try:
+            reranker_model = current_config['categories']['rag_settings']['settings']['reranker_model']['value']
+            logger.info(f"保存后的RAG_RERANKER_MODEL值: {reranker_model}")
+        except Exception as e:
+            logger.error(f"获取保存后的RAG_RERANKER_MODEL值失败: {str(e)}")
+            
+        # 检查并记录本地模型启用状态
+        try:
+            local_model_enabled = current_config['categories']['rag_settings']['settings']['local_model_enabled']['value']
+            logger.info(f"保存后的LOCAL_MODEL_ENABLED值: {local_model_enabled}, 类型: {type(local_model_enabled)}")
+        except Exception as e:
+            logger.error(f"获取保存后的LOCAL_MODEL_ENABLED值失败: {str(e)}")
+            
         # 记录安静时间设置
         try:
             quiet_time_start = current_config['categories']['behavior_settings']['settings']['quiet_time']['start']['value']
@@ -320,9 +379,6 @@ def save_config():
                     logger.info("成功重新初始化定时任务，但没有任务")
         except Exception as e:
             logger.error(f"重新初始化定时任务失败: {str(e)}")
-
-        # 重新初始化RAG记忆系统
-        reload_rag_memory()
 
         return jsonify({
             'status': 'success',
@@ -782,10 +838,8 @@ def combined_config_data():
         # 获取系统信息
         sys_info = {
             'bot_status': 'running' if bot_process is not None else 'stopped',
-            'memory_initialized': memory_initialized,
             'platform': sys.platform,
-            'python_version': sys.version,
-            'local_embedding_models': get_available_embedding_models()
+            'python_version': sys.version
         }
         
         # 获取配置
@@ -800,9 +854,6 @@ def combined_config_data():
             'tasks' in config_data['categories']['schedule_settings']['settings']):
             tasks = config_data['categories']['schedule_settings']['settings']['tasks'].get('value', [])
         
-        # 检查是否有更新
-        update_info = check_update_status()
-        
         # 获取可用的角色列表
         avatars = get_available_avatars()
         
@@ -811,8 +862,8 @@ def combined_config_data():
             'system_info': sys_info,
             'config': config_data,
             'tasks': tasks,
-            'has_update': update_info.get('has_update', False),
-            'update_info': update_info,
+            'has_update': False,
+            'update_info': {},
             'avatars': avatars,
             'is_local': is_local_network()
         })
@@ -1061,38 +1112,13 @@ def init_password():
                 'status': 'error',
                 'message': '密码已经设置'
             })
-
-        # 先尝试修复配置文件
-        fixed = fix_config_file()
-        if fixed:
-            logging.info("配置文件已检查和修复")
         
         # 保存新密码的哈希值
         hashed_password = hash_password(password)
         logging.info("尝试保存密码哈希值")
         
-        # 使用直接更新函数保存密码
-        if direct_update_password(hashed_password):
-            logging.info("密码更新成功，重新加载配置")
-            # 使用reload_config从config模块导入直接重载
-            from src.config import reload_config
-            reload_config()
-            
-            # 再次检查密码是否正确设置
-            from src.config import config as new_config
-            if hasattr(new_config, 'auth') and hasattr(new_config.auth, 'admin_password') and new_config.auth.admin_password:
-                logging.info("验证密码已成功保存到配置中")
-            else:
-                logging.warning("密码设置成功但未反映在配置对象中")
-            
-            # 设置登录状态
-            session.clear()
-            session['logged_in'] = True
-            logging.info("设置登录状态成功，返回success状态")
-            return jsonify({'status': 'success'})
-        
         # 如果常规方法失败，尝试简单地直接写入文件
-        logging.warning("直接更新失败，尝试简单写入")
+        logging.warning("尝试简单写入")
         config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
         
         try:
@@ -1126,6 +1152,115 @@ def logout():
     # 退出登录
     session.clear()
     return redirect(url_for('login'))
+
+
+@app.route('/get_config')
+def get_config():
+    """获取配置数据，特别处理RAG_TOP_K字段"""
+    try:
+        import yaml
+        from pathlib import Path
+        # 直接从配置文件读取配置数据
+        config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+        
+        # 提取所需的配置值
+        config_data_response = {}
+        
+        # 特别处理LISTEN_LIST
+        if ('categories' in config_data and 'user_settings' in config_data['categories'] and
+            'settings' in config_data['categories']['user_settings'] and
+            'listen_list' in config_data['categories']['user_settings']['settings']):
+            listen_list = config_data['categories']['user_settings']['settings']['listen_list'].get('value', [])
+            # 确保listen_list是一个数组
+            if not isinstance(listen_list, list):
+                listen_list = []
+            config_data_response['LISTEN_LIST'] = listen_list
+            logger.debug(f"获取到的监听用户列表: {listen_list}")
+        else:
+            config_data_response['LISTEN_LIST'] = []
+            logger.warning("在配置中找不到监听用户列表")
+        
+        # 处理RAG_IS_RERANK
+        if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
+            'settings' in config_data['categories']['rag_settings'] and
+            'is_rerank' in config_data['categories']['rag_settings']['settings']):
+            rerank_value = config_data['categories']['rag_settings']['settings']['is_rerank'].get('value', False)
+            # 确保是布尔值
+            if isinstance(rerank_value, str):
+                config_data_response['RAG_IS_RERANK'] = rerank_value.lower() == 'true'
+            else:
+                config_data_response['RAG_IS_RERANK'] = bool(rerank_value)
+                
+        # 处理嵌入模型相关配置
+        if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
+            'settings' in config_data['categories']['rag_settings']):
+            rag_settings = config_data['categories']['rag_settings']['settings']
+            
+            # 处理嵌入模型
+            if 'embedding_model' in rag_settings:
+                embedding_model = rag_settings['embedding_model'].get('value', 'text-embedding-3-large')
+                config_data_response['RAG_EMBEDDING_MODEL'] = embedding_model
+                logger.debug(f"获取到的嵌入模型: {embedding_model}")
+            
+            # 处理重排序模型
+            if 'reranker_model' in rag_settings:
+                reranker_model = rag_settings['reranker_model'].get('value', 'BAAI/bge-reranker-large')
+                config_data_response['RAG_RERANKER_MODEL'] = reranker_model
+                logger.debug(f"获取到的重排序模型: {reranker_model}")
+            
+            # 处理本地嵌入模型路径
+            if 'local_embedding_model_path' in rag_settings:
+                local_model_path = rag_settings['local_embedding_model_path'].get('value', 'paraphrase-multilingual-MiniLM-L12-v2')
+                config_data_response['LOCAL_EMBEDDING_MODEL_PATH'] = local_model_path
+                logger.debug(f"获取到的本地嵌入模型路径: {local_model_path}")
+            
+            # 处理是否使用本地模型
+            if 'local_model_enabled' in rag_settings:
+                local_model_enabled = rag_settings['local_model_enabled'].get('value', False)
+                if isinstance(local_model_enabled, str):
+                    local_model_enabled = local_model_enabled.lower() == 'true'
+                config_data_response['LOCAL_MODEL_ENABLED'] = bool(local_model_enabled)
+                logger.debug(f"获取到的本地模型启用状态: {local_model_enabled}")
+                
+            # 处理TOP_K配置
+            if 'top_k' in rag_settings:
+                try:
+                    top_k = int(rag_settings['top_k'].get('value', 5))
+                    config_data_response['RAG_TOP_K'] = top_k
+                    logger.debug(f"获取到的检索数量配置: {top_k}")
+                except (ValueError, TypeError) as e:
+                    # 如果转换失败，使用默认值5
+                    config_data_response['RAG_TOP_K'] = 5
+                    logger.warning(f"转换TOP_K值失败，使用默认值5: {str(e)}")
+        
+        # 添加人设目录列表
+        avatars_dir = Path('data') / 'avatars'
+        if avatars_dir.exists():
+            avatars = [d.name for d in avatars_dir.iterdir() if d.is_dir()]
+            config_data_response['AVATAR_DIR'] = {
+                'value': config_data.get('AVATAR_DIR', ''),
+                'options': avatars
+            }
+            logger.debug(f"获取到的人设目录列表: {avatars}")
+        else:
+            config_data_response['AVATAR_DIR'] = {
+                'value': '',
+                'options': []
+            }
+            logger.warning("人设目录不存在")
+        
+        return jsonify({
+            'status': 'success',
+            'config': config_data_response
+        })
+    except Exception as e:
+        logger.error(f"获取配置数据失败: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
 
 
 @app.route('/get_model_configs')
@@ -1251,7 +1386,7 @@ def save_quick_setup():
                 }
             if "model" not in current_config["categories"]["llm_settings"]["settings"]:
                 current_config["categories"]["llm_settings"]["settings"]["model"] = {
-                    "value": "kourichat-visionk",
+                    "value": "kourichat-vision",
                     "type": "string",
                     "description": "使用的模型"
                 }
@@ -1734,298 +1869,65 @@ def get_all_configs():
                         if 'max_hours' in auto_msg['countdown']:
                             configs['主动消息配置']['MAX_COUNTDOWN_HOURS'] = {
                                 'value': auto_msg['countdown']['max_hours'].get('value', 3)}
-
+                
+                # 安静时间配置
                 if 'quiet_time' in behavior:
-                    quiet = behavior['quiet_time']
-                    if 'start' in quiet:
-                        configs['主动消息配置']['QUIET_TIME_START'] = {'value': quiet['start'].get('value', '')}
-                    if 'end' in quiet:
-                        configs['主动消息配置']['QUIET_TIME_END'] = {'value': quiet['end'].get('value', '')}
-
-                # Prompt配置
-                configs['Prompt配置'] = {}
-                if 'context' in behavior:
-                    context = behavior['context']
-                    if 'max_groups' in context:
-                        configs['Prompt配置']['MAX_GROUPS'] = {'value': context['max_groups'].get('value', 15)}
-                    if 'avatar_dir' in context:
-                        configs['Prompt配置']['AVATAR_DIR'] = {'value': context['avatar_dir'].get('value', '')}
-
-            # 定时任务
-            if 'schedule_settings' in config_data['categories'] and 'settings' in config_data['categories'][
-                'schedule_settings']:
+                    quiet_time = behavior['quiet_time']
+                    if 'start' in quiet_time:
+                        configs['主动消息配置']['QUIET_TIME_START'] = {'value': quiet_time['start'].get('value', '22:00')}
+                    if 'end' in quiet_time:
+                        configs['主动消息配置']['QUIET_TIME_END'] = {'value': quiet_time['end'].get('value', '08:00')}
+                
+            # RAG设置
+            if 'rag_settings' in config_data['categories'] and 'settings' in config_data['categories']['rag_settings']:
+                rag_settings = config_data['categories']['rag_settings']['settings']
+                
+                # RAG配置
+                configs['RAG配置'] = {}
+                if 'is_enabled' in rag_settings:
+                    configs['RAG配置']['RAG_ENABLED'] = {'value': rag_settings['is_enabled'].get('value', False)}
+                if 'is_rerank' in rag_settings:
+                    configs['RAG配置']['RAG_IS_RERANK'] = {'value': rerank_enabled}
+                if 'embedding_url' in rag_settings:
+                    configs['RAG配置']['RAG_EMBEDDING_URL'] = {'value': rag_settings['embedding_url'].get('value', '')}
+                if 'rerank_url' in rag_settings:
+                    configs['RAG配置']['RAG_RERANK_URL'] = {'value': rag_settings['rerank_url'].get('value', '')}
+                if 'embedding_model' in rag_settings:
+                    configs['RAG配置']['RAG_EMBEDDING_MODEL'] = {'value': rag_settings['embedding_model'].get('value', '')}
+                if 'reranker_model' in rag_settings:
+                    configs['RAG配置']['RAG_RERANKER_MODEL'] = {'value': rag_settings['reranker_model'].get('value', '')}
+                    
+            # 本地模型设置
+            if 'local_model_settings' in config_data['categories'] and 'settings' in config_data['categories']['local_model_settings']:
+                local_model_settings = config_data['categories']['local_model_settings']['settings']
+                
+                # 本地模型配置
+                configs['本地模型配置'] = {}
+                if 'enabled' in local_model_settings:
+                    configs['本地模型配置']['LOCAL_MODEL_ENABLED'] = {'value': local_model_settings['enabled'].get('value', False)}
+                if 'path' in local_model_settings:
+                    configs['本地模型配置']['LOCAL_MODEL_PATH'] = {'value': local_model_settings['path'].get('value', '')}
+                if 'max_context_length' in local_model_settings:
+                    configs['本地模型配置']['LOCAL_MODEL_MAX_CONTEXT_LENGTH'] = {'value': local_model_settings['max_context_length'].get('value', 8192)}
+                if 'auto_adapt_siliconflow' in local_model_settings:
+                    configs['本地模型配置']['AUTO_ADAPT_SILICONFLOW'] = {'value': local_model_settings['auto_adapt_siliconflow'].get('value', True)}
+                
+            # 任务
+            if 'schedule_settings' in config_data['categories'] and 'settings' in config_data['categories']['schedule_settings']:
                 if 'tasks' in config_data['categories']['schedule_settings']['settings']:
                     tasks = config_data['categories']['schedule_settings']['settings']['tasks'].get('value', [])
-        
-        # 处理RAG设置
-        if 'categories' in config_data and 'rag_settings' in config_data['categories'] and 'settings' in config_data['categories']['rag_settings']:
-            rag_settings = config_data['categories']['rag_settings']['settings']
-            configs['RAG设置'] = {}
-            
-            # API配置
-            if 'api_key' in rag_settings:
-                configs['RAG设置']['RAG_API_KEY'] = {'value': rag_settings['api_key'].get('value', '')}
-            if 'base_url' in rag_settings:
-                configs['RAG设置']['RAG_BASE_URL'] = {'value': rag_settings['base_url'].get('value', '')}
-                
-            # 模型配置    
-            if 'embedding_model' in rag_settings:
-                configs['RAG设置']['RAG_EMBEDDING_MODEL'] = {'value': rag_settings['embedding_model'].get('value', 'text-embedding-3-large')}
-            if 'reranker_model' in rag_settings:
-                configs['RAG设置']['RAG_RERANKER_MODEL'] = {'value': rag_settings['reranker_model'].get('value', '')}
-            if 'local_embedding_model_path' in rag_settings:
-                configs['RAG设置']['LOCAL_EMBEDDING_MODEL_PATH'] = {'value': rag_settings['local_embedding_model_path'].get('value', 'paraphrase-multilingual-MiniLM-L12-v2')}
-            
-            # 查询配置
-            if 'top_k' in rag_settings:
-                configs['RAG设置']['RAG_TOP_K'] = {'value': int(rag_settings['top_k'].get('value', 5))}
-                
-            # 特别处理is_rerank - 使用我们从YAML中直接读取的值
-            configs['RAG设置']['RAG_IS_RERANK'] = {'value': rerank_enabled}
-            logger.info(f"传递给前端的RAG_IS_RERANK值: {rerank_enabled}, 类型: {type(rerank_enabled)}")
-            
-            # 自动化配置    
-            if 'auto_download_local_model' in rag_settings:
-                auto_download = rag_settings['auto_download_local_model'].get('value')
-                if auto_download is not None:
-                    # 特殊处理字符串格式的布尔值
-                    if isinstance(auto_download, str):
-                        auto_download = auto_download.lower() == 'true'
-                    configs['RAG设置']['AUTO_DOWNLOAD_LOCAL_MODEL'] = {'value': auto_download}
-                    
-            if 'auto_adapt_siliconflow' in rag_settings:
-                auto_adapt = rag_settings['auto_adapt_siliconflow'].get('value', True)
-                if isinstance(auto_adapt, str):
-                    auto_adapt = auto_adapt.lower() == 'true'
-                configs['RAG设置']['AUTO_ADAPT_SILICONFLOW'] = {'value': bool(auto_adapt)}
-
-        logger.debug(f"获取到的所有配置数据: {configs}")
-        logger.debug(f"获取到的任务数据: {tasks}")
 
         return jsonify({
             'status': 'success',
             'configs': configs,
             'tasks': tasks
         })
-
     except Exception as e:
-        logger.error(f"获取配置数据失败: {str(e)}")
+        logger.error(f"获取所有配置数据失败: {str(e)}")
         return jsonify({
             'status': 'error',
             'message': str(e)
         })
-
-
-@app.route('/click_wechat_buttons', methods=['POST'])
-def handle_wechat_login():
-    """处理微信登录按钮点击"""
-    try:
-        click_wechat_buttons()
-        return jsonify({
-            'status': 'success',
-            'message': '微信登录操作已执行'
-        })
-    except Exception as e:
-        logger.error(f"执行微信登录操作失败: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': f'操作失败: {str(e)}'
-        })
-
-
-@app.route('/get_config')
-def get_config():
-    """获取配置数据，特别处理LISTEN_LIST字段"""
-    try:
-        import yaml
-        from pathlib import Path
-        # 直接从配置文件读取配置数据
-        config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config_data = yaml.safe_load(f)
-        
-        # 提取所需的配置值
-        config_data_response = {}
-        
-        # 特别处理LISTEN_LIST
-        if ('categories' in config_data and 'user_settings' in config_data['categories'] and
-            'settings' in config_data['categories']['user_settings'] and
-            'listen_list' in config_data['categories']['user_settings']['settings']):
-            listen_list = config_data['categories']['user_settings']['settings']['listen_list'].get('value', [])
-            # 确保listen_list是一个数组
-            if not isinstance(listen_list, list):
-                listen_list = []
-            config_data_response['LISTEN_LIST'] = listen_list
-            logger.debug(f"获取到的监听用户列表: {listen_list}")
-        else:
-            config_data_response['LISTEN_LIST'] = []
-            logger.warning("在配置中找不到监听用户列表")
-        
-        # 处理RAG_IS_RERANK
-        if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
-            'settings' in config_data['categories']['rag_settings'] and
-            'is_rerank' in config_data['categories']['rag_settings']['settings']):
-            rerank_value = config_data['categories']['rag_settings']['settings']['is_rerank'].get('value', False)
-            # 确保是布尔值
-            if isinstance(rerank_value, str):
-                config_data_response['RAG_IS_RERANK'] = rerank_value.lower() == 'true'
-            else:
-                config_data_response['RAG_IS_RERANK'] = bool(rerank_value)
-        
-        # 添加人设目录列表
-        avatars_dir = Path('data') / 'avatars'
-        if avatars_dir.exists():
-            avatars = [d.name for d in avatars_dir.iterdir() if d.is_dir()]
-            config_data_response['AVATAR_DIR'] = {
-                'value': config_data.get('AVATAR_DIR', ''),
-                'options': avatars
-            }
-            logger.debug(f"获取到的人设目录列表: {avatars}")
-        else:
-            config_data_response['AVATAR_DIR'] = {
-                'value': '',
-                'options': []
-            }
-            logger.warning("人设目录不存在")
-        
-        return jsonify({
-            'status': 'success',
-            'config': config_data_response
-        })
-    except Exception as e:
-        logger.error(f"获取配置数据失败: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        })
-
-
-def direct_update_password(password: str) -> bool:
-    """直接更新配置文件中的密码"""
-    try:
-        # 配置文件路径
-        config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
-        
-        # 尝试读取现有配置
-        with open(config_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # 检查是否存在auth_settings部分
-        if 'auth_settings' not in content:
-            # 如果不存在，添加auth_settings部分
-            auth_section = """
-  auth_settings:
-    title: 认证设置
-    settings:
-      admin_password:
-        value: {password}
-        type: string
-        description: 管理员密码
-        is_secret: true
-""".format(password=password)
-            
-            # 找到categories行
-            if 'categories:' in content:
-                # 在categories行之后插入auth_settings部分
-                content = content.replace('categories:', 'categories:' + auth_section)
-            else:
-                # 如果没有categories行，添加完整结构
-                content = "categories:" + auth_section + content
-        else:
-            # 如果已存在auth_settings部分，直接更新password值
-            if 'admin_password' in content:
-                # 使用正则表达式匹配admin_password部分
-                import re
-                pattern = r'(admin_password:.*?value:)(.*?)(\n.*?type:)'
-                content = re.sub(pattern, r'\1 {0}\3'.format(password), content, flags=re.DOTALL)
-            else:
-                # 如果auth_settings存在但admin_password不存在，添加admin_password
-                admin_pwd_entry = """
-      admin_password:
-        value: {password}
-        type: string
-        description: 管理员密码
-        is_secret: true
-""".format(password=password)
-                
-                # 找到auth_settings部分，在settings下添加admin_password
-                auth_settings_pattern = r'(auth_settings:.*?settings:.*?)(\n\s+\w+)'
-                content = re.sub(auth_settings_pattern, r'\1' + admin_pwd_entry + r'\2', 
-                                content, flags=re.DOTALL)
-        
-        # 写回配置文件
-        with open(config_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        
-        # 输出调试信息
-        logging.info("密码已直接更新到配置文件")
-        return True
-    
-    except Exception as e:
-        logging.error(f"直接更新密码失败: {str(e)}")
-        return False
-
-
-def fix_config_file():
-    """修复配置文件结构"""
-    try:
-        # 配置文件路径
-        config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
-        template_path = os.path.join(ROOT_DIR, 'src/config/template.yaml')
-        
-        # 检查模板文件是否存在
-        if not os.path.exists(template_path):
-            logging.error("模板文件不存在")
-            return False
-        
-        # 读取模板文件
-        with open(template_path, 'r', encoding='utf-8') as f:
-            template_content = f.read()
-        
-        # 如果配置文件不存在或结构出问题，直接用模板替换
-        if not os.path.exists(config_path) or os.path.getsize(config_path) < 100:
-            with open(config_path, 'w', encoding='utf-8') as f:
-                f.write(template_content)
-            logging.info("已使用模板重置配置文件")
-            return True
-        
-        # 否则尝试读取现有配置，检查结构
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # 检查基本结构
-            if 'categories:' not in content or len(content) < 100:
-                # 结构有问题，重置
-                with open(config_path, 'w', encoding='utf-8') as f:
-                    f.write(template_content)
-                logging.info("检测到配置文件结构有问题，已重置")
-                return True
-            
-            # 结构正常
-            return True
-        except Exception as e:
-            # 读取失败，重置文件
-            with open(config_path, 'w', encoding='utf-8') as f:
-                f.write(template_content)
-            logging.error(f"配置文件读取失败，已重置: {str(e)}")
-            return True
-    
-    except Exception as e:
-        logging.error(f"修复配置文件失败: {str(e)}")
-        return False
-
-
-# 添加静态资源缓存控制
-@app.after_request
-def add_cache_headers(response):
-    """为静态资源添加缓存头"""
-    if request.path.startswith('/static'):
-        # 静态资源缓存1小时
-        response.headers['Cache-Control'] = 'public, max-age=3600'
-    return response
-
-
 def cleanup_processes():
     """清理所有相关进程"""
     try:
@@ -2111,8 +2013,6 @@ def cleanup_processes():
 
     except Exception as e:
         logger.error(f"清理进程失败: {str(e)}")
-
-
 def create_job_object():
     global job_object
     try:
@@ -2143,7 +2043,7 @@ def create_job_object():
         logger.error(f"创建作业对象失败: {str(e)}")
     return False
 
-
+# 添加控制台关闭事件处理
 def setup_console_control_handler():
     try:
         if sys.platform.startswith('win'):
@@ -2158,8 +2058,6 @@ def setup_console_control_handler():
             logger.info("已设置控制台关闭事件处理器")
     except Exception as e:
         logger.error(f"设置控制台关闭事件处理器失败: {str(e)}")
-
-
 def open_browser(port):
     """在新线程中打开浏览器"""
 
@@ -2172,47 +2070,6 @@ def open_browser(port):
 
     # 创建新线程来打开浏览器
     threading.Thread(target=_open_browser, daemon=True).start()
-
-
-def reload_rag_memory():
-    """重新初始化RAG记忆系统"""
-    try:
-        # 从配置文件路径
-        config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
-        logger.info(f"正在使用配置文件重新初始化RAG记忆系统: {config_path}")
-        
-        # 重新加载整个记忆系统
-        try:
-            # 先尝试导入init_memory
-            from src.handlers.memory import init_memory
-            # 重新初始化记忆
-            memory_handler = init_memory(ROOT_DIR)
-            if memory_handler:
-                logger.info("成功重新初始化记忆系统")
-            else:
-                logger.warning("记忆系统初始化返回None")
-        except Exception as e:
-            logger.error(f"重新初始化记忆系统失败: {str(e)}")
-        
-        # 再尝试单独初始化RAG系统
-        try:
-            from src.handlers.handler_init import init_rag_from_config
-            rag_instance = init_rag_from_config(config_path)
-            if rag_instance:
-                logger.info("成功重新初始化RAG系统")
-                return True
-            else:
-                logger.warning("RAG系统初始化返回None")
-        except Exception as e:
-            logger.error(f"重新初始化RAG系统失败: {str(e)}")
-        
-        return False
-    except Exception as e:
-        logger.error(f"重新初始化RAG记忆系统总体失败: {str(e)}")
-        return False
-
-# 清除文件锁
-WIN32_FILE_LOCKS = {}
 
 def main():
     """主函数"""
@@ -2297,8 +2154,6 @@ def main():
         debug=True,
         use_reloader=False  # 禁用重载器以避免创建多余的进程
     )
-
-
 if __name__ == '__main__':
     try:
         main()
