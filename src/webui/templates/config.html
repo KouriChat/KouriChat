@@ -3807,6 +3807,8 @@
                 ragIsRerank: document.getElementById( 'RAG_IS_RERANK' ).checked,
                 localModelEnabled: document.getElementById( 'LOCAL_MODEL_ENABLED' ).checked,
                 localModelPath: document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' ).value,
+                customEmbeddingModel: document.getElementById( 'custom_embedding_model' ) ? document.getElementById( 'custom_embedding_model' ).value : '',
+                customRerankerModel: document.getElementById( 'rag_custom_reranker' ) ? document.getElementById( 'rag_custom_reranker' ).value : '',
                 saveTime: new Date().getTime() // 添加保存时间戳
             };
 
@@ -3879,8 +3881,14 @@
                 const ragConfig = {
                     baseUrl: document.getElementById( 'RAG_BASE_URL' ).value,
                     embeddingModel: document.getElementById( 'RAG_EMBEDDING_MODEL' ).value,
+                    embeddingModelSelect: document.getElementById( 'rag_embedding_model_select' ) ? document.getElementById( 'rag_embedding_model_select' ).value : '',
+                    customEmbeddingModel: document.getElementById( 'rag_custom_embedding' ) ? document.getElementById( 'rag_custom_embedding' ).value : '',
                     rerankerModel: document.getElementById( 'RAG_RERANKER_MODEL' ).value,
+                    rerankerModelSelect: document.getElementById( 'rag_reranker_model_select' ) ? document.getElementById( 'rag_reranker_model_select' ).value : '',
+                    customRerankerModel: document.getElementById( 'rag_custom_reranker' ) ? document.getElementById( 'rag_custom_reranker' ).value : '',
                     isRerank: document.getElementById( 'RAG_IS_RERANK' ).checked,
+                    localModelEnabled: document.getElementById( 'LOCAL_MODEL_ENABLED' ) ? document.getElementById( 'LOCAL_MODEL_ENABLED' ).checked : false,
+                    localModelPath: document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' ) ? document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' ).value : '',
                     savedTime: new Date().getTime()
                 };
                 localStorage.setItem( 'ragConfig', JSON.stringify( ragConfig ) );
@@ -3934,6 +3942,84 @@
                                 isRerankCheckbox.checked = currentState.ragIsRerank;
                                 toggleRerankModelSection( currentState.ragIsRerank );
                             }
+                            
+                            // 恢复嵌入模型相关的设置
+                            if ( currentState )
+                            {
+                                // 恢复嵌入模型下拉框
+                                const embeddingModelSelect = document.getElementById( 'rag_embedding_model_select' );
+                                if ( embeddingModelSelect && currentState.ragEmbeddingModelSelect )
+                                {
+                                    embeddingModelSelect.value = currentState.ragEmbeddingModelSelect;
+                                }
+                                
+                                // 恢复隐藏的嵌入模型字段
+                                const embeddingModelField = document.getElementById( 'RAG_EMBEDDING_MODEL' );
+                                if ( embeddingModelField && currentState.ragEmbeddingModel )
+                                {
+                                    embeddingModelField.value = currentState.ragEmbeddingModel;
+                                }
+                                
+                                // 恢复自定义嵌入模型输入框
+                                const customEmbeddingModelField = document.getElementById( 'custom_embedding_model' );
+                                if ( customEmbeddingModelField && currentState.customEmbeddingModel )
+                                {
+                                    customEmbeddingModelField.value = currentState.customEmbeddingModel;
+                                }
+                                
+                                // 恢复本地模型启用状态
+                                const localModelEnabledCheckbox = document.getElementById( 'LOCAL_MODEL_ENABLED' );
+                                if ( localModelEnabledCheckbox )
+                                {
+                                    localModelEnabledCheckbox.checked = currentState.localModelEnabled;
+                                    
+                                    // 触发本地模型部分的显示/隐藏逻辑
+                                    const localModelSection = document.getElementById( 'local_model_section' );
+                                    if ( localModelSection )
+                                    {
+                                        localModelSection.style.display = currentState.localModelEnabled ? 'block' : 'none';
+                                    }
+                                }
+                                
+                                // 恢复本地模型路径
+                                const localModelPathField = document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' );
+                                if ( localModelPathField && currentState.localModelPath )
+                                {
+                                    localModelPathField.value = currentState.localModelPath;
+                                }
+                                
+                                // 恢复重排序模型相关设置
+                                // 恢复重排序模型下拉框
+                                const rerankerModelSelect = document.getElementById( 'rag_reranker_model_select' );
+                                if ( rerankerModelSelect && currentState.ragRerankerModelSelect )
+                                {
+                                    rerankerModelSelect.value = currentState.ragRerankerModelSelect;
+                                }
+                                
+                                // 恢复隐藏的重排序模型字段
+                                const rerankerModelField = document.getElementById( 'RAG_RERANKER_MODEL' );
+                                if ( rerankerModelField && currentState.ragRerankerModel )
+                                {
+                                    rerankerModelField.value = currentState.ragRerankerModel;
+                                }
+                                
+                                // 恢复自定义重排序模型输入框
+                                const customRerankerModelField = document.getElementById( 'rag_custom_reranker' );
+                                if ( customRerankerModelField && currentState.customRerankerModel )
+                                {
+                                    customRerankerModelField.value = currentState.customRerankerModel;
+                                }
+                                
+                                // 如果重排序模型选择框的值是'custom'，显示自定义输入框
+                                if ( rerankerModelSelect && rerankerModelSelect.value === 'custom' )
+                                {
+                                    const customRerankerInput = document.getElementById( 'rag_customRerankerInput' );
+                                    if ( customRerankerInput )
+                                    {
+                                        customRerankerInput.style.display = 'block';
+                                    }
+                                }
+                            }
 
                             // 保存成功后，直接加载最新配置
                             try
@@ -3951,6 +4037,126 @@
                                             {
                                                 // 更新监听用户列表显示
                                                 updateListenUserList( configData.config.LISTEN_LIST );
+                                            }
+
+                                            // 更新嵌入模型相关配置
+                                            if ( configData.config )
+                                            {
+                                                // 更新嵌入模型
+                                                if ( configData.config.RAG_EMBEDDING_MODEL !== undefined )
+                                                {
+                                                    const embeddingModelInput = document.getElementById( 'RAG_EMBEDDING_MODEL' );
+                                                    if ( embeddingModelInput )
+                                                    {
+                                                        embeddingModelInput.value = configData.config.RAG_EMBEDDING_MODEL;
+                                                        console.log( "更新嵌入模型:", configData.config.RAG_EMBEDDING_MODEL );
+                                                    }
+                                                }
+                                                
+                                                // 更新重排序模型
+                                                if ( configData.config.RAG_RERANKER_MODEL !== undefined )
+                                                {
+                                                    const rerankerModelInput = document.getElementById( 'RAG_RERANKER_MODEL' );
+                                                    if ( rerankerModelInput )
+                                                    {
+                                                        rerankerModelInput.value = configData.config.RAG_RERANKER_MODEL;
+                                                        console.log( "更新重排序模型:", configData.config.RAG_RERANKER_MODEL );
+                                                    }
+                                                    
+                                                    // 更新重排序模型下拉框
+                                                    const rerankerModelSelect = document.getElementById( 'rag_reranker_model_select' );
+                                                    if ( rerankerModelSelect )
+                                                    {
+                                                        // 检查当前值是否在下拉选项中
+                                                        let valueInOptions = false;
+                                                        for ( let i = 0; i < rerankerModelSelect.options.length; i++ )
+                                                        {
+                                                            if ( rerankerModelSelect.options[i].value === configData.config.RAG_RERANKER_MODEL )
+                                                            {
+                                                                rerankerModelSelect.selectedIndex = i;
+                                                                valueInOptions = true;
+                                                                break;
+                                                            }
+                                                        }
+                                                        
+                                                        // 如果不在选项中，且有自定义输入框，设置为自定义
+                                                        if ( !valueInOptions && document.getElementById( 'rag_customRerankerInput' ) )
+                                                        {
+                                                            for ( let i = 0; i < rerankerModelSelect.options.length; i++ )
+                                                            {
+                                                                if ( rerankerModelSelect.options[i].value === 'custom' )
+                                                                {
+                                                                    rerankerModelSelect.selectedIndex = i;
+                                                                    // 显示自定义输入框并设置值
+                                                                    const customRerankerInput = document.getElementById( 'rag_customRerankerInput' );
+                                                                    if ( customRerankerInput )
+                                                                    {
+                                                                        customRerankerInput.style.display = 'block';
+                                                                        const customRerankerField = document.getElementById( 'rag_custom_reranker' );
+                                                                        if ( customRerankerField )
+                                                                        {
+                                                                            customRerankerField.value = configData.config.RAG_RERANKER_MODEL;
+                                                                        }
+                                                                    }
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                // 更新本地嵌入模型路径
+                                                if ( configData.config.LOCAL_EMBEDDING_MODEL_PATH !== undefined )
+                                                {
+                                                    const localModelPathInput = document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' );
+                                                    if ( localModelPathInput )
+                                                    {
+                                                        localModelPathInput.value = configData.config.LOCAL_EMBEDDING_MODEL_PATH;
+                                                        console.log( "更新本地嵌入模型路径:", configData.config.LOCAL_EMBEDDING_MODEL_PATH );
+                                                    }
+                                                }
+
+                                                // 更新TOP_K值
+                                                if ( configData.config.RAG_TOP_K !== undefined )
+                                                {
+                                                    const topKInput = document.getElementById( 'RAG_TOP_K' );
+                                                    const topKDisplay = document.getElementById( 'RAG_TOP_K_display' );
+                                                    const topKRange = document.getElementById( 'RAG_TOP_K_slider' );
+                                                    
+                                                    if ( topKInput )
+                                                    {
+                                                        topKInput.value = configData.config.RAG_TOP_K;
+                                                        console.log( "更新TOP_K值:", configData.config.RAG_TOP_K );
+                                                    }
+                                                    
+                                                    if ( topKDisplay )
+                                                    {
+                                                        topKDisplay.textContent = configData.config.RAG_TOP_K;
+                                                    }
+                                                    
+                                                    if ( topKRange )
+                                                    {
+                                                        topKRange.value = configData.config.RAG_TOP_K;
+                                                    }
+                                                }
+
+                                                // 更新本地模型启用状态
+                                                if ( configData.config.LOCAL_MODEL_ENABLED !== undefined )
+                                                {
+                                                    const localModelEnabledCheckbox = document.getElementById( 'LOCAL_MODEL_ENABLED' );
+                                                    if ( localModelEnabledCheckbox )
+                                                    {
+                                                        localModelEnabledCheckbox.checked = configData.config.LOCAL_MODEL_ENABLED;
+                                                        console.log( "更新本地模型启用状态:", configData.config.LOCAL_MODEL_ENABLED );
+                                                        
+                                                        // 触发本地模型部分的显示/隐藏逻辑
+                                                        const localModelSection = document.getElementById( 'local_model_section' );
+                                                        if ( localModelSection )
+                                                        {
+                                                            localModelSection.style.display = configData.config.LOCAL_MODEL_ENABLED ? 'block' : 'none';
+                                                        }
+                                                    }
+                                                }
                                             }
 
                                             // 更新历史配置列表
@@ -5563,8 +5769,14 @@
                 const ragConfig = {
                     baseUrl: cleanBaseUrl,
                     embeddingModel: document.getElementById( 'RAG_EMBEDDING_MODEL' ).value,
+                    embeddingModelSelect: embeddingSelect ? embeddingSelect.value : '',
+                    customEmbeddingModel: document.getElementById( 'rag_custom_embedding' ) ? document.getElementById( 'rag_custom_embedding' ).value : '',
                     rerankerModel: document.getElementById( 'RAG_RERANKER_MODEL' ).value,
+                    rerankerModelSelect: document.getElementById( 'rag_reranker_model_select' ) ? document.getElementById( 'rag_reranker_model_select' ).value : '',
+                    customRerankerModel: document.getElementById( 'rag_custom_reranker' ) ? document.getElementById( 'rag_custom_reranker' ).value : '',
                     isRerank: isRerankCheckbox ? isRerankCheckbox.checked : false,
+                    localModelEnabled: document.getElementById( 'LOCAL_MODEL_ENABLED' ) ? document.getElementById( 'LOCAL_MODEL_ENABLED' ).checked : false,
+                    localModelPath: document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' ) ? document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' ).value : '',
                     savedTime: new Date().getTime()
                 };
                 localStorage.setItem( 'ragConfig', JSON.stringify( ragConfig ) );
