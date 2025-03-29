@@ -3166,6 +3166,18 @@
                 localModelPath: localModelPath
             } );
 
+            // 从localStorage获取保存的RAG配置
+            let savedRagConfig = null;
+            try {
+                const savedConfig = localStorage.getItem('ragConfig');
+                if (savedConfig) {
+                    savedRagConfig = JSON.parse(savedConfig);
+                    console.log('从localStorage读取到的RAG配置:', savedRagConfig);
+                }
+            } catch (e) {
+                console.error('读取localStorage中RAG配置失败:', e);
+            }
+
             // 遍历所有配置组和配置项
             for ( const groupKey in configs )
             {
@@ -3181,6 +3193,18 @@
                         if ( typeof value === 'object' && value !== null && 'value' in value )
                         {
                             value = value.value;
+                        }
+
+                        // 如果是RAG相关配置且localStorage中有保存的值，优先使用localStorage中的值
+                        if (savedRagConfig && (
+                            configKey === 'RAG_IS_RERANK' ||
+                            configKey === 'RAG_BASE_URL' ||
+                            configKey === 'RAG_EMBEDDING_MODEL' ||
+                            configKey === 'RAG_RERANKER_MODEL' ||
+                            configKey === 'LOCAL_MODEL_ENABLED' ||
+                            configKey === 'LOCAL_EMBEDDING_MODEL_PATH'
+                        )) {
+                            continue;
                         }
 
                         // 根据元素类型设置值
@@ -3889,6 +3913,8 @@
                     isRerank: document.getElementById( 'RAG_IS_RERANK' ).checked,
                     localModelEnabled: document.getElementById( 'LOCAL_MODEL_ENABLED' ) ? document.getElementById( 'LOCAL_MODEL_ENABLED' ).checked : false,
                     localModelPath: document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' ) ? document.getElementById( 'LOCAL_EMBEDDING_MODEL_PATH' ).value : '',
+                    apiKey: document.getElementById( 'RAG_API_KEY' ).value,
+                    topK: parseInt(document.getElementById( 'RAG_TOP_K' ).value, 10),
                     savedTime: new Date().getTime()
                 };
                 localStorage.setItem( 'ragConfig', JSON.stringify( ragConfig ) );
@@ -5519,10 +5545,37 @@
                 if ( savedConfig )
                 {
                     savedRagConfig = JSON.parse( savedConfig );
-                    if ( savedRagConfig && typeof savedRagConfig.isRerank !== 'undefined' )
+                    if ( savedRagConfig )
                     {
-                        savedRerankState = Boolean( savedRagConfig.isRerank );
-                        console.log( `从localStorage读取到的重排序状态: ${ savedRerankState }` );
+                        // 应用所有保存的RAG配置
+                        if (typeof savedRagConfig.isRerank !== 'undefined') {
+                            savedRerankState = Boolean( savedRagConfig.isRerank );
+                            document.getElementById('RAG_IS_RERANK').checked = savedRerankState;
+                            console.log( `从localStorage读取并应用重排序状态: ${ savedRerankState }` );
+                        }
+                        if (savedRagConfig.baseUrl) {
+                            document.getElementById('RAG_BASE_URL').value = savedRagConfig.baseUrl;
+                        }
+                        if (savedRagConfig.embeddingModel) {
+                            document.getElementById('RAG_EMBEDDING_MODEL').value = savedRagConfig.embeddingModel;
+                        }
+                        if (savedRagConfig.rerankerModel) {
+                            document.getElementById('RAG_RERANKER_MODEL').value = savedRagConfig.rerankerModel;
+                        }
+                        if (typeof savedRagConfig.localModelEnabled !== 'undefined') {
+                            document.getElementById('LOCAL_MODEL_ENABLED').checked = savedRagConfig.localModelEnabled;
+                        }
+                        if (savedRagConfig.localModelPath) {
+                            document.getElementById('LOCAL_EMBEDDING_MODEL_PATH').value = savedRagConfig.localModelPath;
+                        }
+                        if (savedRagConfig.apiKey) {
+                            document.getElementById('RAG_API_KEY').value = savedRagConfig.apiKey;
+                        }
+                        if (typeof savedRagConfig.topK !== 'undefined') {
+                            document.getElementById('RAG_TOP_K').value = savedRagConfig.topK;
+                            document.getElementById('RAG_TOP_K_display').textContent = savedRagConfig.topK;
+                            document.getElementById('RAG_TOP_K_slider').value = savedRagConfig.topK;
+                        }
                     }
                 }
             } catch ( e )
