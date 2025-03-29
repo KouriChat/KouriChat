@@ -109,7 +109,10 @@ class MessageHandler:
 
         # 添加消息发送锁，确保消息发送的顺序性
         self.send_message_lock = threading.Lock()
-
+        
+        # 添加自动任务队列专用锁
+        self.auto_task_queue_lock = threading.Lock()
+        
         # 添加全局消息处理队列和队列锁
         self.global_message_queue = []  # 全局消息队列，包含所有群组的待处理消息
         self.global_message_queue_lock = threading.Lock()  # 全局消息队列锁
@@ -2505,21 +2508,78 @@ class MessageHandler:
             处理发送自动任务消息
             """
             while True:
-                if self.auto_task_message_queue:
-                    if len(self.auto_task_message_queue) == 0:
-                        return
-                    logger.info(f"开始处理自动任务消息队列，当前队列长度: {len(self.auto_task_message_queue)}")
-                    for message_dict in self.auto_task_message_queue:
-                        if "chat_id" in message_dict and "content" in message_dict:
-                            logger.info(f"处理自动任务消息: {message_dict}")
-                            chat_id = message_dict["chat_id"]
-                            content = message_dict["content"]
-                            messages = self._split_message_for_sending(content)
-                            self._send_split_messages(messages, chat_id)
-                            self.auto_task_message_queue.remove(message_dict)
+                try:
+                    # 获取队列锁并处理队列内容
+                    with self.auto_task_queue_lock:
+                        # 检查队列是否为空
+                        if not self.auto_task_message_queue:
+                            time.sleep(1)  # 队列为空时休眠减少CPU使用
+                            continue
+                            
+                        # 复制当前队列并清空原队列，避免处理时的并发问题
+                        current_queue = self.auto_task_message_queue.copy()
+                        self.auto_task_message_queue.clear()
+                        
+                    # 释放锁后处理消息
+                    if current_queue:
+                        logger.info(f"开始处理自动任务消息队列，当前队列长度: {len(current_queue)}")
+                        
+                        # 处理复制的队列中的每条消息
+                        for message_dict in current_queue:
+                            try:
+                                # 验证消息格式
+                                if "chat_id" not in message_dict or "content" not in message_dict:
+                                    logger.warning(f"无效的自动任务消息格式: {message_dict}")
+                                    continue
+                                    
+                                # 获取消息信息
+                                chat_id = message_dict["chat_id"]
+                                content = message_dict["content"]
+                                
+                                # 记录消息处理，包含更多细节有助于调试
+                                logger.info(f"处理自动任务消息: {message_dict}")
+                                
+                                # 分割并发送消息
+                                messages = self._split_message_for_sending(content)
+                                self._send_split_messages(messages, chat_id)
+                                
+                            except Exception as e:
+                                # 单独处理每条消息的异常，不影响其他消息
+                                logger.error(f"处理自动任务消息时出错: {str(e)}", exc_info=True)
+                                
+                except Exception as e:
+                    # 处理主循环的异常
+                    logger.error(f"自动任务消息处理线程出错: {str(e)}", exc_info=True)
+                    time.sleep(5)  # 出错时等待一段时间再继续
+                    
+                # 即使队列处理完成也要短暂休眠，避免CPU占用过高
                 time.sleep(0.1)
 
-        threading.Timer(1, _process_auto_task_message).start()
+        # 使用守护线程而不是Timer，确保程序退出时线程自动结束
+        auto_task_thread = threading.Thread(target=_process_auto_task_message, daemon=True)
+        auto_task_thread.start()
+        logger.info("自动任务消息处理线程已启动")
+        
+    def add_to_auto_task_queue(self, chat_id: str, content: str):
+        """
+        线程安全地添加消息到自动任务队列
+        
+        Args:
+            chat_id: 接收消息的聊天ID
+            content: 要发送的消息内容
+        """
+        # 创建消息字典
+        message_dict = {
+            "chat_id": chat_id,
+            "content": content,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        # 线程安全地添加到队列
+        with self.auto_task_queue_lock:
+            self.auto_task_message_queue.append(message_dict)
+            
+        logger.debug(f"已添加消息到自动任务队列: chat_id={chat_id}, content_length={len(content)}")
 
     # 添加新的获取最大上下文轮数的方法
     def _get_max_context_turns(self):
