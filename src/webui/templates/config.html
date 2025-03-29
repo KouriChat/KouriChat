@@ -1906,10 +1906,18 @@
                         <div>
                             <i class="bi bi-gear-fill me-2"></i>基础配置
                         </div>
-                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal"
-                            data-bs-target="#historyConfigModal">
-                            <i class="bi bi-clock-history me-2"></i>历史配置
-                        </button>
+                        <div>
+                            <button type="button" class="btn btn-outline-primary me-2" id="exportConfigBtn">
+                                <i class="bi bi-download me-2"></i>导出配置
+                            </button>
+                            <button type="button" class="btn btn-outline-primary me-2" id="importConfigBtn">
+                                <i class="bi bi-upload me-2"></i>导入配置
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal"
+                                data-bs-target="#historyConfigModal">
+                                <i class="bi bi-clock-history me-2"></i>历史配置
+                            </button>
+                        </div>
                     </h4>
                     <form id="configForm">
                         {% for group_name, configs in config_groups.items() %}
@@ -1941,7 +1949,7 @@
                                                         placeholder="请输入要监听的用户">
                                                     <button class="btn btn-primary" type="button"
                                                         onclick="addNewUser('{{ key }}')" title="添加用户">
-                                                        <i class="bi bi-plus-lg"></i>
+                                                        添加 <i class="bi bi-plus-lg"></i>
                                                     </button>
                                                 </div>
                                                 <div id="selected_users_{{ key }}" class="list-group">
@@ -2206,7 +2214,7 @@
                                                         placeholder="请输入要监听的用户">
                                                     <button class="btn btn-primary" type="button"
                                                         onclick="addNewUser('{{ key }}')" title="添加用户">
-                                                        <i class="bi bi-plus-lg"></i>
+                                                        添加 <i class="bi bi-plus-lg"></i>
                                                     </button>
                                                 </div>
                                                 <div id="selected_users_{{ key }}" class="list-group">
@@ -6440,7 +6448,179 @@
                     console.error( '添加刷新按钮失败:', e );
                 }
             }, 1000 );
+            
+            // 添加导出配置按钮事件
+            document.getElementById('exportConfigBtn').addEventListener('click', function() {
+                exportConfig();
+            });
+            
+            // 添加导入配置按钮事件
+            document.getElementById('importConfigBtn').addEventListener('click', function() {
+                importConfig();
+            });
         } );
+        
+        // 导出配置函数
+        function exportConfig() {
+            // 获取当前所有配置数据
+            fetch('/get_config')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.config) {
+                        // 创建配置数据的Blob对象
+                        const configData = JSON.stringify(data.config, null, 2);
+                        const blob = new Blob([configData], { type: 'application/json' });
+                        
+                        // 创建下载链接
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = URL.createObjectURL(blob);
+                        downloadLink.download = `kourichat_config_${new Date().toISOString().slice(0,10)}.json`;
+                        
+                        // 添加到文档并触发点击
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        
+                        // 清理
+                        document.body.removeChild(downloadLink);
+                        URL.revokeObjectURL(downloadLink.href);
+                        
+                        showSaveNotification('配置导出成功！', 'success');
+                    } else {
+                        showSaveNotification('配置导出失败: ' + (data.message || '未知错误'), 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('导出配置失败:', error);
+                    showSaveNotification('导出配置失败: ' + error, 'error');
+                });
+        }
+        
+        // 导入配置函数
+        function importConfig() {
+            // 创建文件输入元素
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.json';
+            fileInput.style.display = 'none';
+            
+            // 添加到文档
+            document.body.appendChild(fileInput);
+            
+            // 监听文件选择
+            fileInput.addEventListener('change', function(event) {
+                const file = event.target.files[0];
+                if (!file) {
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        // 解析配置文件
+                        const importedConfig = JSON.parse(e.target.result);
+                        
+                        // 确认导入
+                        if (confirm('确定要导入此配置文件吗？导入后将覆盖当前配置，但需要点击保存按钮才会生效。')) {
+                            // 将导入的配置应用到表单
+                            applyImportedConfig(importedConfig);
+                            showSaveNotification('配置已导入，请点击保存按钮保存更改', 'success');
+                        }
+                    } catch (error) {
+                        console.error('解析导入配置失败:', error);
+                        showSaveNotification('导入配置失败: 无效的配置文件格式', 'error');
+                    }
+                };
+                
+                reader.readAsText(file);
+                
+                // 清理
+                document.body.removeChild(fileInput);
+            });
+            
+            // 触发文件选择
+            fileInput.click();
+        }
+        
+        // 应用导入的配置到表单
+        function applyImportedConfig(importedConfig) {
+            // 遍历所有配置键值
+            for (const [group, configs] of Object.entries(importedConfig)) {
+                for (const [key, config] of Object.entries(configs)) {
+                    const element = document.getElementById(key);
+                    if (!element) continue; // 跳过不存在的元素
+                    
+                    const value = config.value;
+                    
+                    // 根据元素类型设置值
+                    if (element.type === 'checkbox') {
+                        element.checked = Boolean(value);
+                        
+                        // 触发 change 事件以更新显示标签
+                        const event = new Event('change', { bubbles: true });
+                        element.dispatchEvent(event);
+                    } else if (element.type === 'range') {
+                        // 处理滑动条
+                        element.value = value;
+                        
+                        // 更新显示值
+                        const displayElement = document.getElementById(`${key}_display`);
+                        if (displayElement) {
+                            displayElement.textContent = value;
+                        }
+                    } else if (element.tagName === 'SELECT') {
+                        // 处理下拉选择框
+                        for (let i = 0; i < element.options.length; i++) {
+                            if (element.options[i].value == value) {
+                                element.selectedIndex = i;
+                                break;
+                            }
+                        }
+                    } else if (key === 'LISTEN_LIST') {
+                        // 特殊处理监听列表
+                        if (Array.isArray(value)) {
+                            element.value = value.join(',');
+                            updateListenUserList(value);
+                        }
+                    } else {
+                        // 普通文本输入框
+                        element.value = value;
+                    }
+                    
+                    // 特殊处理一些需要更新UI的元素
+                    if (key === 'TEMPERATURE') {
+                        updateTemperature(key, value);
+                    } else if (key === 'MAX_TOKEN') {
+                        updateToken(key, value);
+                    } else if (key === 'DEEPSEEK_BASE_URL') {
+                        // 处理API基础URL
+                        const apiProviderSelect = document.getElementById('api_provider_select');
+                        if (apiProviderSelect) {
+                            // 设置为自定义
+                            apiProviderSelect.value = 'custom';
+                            const customApiInput = document.getElementById('customApiInput');
+                            if (customApiInput) {
+                                customApiInput.style.display = 'block';
+                                const input = customApiInput.querySelector('input');
+                                if (input) input.value = value;
+                            }
+                        }
+                    } else if (key === 'MODEL') {
+                        // 处理模型
+                        const modelSelect = document.getElementById('model_select');
+                        if (modelSelect) {
+                            // 设置为自定义
+                            modelSelect.value = '';
+                            const customModelInput = document.getElementById('customModelInput');
+                            if (customModelInput) {
+                                customModelInput.style.display = 'block';
+                                const input = customModelInput.querySelector('input');
+                                if (input) input.value = value;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     </script>
 </body>
 
