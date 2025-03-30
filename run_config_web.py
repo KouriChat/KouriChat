@@ -2154,6 +2154,147 @@ def main():
         debug=True,
         use_reloader=False  # 禁用重载器以避免创建多余的进程
     )
+
+@app.route('/download_config')
+def download_config():
+    """直接下载配置文件"""
+    try:
+        logger.info("开始处理配置文件下载请求")
+        config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
+        
+        if not os.path.exists(config_path):
+            logger.error(f"配置文件不存在: {config_path}")
+            return jsonify({
+                'status': 'error',
+                'message': '配置文件不存在'
+            })
+        
+        # 读取配置文件内容
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_content = f.read()
+        
+        logger.info(f"成功读取配置文件，大小: {len(config_content)} 字节")
+        
+        # 创建响应
+        response = app.response_class(
+            response=config_content,
+            status=200,
+            mimetype='text/yaml'
+        )
+        
+        # 设置头信息
+        response.headers["Content-Disposition"] = "attachment; filename=config.yaml"
+        response.headers["Content-Type"] = "text/yaml; charset=utf-8"
+        
+        logger.info("配置文件下载请求处理完成")
+        return response
+    except Exception as e:
+        logger.error(f"下载配置文件失败: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
+
+
+@app.route('/upload_config', methods=['POST'])
+def upload_config():
+    """直接上传替换配置文件"""
+    try:
+        logger.info("开始处理配置文件上传请求")
+        
+        if 'config_file' not in request.files:
+            logger.warning("请求中没有找到配置文件")
+            return jsonify({
+                'status': 'error',
+                'message': '没有找到配置文件'
+            })
+            
+        file = request.files['config_file']
+        if file.filename == '':
+            logger.warning("没有选择文件")
+            return jsonify({
+                'status': 'error',
+                'message': '没有选择文件'
+            })
+            
+        # 验证文件扩展名
+        if not file.filename.endswith('.yaml') and not file.filename.endswith('.yml'):
+            logger.warning(f"上传的文件类型不正确: {file.filename}")
+            return jsonify({
+                'status': 'error',
+                'message': '只接受YAML文件(.yaml或.yml)'
+            })
+        
+        # 读取上传的文件内容并简单验证YAML格式
+        try:
+            file_content = file.read().decode('utf-8')
+            logger.info(f"成功读取上传的文件，大小: {len(file_content)} 字节")
+            
+            # 尝试解析YAML是否有效 - 只进行最基本的格式验证
+            try:
+                yaml.safe_load(file_content)
+                logger.info("YAML基本格式验证通过")
+            except yaml.YAMLError as yaml_err:
+                logger.error(f"YAML格式验证失败: {str(yaml_err)}")
+                detail = str(yaml_err)
+                if hasattr(yaml_err, 'problem_mark'):
+                    mark = yaml_err.problem_mark
+                    detail = f"第{mark.line+1}行，第{mark.column+1}列: {yaml_err.problem}"
+                return jsonify({
+                    'status': 'error',
+                    'message': f'YAML格式错误: {detail}'
+                })
+        except UnicodeDecodeError:
+            logger.error("配置文件编码错误，请确保使用UTF-8编码")
+            return jsonify({
+                'status': 'error',
+                'message': '配置文件编码错误，请确保使用UTF-8编码'
+            })
+            
+        # 保存文件
+        config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
+        
+        # 备份当前配置
+        if os.path.exists(config_path):
+            try:
+                backup_dir = os.path.join(ROOT_DIR, 'data/config_backups')
+                os.makedirs(backup_dir, exist_ok=True)
+                backup_file = os.path.join(backup_dir, f'config_backup_{int(time.time())}.yaml')
+                import shutil
+                shutil.copy2(config_path, backup_file)
+                logger.info(f"已备份原配置文件到: {backup_file}")
+            except Exception as backup_err:
+                logger.warning(f"备份配置文件失败，但将继续进行覆盖: {str(backup_err)}")
+            
+        # 保存上传的文件
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write(file_content)
+            logger.info(f"已保存新配置文件到: {config_path}")
+        except Exception as save_err:
+            logger.error(f"保存配置文件失败: {str(save_err)}")
+            return jsonify({
+                'status': 'error',
+                'message': f'保存配置文件失败: {str(save_err)}'
+            })
+        
+        # 重置配置缓存
+        app.config['CONFIG_CACHE'] = None
+        app.config['CONFIG_CACHE_TIME'] = 0
+        
+        # 返回成功消息，建议用户刷新页面
+        logger.info("配置文件上传成功，建议用户刷新页面应用新配置")
+        return jsonify({
+            'status': 'success',
+            'message': '配置文件已成功上传并替换，请刷新页面以应用新配置'
+        })
+    except Exception as e:
+        logger.error(f"上传配置文件失败: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
+
 if __name__ == '__main__':
     try:
         main()
