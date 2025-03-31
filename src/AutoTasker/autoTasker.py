@@ -9,13 +9,14 @@ import os
 logger = logging.getLogger(__name__)
 
 class AutoTasker:
-    def __init__(self, message_handler, task_file_path="src/config/config.yaml"):
+    def __init__(self, message_handler, task_file_path="src/config/config.yaml", auto_load=True):
         """
         初始化自动任务管理器
         
         Args:
             message_handler: 消息处理器实例，用于发送消息
             task_file_path: 任务配置文件路径
+            auto_load: 是否自动加载任务配置文件
         """
         self.message_handler = message_handler
         self.task_file_path = task_file_path
@@ -25,8 +26,9 @@ class AutoTasker:
         # 确保任务文件目录存在
         os.makedirs(os.path.dirname(task_file_path), exist_ok=True)
         
-        # 加载已存在的任务
-        self.load_tasks()
+        # 加载已存在的任务（如果auto_load为True）
+        if auto_load:
+            self.load_tasks()
         
         # 启动调度器
         self.scheduler.start()

@@ -26,6 +26,8 @@ MAX_TRIGGER_RATE = 0.8  # 最大触发概率
 # 修改logger获取方式，确保与main模块一致
 logger = logging.getLogger('main')
 
+from src.handlers.file import FileHandler
+
 class EmojiHandler:
     def __init__(self, root_dir, wx_instance=None, sentiment_analyzer=None):
         self.root_dir = root_dir

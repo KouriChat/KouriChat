@@ -198,13 +198,14 @@ class DebugBot:
         # 记录用户输入
         self.log_colored_message(f"[用户输入] {user_input}", Fore.WHITE)
         
-        # 对于调试模式，直接调用_handle_text_message方法处理消息
-        reply = self.message_handler._handle_text_message(
+        # 对于调试模式，直接调用_handle_uncached_message方法处理消息
+        reply = self.message_handler._handle_uncached_message(
             content=user_input,
             chat_id=chatName,
             sender_name="debug_user",
             username="debug_user",
-            is_group=False
+            is_group=False,
+            is_image_recognition=False
         )
         
         # 只在这一个地方显示AI回复
@@ -1176,11 +1177,11 @@ def initialize_auto_tasks(message_handler):
     print_status("初始化自动任务系统..", "info", "CLOCK")
 
     try:
-        # 创建AutoTasker实例
-        auto_tasker = AutoTasker(message_handler)
+        # 创建AutoTasker实例，禁用自动加载，避免任务被加载两次
+        auto_tasker = AutoTasker(message_handler, auto_load=False)
         print_status("创建AutoTasker实例成功", "success", "CHECK")
 
-        # 清空现有任务
+        # 清空现有任务 - 这一步会清除 AutoTasker 自动加载的任务
         auto_tasker.scheduler.remove_all_jobs()
         print_status("清空现有任务", "info", "CLEAN")
 
@@ -1207,10 +1208,13 @@ def initialize_auto_tasks(message_handler):
                                 print_status(f"任务缺少必要字段: {task}", "warning", "WARNING")
                                 continue
 
+                            # 检查是否有 chat_id，如果没有则使用默认值
+                            chat_id = task.chat_id if hasattr(task, 'chat_id') and task.chat_id else listen_list[0]
+                            
                             # 添加定时任务
                             auto_tasker.add_task(
                                 task_id=task.task_id,
-                                chat_id=listen_list[0],  # 使用 listen_list 中的第一个聊天ID
+                                chat_id=chat_id,  # 使用任务自己的chat_id，如果不存在则使用listen_list中的第一个
                                 content=task.content,
                                 schedule_type=task.schedule_type,
                                 schedule_time=task.schedule_time
@@ -1235,7 +1239,7 @@ def initialize_auto_tasks(message_handler):
         print_status(f"初始化自动任务系统失败 {str(e)}", "error", "ERROR")
         logger.error(f"初始化自动任务系统失败 {str(e)}", exc_info=True)
         # 返回一个空的AutoTasker实例，避免程序崩溃
-        return AutoTasker(message_handler)
+        return AutoTasker(message_handler, auto_load=False)
 
 
 def main(debug_mode=True):

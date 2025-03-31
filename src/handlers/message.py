@@ -760,7 +760,7 @@ class MessageHandler:
             
             # 处理合并后的消息
             last_message = messages[-1]
-            result = self._handle_text_message(
+            result = self._handle_uncached_message(
                 merged_content,
                 last_message['chat_id'],
                 last_message['sender_name'],
@@ -1653,3 +1653,138 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"处理文本消息失败: {str(e)}", exc_info=True)
             return "抱歉，处理您的消息时出现错误"
+
+    def add_to_queue(self, chat_id, content, sender_name, username, is_group=False):
+        """
+        将消息添加到处理队列
+        
+        Args:
+            chat_id: 聊天ID
+            content: 消息内容
+            sender_name: 发送者名称
+            username: 用户名
+            is_group: 是否是群聊消息
+        
+        Returns:
+            None
+        """
+        try:
+            logger.info(f"添加消息到队列: chat_id={chat_id}, sender={sender_name}, content={content[:30]}")
+            return self.handle_user_message(
+                content=content,
+                chat_id=chat_id,
+                sender_name=sender_name,
+                username=username,
+                is_group=is_group
+            )
+        except Exception as e:
+            logger.error(f"添加消息到队列失败: {str(e)}")
+            return None
+
+    def _handle_uncached_message(self, content: str, chat_id: str, sender_name: str, username: str, is_group: bool, is_image_recognition: bool):
+        """处理未缓存的消息"""
+        try:
+            logger.info(f"处理消息 - 聊天ID: {chat_id}, 发送者: {sender_name}, 是否群聊: {is_group}")
+            
+            # 判断是否为语音请求
+            if self._is_voice_request(content):
+                logger.info("检测到语音消息请求")
+                return self._handle_voice_request(content, chat_id, sender_name, username, is_group)
+                
+            # 判断是否为随机图片请求
+            if self._is_random_image_request(content):
+                logger.info("检测到随机图片请求")
+                return self._handle_random_image_request(content, chat_id, sender_name, username, is_group)
+                
+            # 判断是否为图片生成请求
+            if self._is_image_generation_request(content):
+                logger.info("检测到图片生成请求")
+                return self._handle_image_generation_request(content, chat_id, sender_name, username, is_group)
+
+            # 处理普通文本消息
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 添加记忆查询和上下文提取
+            relevant_memories = ""
+            if self.memory_handler:
+                try:
+                    # 获取相关记忆
+                    memories = self.memory_handler.get_relevant_memories(content, username)
+                    if memories and len(memories) > 0:
+                        # 构建记忆上下文
+                        memory_parts = []
+                        for idx, mem in enumerate(memories[:3]):  # 限制为最相关的3条记忆
+                            if mem.get('message') and mem.get('reply'):
+                                memory_parts.append(f"记忆{idx+1}:\n用户: {mem['message']}\nAI: {mem['reply']}")
+                        
+                        if memory_parts:
+                            relevant_memories = "\n\n与当前对话相关的记忆:\n" + "\n\n".join(memory_parts)
+                            logger.info(f"添加相关记忆: {len(memory_parts)}条")
+                except Exception as mem_err:
+                    logger.error(f"获取记忆失败: {str(mem_err)}")
+            
+            # 构造完整请求
+            full_content = f"[{current_time}] {content} {relevant_memories}"
+            
+            # 获取API响应
+            response = self.get_api_response(full_content, username)
+            
+            if not response:
+                logger.warning(f"API响应为空 - 用户: {username}")
+                return None
+                
+            # 清理API响应内容
+            cleaned_response = self._clean_ai_response(response)
+            
+            # 保存对话到记忆
+            if self.memory_handler and content and cleaned_response:
+                try:
+                    self.memory_handler.remember(content, cleaned_response, username)
+                    logger.info("对话已保存到记忆")
+                except Exception as mem_err:
+                    logger.error(f"保存记忆失败: {str(mem_err)}")
+            
+            # 处理响应内容
+            split_messages = self._split_message_for_sending(cleaned_response)
+            
+            # 如果不在调试模式，发送消息
+            if not self.is_debug:
+                self._send_split_messages(split_messages, chat_id)
+                
+            return split_messages['parts']
+            
+        except Exception as e:
+            logger.error(f"处理文本消息失败: {str(e)}", exc_info=True)
+            return "抱歉，处理您的消息时出现错误"
+            
+    def _is_voice_request(self, content: str) -> bool:
+        """判断是否为语音请求"""
+        voice_keywords = ["语音回复", "用语音回答", "语音回答", "语音", "语音说"]
+        return any(keyword in content for keyword in voice_keywords)
+        
+    def _is_random_image_request(self, content: str) -> bool:
+        """判断是否为随机图片请求"""
+        image_keywords = ["随机图片", "随机一张图", "随机发图", "随机图"]
+        return any(keyword in content for keyword in image_keywords)
+        
+    def _is_image_generation_request(self, content: str) -> bool:
+        """判断是否为图片生成请求"""
+        generate_keywords = ["生成图片", "画一张", "画画", "绘画", "绘制", "帮我画"]
+        return any(keyword in content for keyword in generate_keywords)
+
+    def QQ_handle_text_message(self, content: str, qqid: str, sender_name: str):
+        """处理 QQ 消息，调用 _handle_uncached_message 方法"""
+        try:
+            logger.info(f"处理QQ消息 - QQ: {qqid}, 发送者: {sender_name}")
+            result = self._handle_uncached_message(
+                content=content,
+                chat_id=qqid,
+                sender_name=sender_name,
+                username=qqid,
+                is_group=False,
+                is_image_recognition=False
+            )
+            return result if result else ["抱歉，我无法回应您的消息"]
+        except Exception as e:
+            logger.error(f"处理QQ消息失败: {str(e)}", exc_info=True)
+            return ["抱歉，处理您的消息时出现错误"]
