@@ -138,23 +138,30 @@ class APIWrapper:
             logger.error(f"同步获取嵌入向量失败: {str(e)}")
             return None
 
-    async def async_completion(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1000) -> Dict:
+    async def async_completion(
+        self, prompt: str, temperature: float = 0.7, max_tokens: int = 1000
+    ) -> Dict:
         """
-        异步获取完成响应
+        异步调用AI完成接口
         
         Args:
-            prompt: 提示词
+            prompt: 提示文本
             temperature: 温度参数
-            max_tokens: 最大token数
+            max_tokens: 最大生成token数
             
         Returns:
             Dict: 包含响应内容的字典
         """
         try:
+            # 从config.yaml直接读取模型名称
+            from src.config import SettingReader
+            config = SettingReader()
+            model_name = config.llm.model
+            
             # 调用OpenAI API
             response = await asyncio.to_thread(
                 self.client.chat.completions.create,
-                model="gpt-3.5-turbo",
+                model=model_name,  # 使用从配置读取的模型名称
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,
                 max_tokens=max_tokens

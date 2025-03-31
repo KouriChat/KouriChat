@@ -8,7 +8,6 @@ import shutil
 import win32gui
 import win32con
 from src.config import config
-from src.config.rag_config import config as rag_config
 from wxauto import WeChat
 import re
 from src.handlers.emoji import EmojiHandler
@@ -582,13 +581,14 @@ class ChatBot:
                     else:
                         logger.info("成功识别并移除@机器人部分")
 
-            # 如果是群聊消息，检查发送者是否在监听列表中
+            # 如果是群聊消息，检查发送者是否在监听列表中 - 仅影响响应，不影响保存
+            should_process_message = True
             if is_group and username not in listen_list:
                 if not is_at_robot:
-                    logger.debug(f"群聊消息发送者 {username} 不在监听列表中且未@机器人，跳过处理")
-                    return None
+                    logger.debug(f"群聊消息发送者 {username} 不在监听列表中且未@机器人，不会响应但会保存")
+                    should_process_message = False  # 只设置标志，不直接返回，确保消息还能保存
                 else:
-                    logger.info(f"非监听列表用户 {username} @了机器人，继续处理消息")
+                    logger.info(f"非监听列表用户 {username} @了机器人，将处理消息")
 
             # 增加重复消息检查
             message_key = f"{chatName}_{username}_{hash(content)}"
@@ -636,6 +636,12 @@ class ChatBot:
 
             if img_path:
                 logger.info(f"开始处理图片/表情 - 路径: {img_path}, 是否表情: {is_emoji}")
+                
+                # 先保存图片消息到群聊记忆
+                if is_group and hasattr(self.message_handler, 'group_chat_memory'):
+                    self.message_handler.group_chat_memory.add_message(chatName, username, "[图片内容]", is_at_robot)
+                    logger.info(f"群聊图片消息已保存到记忆: {chatName}, 发送者: {username}")
+                
                 recognized_text = self.moonshot_ai._recognize_image_impl(img_path, is_emoji)
                 logger.info(f"图片/表情识别结果: {recognized_text}")
                 content = recognized_text if content is None else f"{content} {recognized_text}"
@@ -643,6 +649,16 @@ class ChatBot:
 
             if files_path:
                 logger.info(f"开始处理文件 - 路径：{files_path}")
+                
+                # 先保存文件消息到群聊记忆
+                if is_group and hasattr(self.message_handler, 'group_chat_memory'):
+                    self.message_handler.group_chat_memory.add_message(chatName, username, f"[文件: {files_path}]", is_at_robot)
+                    logger.info(f"群聊文件消息已保存到记忆: {chatName}, 发送者: {username}")
+                
+                # 如果不需要处理消息（非监听列表用户的非@消息），则不继续处理
+                if not should_process_message:
+                    return None
+                    
                 return self.message_handler.handle_user_message(
                     content=files_path,
                     chat_id=chatName,
@@ -652,10 +668,19 @@ class ChatBot:
                 )
 
             if content:
-                # 如果是群聊@消息，再移除@部分
+                # 如果是群聊消息，始终保存到记忆（不论是否@机器人，不论发送者是谁）
+                if is_group and hasattr(self.message_handler, 'group_chat_memory'):
+                    self.message_handler.group_chat_memory.add_message(chatName, username, content, is_at_robot)
+                    logger.info(f"群聊消息已保存到记忆: {chatName}, 发送者: {username}, 内容: {content[:30]}...")
+                
+                # 如果不需要处理消息（非监听列表用户的非@消息），则不继续处理
+                if not should_process_message:
+                    return None
+                
+                # 如果是表情包请求
                 if emoji_handler.is_emoji_request(content):
                     logger.info("检测到表情包请求")
-                    emoji_path = emoji_handler.get_emotion_emoji(content)
+                    emoji_path = emoji_handler.get_emotion_emoji(content, username, None)
                     if emoji_path:
                         logger.info(f"准备发送情感表情包: {emoji_path}")
                         self.message_handler.wx.SendFiles(emoji_path, chatName)
@@ -684,10 +709,8 @@ class ChatBot:
                             if len(self.group_message_queues[chatName]['messages']) == 1:
                                 threading.Timer(1.0, self.process_user_messages, args=[chatName]).start()
                     else:
-                        # 非@消息，直接保存到群聊记忆但不处理
-                        if hasattr(self.message_handler, 'group_chat_memory'):
-                            self.message_handler.group_chat_memory.add_message(chatName, sender_name, content, False)
-                            logger.debug(f"非@消息已保存到群聊记忆: {content[:30]}...")
+                        # 非@消息，已在上面保存到群聊记忆
+                        logger.debug(f"非@消息，已保存到群聊记忆但不进行处理: {content[:30]}...")
                 else:
                     # 私聊消息使用原有的队列机制
                     with self.queue_lock:

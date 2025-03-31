@@ -62,8 +62,9 @@ def init_memory(root_dir, api_wrapper=None):
     
     try:
         # 从配置获取RAG设置
-        from src.config import config
-        from src.config.rag_config import config as rag_config
+        from src.config import config, SettingReader
+        # 不再使用rag_config，直接使用SettingReader
+        config_reader = SettingReader()
         
         # 初始化记忆系统
         logger.info(f"初始化记忆系统，根目录: {root_dir}")
@@ -72,8 +73,8 @@ def init_memory(root_dir, api_wrapper=None):
         if api_wrapper is None:
             from src.api_client.wrapper import APIWrapper
             api_wrapper = APIWrapper(
-                api_key=config.llm.api_key,
-                base_url=config.llm.base_url
+                api_key=config_reader.llm.api_key,
+                base_url=config_reader.llm.base_url
             )
         
         # 设置配置文件路径

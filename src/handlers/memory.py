@@ -129,8 +129,9 @@ def init_memory(root_dir, api_wrapper=None):
         from src.handlers.handler_init import setup_memory, init_rag_from_config
         
         # 从配置获取RAG设置
-        from src.config import config
-        from src.config.rag_config import config as rag_config
+        from src.config import config, SettingReader
+        # 不再使用rag_config，直接从config读取
+        config_reader = SettingReader()
         
         # 初始化记忆系统
         logger.info(f"初始化记忆系统，根目录: {root_dir}")
@@ -139,8 +140,8 @@ def init_memory(root_dir, api_wrapper=None):
         if api_wrapper is None:
             from src.api_client.wrapper import APIWrapper
             api_wrapper = APIWrapper(
-                api_key=config.llm.api_key,
-                base_url=config.llm.base_url
+                api_key=config_reader.llm.api_key,
+                base_url=config_reader.llm.base_url
             )
         
         # 设置配置文件路径
@@ -183,13 +184,20 @@ def init_memory(root_dir, api_wrapper=None):
             rag_instance = init_rag_from_config(rag_config_path)
             if rag_instance:
                 logger.info("成功初始化RAG系统")
-                # 输出详细RAG配置
-                logger.info(f"使用嵌入模型: {rag_config.EMBEDDING_MODEL}")
-                logger.info(f"TopK: {rag_config.RAG_TOP_K}, 是否重排序: {rag_config.RAG_IS_RERANK}")
-                if rag_config.RAG_IS_RERANK and rag_config.RAG_RERANKER_MODEL:
-                    logger.info(f"重排序模型: {rag_config.RAG_RERANKER_MODEL}")
-                if rag_config.LOCAL_MODEL_ENABLED:
-                    logger.info(f"使用本地嵌入模型: {rag_config.LOCAL_EMBEDDING_MODEL_PATH}")
+                # 输出详细RAG配置，使用从config_reader读取的值
+                embedding_model = config_reader.rag.embedding_model
+                top_k = config_reader.rag.top_k
+                is_rerank = config_reader.rag.is_rerank
+                reranker_model = config_reader.rag.reranker_model
+                local_model_enabled = config_reader.rag.local_model_enabled
+                local_embedding_model_path = config_reader.rag.local_embedding_model_path
+                
+                logger.info(f"使用嵌入模型: {embedding_model}")
+                logger.info(f"TopK: {top_k}, 是否重排序: {is_rerank}")
+                if is_rerank and reranker_model:
+                    logger.info(f"重排序模型: {reranker_model}")
+                if local_model_enabled:
+                    logger.info(f"使用本地嵌入模型: {local_embedding_model_path}")
             else:
                 logger.info("将在记忆系统初始化过程中自动配置RAG")
         except Exception as e:

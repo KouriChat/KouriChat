@@ -490,6 +490,11 @@ class GroupChatMemory:
             Optional[Dict]: 找到的消息，如果未找到则返回None
         """
         try:
+            # 检查输入
+            if not content or not content.strip():
+                logger.warning("查找的消息内容为空")
+                return None
+                
             # 获取memory.json文件路径
             safe_group_id = self._get_safe_group_id(group_id)
             memory_json_path = os.path.join(
@@ -518,14 +523,43 @@ class GroupChatMemory:
             # 获取消息列表
             messages = memory_data[group_id]
             
-            # 按时间戳倒序排序
+            # 按时间戳倒序排序（最新的优先）
             messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
             
-            # 查找匹配的消息
+            content_clean = content.strip()
+            
+            # 首先尝试精确匹配
             for msg in messages:
-                if msg.get("human_message", "").strip() == content.strip():
+                msg_content = msg.get("human_message", "").strip()
+                if msg_content == content_clean:
+                    logger.info(f"找到精确匹配的消息: {msg_content[:30]}...")
                     return msg
             
+            # 如果引用的是图片内容，尝试匹配[图片内容]标记的消息
+            if "[图片]" in content_clean or "图片内容" in content_clean:
+                for msg in messages:
+                    msg_content = msg.get("human_message", "").strip()
+                    if "[图片内容]" in msg_content or "[图片]" in msg_content:
+                        logger.info(f"找到匹配的图片消息: {msg_content[:30]}...")
+                        return msg
+            
+            # 尝试部分匹配（检查引用内容是否是原始消息的子串）
+            # 限制在最近20条消息中搜索，避免匹配过旧的消息
+            recent_messages = messages[:20]
+            for msg in recent_messages:
+                msg_content = msg.get("human_message", "").strip()
+                # 如果消息内容很短(少于5个字符)，则要求完全匹配
+                if len(msg_content) < 5:
+                    if msg_content == content_clean:
+                        logger.info(f"找到短消息的精确匹配: {msg_content}")
+                        return msg
+                # 对于长消息，如果引用内容是原始消息的一部分，也视为匹配
+                elif (content_clean in msg_content or 
+                     any(word in msg_content for word in content_clean.split() if len(word) > 1)):
+                    logger.info(f"找到部分匹配的消息: 引用[{content_clean[:15]}...] 在 [{msg_content[:30]}...]")
+                    return msg
+            
+            logger.info(f"未找到匹配的消息，内容: {content_clean[:30]}...")
             return None
             
         except Exception as e:

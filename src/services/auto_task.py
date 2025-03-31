@@ -57,10 +57,10 @@ class AutoTasker:
 
         def job():
             try:
-                # 修改消息发送方式
-                self.message_handler.add_to_queue(
-                    chat_id=chat_id,
+                # 使用已有的handle_user_message方法代替add_to_queue
+                self.message_handler.handle_user_message(
                     content=content,
+                    chat_id=chat_id,
                     sender_name="System",
                     username="AutoTasker",
                     is_group=False

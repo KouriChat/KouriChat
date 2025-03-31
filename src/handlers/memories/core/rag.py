@@ -38,7 +38,7 @@ class RagManager:
         
         # 获取当前角色名
         try:
-            from src.config import config
+            from src.config import rag_config as config
             self.avatar_name = config.behavior.context.avatar_dir
         except Exception as e:
             logger.error(f"获取角色名失败: {str(e)}")
@@ -68,6 +68,27 @@ class RagManager:
                 
             with open(self.config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
+                
+            # 尝试从rag_config中获取API设置
+            try:
+                from src.config import rag_config
+                
+                # 使用rag_config中的值覆盖yaml中的设置
+                if "embedding_model" in config and isinstance(config["embedding_model"], dict):
+                    config["embedding_model"]["name"] = rag_config.EMBEDDING_MODEL
+                
+                if "is_rerank" not in config:
+                    config["is_rerank"] = rag_config.RAG_IS_RERANK
+                    
+                if "reranker" in config and isinstance(config["reranker"], dict):
+                    config["reranker"]["name"] = rag_config.RAG_RERANKER_MODEL
+                    
+                if "top_k" not in config:
+                    config["top_k"] = rag_config.RAG_TOP_K
+            except ImportError:
+                logger.warning("无法导入rag_config模块，使用yaml配置")
+            except Exception as e:
+                logger.warning(f"从rag_config获取配置失败: {str(e)}")
                 
             logger.info(f"已加载RAG配置: {self.config_path}")
             return config
@@ -136,48 +157,26 @@ class RagManager:
         # 如果api_wrapper为None，尝试初始化一个
         if self.api_wrapper is None:
             try:
-                # # 导入APIWrapper
-                # try:
-                #     from src.utils.api_wrapper import APIWrapper
-                # except ImportError:
-                #     logger.error("无法导入APIWrapper，嵌入功能将不可用")
-                #     return ApiEmbeddingModel(None, model_name, model_type)
-                
                 # 尝试从配置文件获取RAG专用的API密钥和URL
                 try:
-                    from src.config import config
+                    from src.config import rag_config as config
                     
-                    # 使用字典方式访问配置
-                    categories = getattr(config, 'categories', {})
-                    rag_settings = {}
-                    
-                    # 尝试不同的访问方式
-                    if isinstance(categories, dict) and 'rag_settings' in categories:
-                        rag_settings = categories['rag_settings'].get('settings', {})
-                    elif hasattr(categories, 'rag_settings'):
-                        rag_settings = getattr(categories.rag_settings, 'settings', {})
-                    
-                    # 读取API密钥
-                    api_key = None
-                    if isinstance(rag_settings, dict) and 'api_key' in rag_settings:
-                        api_key = rag_settings['api_key'].get('value', '')
-                    elif hasattr(rag_settings, 'api_key'):
-                        api_key = getattr(rag_settings.api_key, 'value', '')
-                    
-                    # 读取base_url
-                    base_url = None
-                    if isinstance(rag_settings, dict) and 'base_url' in rag_settings:
-                        base_url = rag_settings['base_url'].get('value', '')
-                    elif hasattr(rag_settings, 'base_url'):
-                        base_url = getattr(rag_settings.base_url, 'value', '')
+                    # 直接使用rag_config中的属性
+                    api_key = config.OPENAI_API_KEY
+                    base_url = config.OPENAI_API_BASE
                     
                     # 如果找到了API密钥，创建API包装器
                     if api_key:
-                        self.api_wrapper = APIWrapper(
-                            api_key=api_key,
-                            base_url=base_url if base_url else None
-                        )
-                        logger.info("成功从配置文件创建RAG专用API包装器")
+                        # 导入APIWrapper
+                        try:
+                            from src.api_client.wrapper import APIWrapper
+                            self.api_wrapper = APIWrapper(
+                                api_key=api_key,
+                                base_url=base_url if base_url else None
+                            )
+                            logger.info("成功从配置文件创建RAG专用API包装器")
+                        except ImportError:
+                            logger.error("无法导入APIWrapper，嵌入功能将不可用")
                 except Exception as config_error:
                     logger.error(f"从配置文件获取RAG API设置失败: {str(config_error)}")
                     
@@ -382,13 +381,14 @@ class RagManager:
             
         return True
     
-    async def query(self, query_text: str, top_k: int = None) -> List[Dict]:
+    async def query(self, query_text: str, top_k: int = None, context_user_id: str = None) -> List[Dict]:
         """
         查询相关文档
         
         Args:
             query_text: 查询文本
             top_k: 返回结果数量，如果为None则使用配置中的值
+            context_user_id: 当前上下文的用户ID，用于判断发送者一致性
             
         Returns:
             List[Dict]: 相关文档列表
@@ -424,7 +424,22 @@ class RagManager:
             else:
                 results = results[:top_k]  # 直接截取top_k个结果
                 
+            # 如果提供了上下文用户ID，使用发送者一致性重排序
+            if context_user_id:
+                results = self._reorder_by_sender_consistency(results, context_user_id)
+                
             logger.info(f"查询成功，找到 {len(results)} 个相关文档，角色: {self.avatar_name}")
+            
+            # 处理查询结果并格式化
+            processed_results = await self.process_query_results(query_text, results, context_user_id)
+            
+            # 为每个结果添加处理信息
+            for result in results:
+                result["processed_info"] = {
+                    "senders": processed_results["senders"],
+                    "primary_sender": processed_results.get("primary_sender")
+                }
+                
             return results
         except Exception as e:
             logger.error(f"查询失败: {str(e)}")
@@ -590,7 +605,7 @@ class RagManager:
             top_k: 返回的上下文消息数量，默认为7轮
             
         Returns:
-            List[Dict]: 最近的消息列表
+            List[Dict]: 最近的消息列表，每条消息包含明确的发送者标识
         """
         try:
             # 确保存储文件已加载
@@ -618,12 +633,73 @@ class RagManager:
             # 按时间正序排序返回
             recent_messages.sort(key=lambda x: x.get('timestamp', ''))
             
-            logger.info(f"获取到群聊 {group_id} 最近 {len(recent_messages)} 轮对话")
+            # 确保每条消息都有明确的发送者标识
+            for msg in recent_messages:
+                # 确保sender_name字段存在
+                if 'sender_name' not in msg or not msg['sender_name']:
+                    msg['sender_name'] = '未知用户'
+                    
+                # 添加发送者类型标记，区分人类用户和AI助手
+                if 'is_assistant' not in msg:
+                    msg['is_assistant'] = False
+                    
+                # 确保消息内容有标准格式
+                if 'formatted_message' not in msg:
+                    # 根据是否为助手消息，使用不同格式
+                    if msg.get('is_assistant', False):
+                        ai_name = msg.get('ai_name', self.avatar_name)
+                        msg_content = msg.get('assistant_message', '')
+                        msg['formatted_message'] = f"{ai_name} (AI): {msg_content}"
+                    else:
+                        sender = msg.get('sender_name', '未知用户')
+                        msg_content = msg.get('human_message', '')
+                        msg['formatted_message'] = f"{sender} (用户): {msg_content}"
+            
+            logger.info(f"获取到群聊 {group_id} 最近 {len(recent_messages)} 轮对话，所有消息均包含发送者标识")
             return recent_messages
             
         except Exception as e:
             logger.error(f"查询群聊上下文失败: {str(e)}")
             return []
+            
+    def format_context_messages(self, messages: List[Dict]) -> str:
+        """
+        将检索到的消息格式化为清晰的上下文字符串
+        
+        Args:
+            messages: 消息列表
+            
+        Returns:
+            str: 格式化后的上下文字符串，每条消息都有明确的发送者标识
+        """
+        formatted_context = ""
+        
+        for i, msg in enumerate(messages):
+            # 获取时间戳
+            timestamp = msg.get('timestamp', '')
+            time_str = ""
+            if timestamp:
+                try:
+                    # 尝试解析时间戳为人类可读格式
+                    if isinstance(timestamp, str) and timestamp.isdigit():
+                        time_obj = datetime.fromtimestamp(int(timestamp)/1000)
+                        time_str = time_obj.strftime("%H:%M:%S")
+                    else:
+                        time_str = timestamp
+                except:
+                    time_str = timestamp
+            
+            # 使用不同样式区分不同发送者的消息
+            if msg.get('is_assistant', False):
+                ai_name = msg.get('ai_name', self.avatar_name)
+                content = msg.get('assistant_message', '')
+                formatted_context += f"[{time_str}] {ai_name} (AI): {content}\n\n"
+            else:
+                sender = msg.get('sender_name', '未知用户')
+                content = msg.get('human_message', '')
+                formatted_context += f"[{time_str}] {sender} (用户): {content}\n\n"
+        
+        return formatted_context.strip()
     
     async def add_group_chat_message(self, group_id: str, message: Dict) -> bool:
         """
@@ -648,6 +724,30 @@ class RagManager:
             if group_id not in self.storage.data['group_chats']:
                 self.storage.data['group_chats'][group_id] = []
             
+            # 确保消息包含必要的字段
+            if 'sender_name' not in message:
+                message['sender_name'] = '未知用户'
+                
+            # 标记消息类型（是否为助手消息）
+            is_assistant = False
+            if 'assistant_message' in message and message['assistant_message']:
+                is_assistant = True
+            message['is_assistant'] = is_assistant
+            
+            # 添加AI名称，如果是助手消息但没有指定AI名称
+            if is_assistant and 'ai_name' not in message:
+                message['ai_name'] = self.avatar_name
+                
+            # 生成格式化消息
+            if is_assistant:
+                ai_name = message.get('ai_name', self.avatar_name)
+                content = message.get('assistant_message', '')
+                message['formatted_message'] = f"{ai_name} (AI): {content}"
+            else:
+                sender = message.get('sender_name', '未知用户')
+                content = message.get('human_message', '')
+                message['formatted_message'] = f"{sender} (用户): {content}"
+            
             # 检查是否存在相同时间戳的消息
             timestamp = message.get('timestamp', '')
             existing_messages = [msg for msg in self.storage.data['group_chats'][group_id] 
@@ -666,9 +766,14 @@ class RagManager:
             
             # 同时，也生成嵌入向量并添加到传统的document格式
             # 这是为了保持与API兼容性，允许使用语义搜索
-            content = f"{message.get('sender_name', '')}: {message.get('human_message', '')}"
-            if message.get('assistant_message'):
-                content += f"\n{self.avatar_name}: {message.get('assistant_message')}"
+            # 改进内容格式，确保发送者信息清晰
+            if is_assistant:
+                ai_name = message.get('ai_name', self.avatar_name)
+                human_message = message.get('human_message', '')
+                assistant_message = message.get('assistant_message', '')
+                content = f"{message.get('sender_name', '未知用户')} (用户): {human_message}\n{ai_name} (AI): {assistant_message}"
+            else:
+                content = f"{message.get('sender_name', '未知用户')} (用户): {message.get('human_message', '')}"
             
             doc_id = f"group_chat_{group_id}_{int(time.time())}"
             if 'id' in message:
@@ -684,7 +789,8 @@ class RagManager:
                     "assistant_message": message.get('assistant_message'),
                     "is_at": message.get('is_at', False),
                     "group_id": group_id,
-                    "ai_name": message.get('ai_name', self.avatar_name)
+                    "ai_name": message.get('ai_name', self.avatar_name),
+                    "is_assistant": is_assistant
                 }
             }
             
@@ -725,7 +831,20 @@ class RagManager:
             found = False
             for message in self.storage.data['group_chats'][group_id]:
                 if message.get('timestamp') == timestamp:
+                    # 更新助手回复
                     message['assistant_message'] = response
+                    
+                    # 标记为助手消息
+                    message['is_assistant'] = True
+                    
+                    # 确保有AI名称
+                    if 'ai_name' not in message:
+                        message['ai_name'] = self.avatar_name
+                    
+                    # 更新格式化消息
+                    ai_name = message.get('ai_name', self.avatar_name)
+                    message['formatted_message'] = f"{ai_name} (AI): {response}"
+                    
                     found = True
                     break
             
@@ -738,23 +857,164 @@ class RagManager:
             
             # 同时更新document格式中的数据
             # 查询对应的文档
-            query = f"timestamp:{timestamp} AND group_id:{group_id}"
-            results = await self.query(query, top_k=1)
+            docs = [doc for doc in self.storage.data.get('documents', []) 
+                   if doc.get('metadata', {}).get('timestamp') == timestamp 
+                   and doc.get('metadata', {}).get('group_id') == group_id]
             
-            if results:
-                doc = results[0]
-                doc["metadata"]["assistant_message"] = response
-                sender_name = doc["metadata"]["sender_name"]
-                human_message = doc["metadata"]["human_message"]
-                doc["content"] = f"{sender_name}: {human_message}\n{self.avatar_name}: {response}"
+            if docs:
+                for doc in docs:
+                    doc["metadata"]["assistant_message"] = response
+                    doc["metadata"]["is_assistant"] = True
+                    
+                    # 更新文档内容，保持发送者信息
+                    sender_name = doc["metadata"].get("sender_name", "未知用户")
+                    human_message = doc["metadata"].get("human_message", "")
+                    ai_name = doc["metadata"].get("ai_name", self.avatar_name)
+                    
+                    # 使用清晰的发送者标识格式
+                    doc["content"] = f"{sender_name} (用户): {human_message}\n{ai_name} (AI): {response}"
+                    
+                    # 重新生成嵌入向量
+                    embedding = await self.embedding_model.get_embedding(doc["content"])
+                    if embedding:
+                        doc["embedding"] = embedding
                 
-                # 更新文档
-                await self.update_document(doc)
+                # 保存更新后的数据
+                self.storage._save_data()
+            else:
+                # 如果找不到对应的document，尝试使用语义搜索
+                query = f"timestamp:{timestamp} AND group_id:{group_id}"
+                results = await self.query(query, top_k=1)
+                
+                if results:
+                    doc = results[0]
+                    doc["metadata"]["assistant_message"] = response
+                    doc["metadata"]["is_assistant"] = True
+                    
+                    # 使用清晰的发送者标识格式
+                    sender_name = doc["metadata"].get("sender_name", "未知用户")
+                    human_message = doc["metadata"].get("human_message", "")
+                    ai_name = doc["metadata"].get("ai_name", self.avatar_name)
+                    
+                    doc["content"] = f"{sender_name} (用户): {human_message}\n{ai_name} (AI): {response}"
+                    
+                    # 更新文档
+                    await self.update_document(doc)
             
             return True
         except Exception as e:
             logger.error(f"更新群聊助手回复失败: {str(e)}")
             return False
+
+    async def process_query_results(self, query_text: str, results: List[Dict], context_user_id: str = None) -> Dict:
+        """
+        处理查询结果，增强发送者识别，确保相关性内容的发送者一致性
+        
+        Args:
+            query_text: 原始查询文本
+            results: 查询返回的结果列表
+            context_user_id: 当前上下文的用户ID，用于判断发送者一致性
+            
+        Returns:
+            Dict: 处理后的结果，包含格式化内容和发送者信息
+        """
+        try:
+            if not results:
+                return {
+                    "content": "",
+                    "senders": [],
+                    "has_results": False
+                }
+                
+            # 提取所有发送者
+            senders = []
+            for result in results:
+                metadata = result.get("metadata", {})
+                sender = metadata.get("sender_name", "未知用户")
+                if sender not in senders:
+                    senders.append(sender)
+            
+            # 判断是否需要考虑发送者一致性
+            sender_consistency = False
+            primary_sender = None
+            if context_user_id and len(senders) > 1:
+                # 如果当前上下文有用户ID，且结果中有多个发送者
+                # 则应当优先考虑与当前上下文用户ID匹配的内容
+                sender_consistency = True
+                
+                # 使用当前上下文的用户ID作为主要发送者
+                primary_sender = context_user_id
+                
+                # 根据发送者一致性重新排序结果
+                results = self._reorder_by_sender_consistency(results, primary_sender)
+            
+            # 格式化查询结果
+            formatted_content = ""
+            for i, result in enumerate(results):
+                content = result.get("content", "")
+                score = result.get("score", 0)
+                metadata = result.get("metadata", {})
+                
+                # 获取发送者信息
+                sender_name = metadata.get("sender_name", "未知用户")
+                is_assistant = metadata.get("is_assistant", False)
+                ai_name = metadata.get("ai_name", self.avatar_name)
+                
+                # 高亮与主要发送者匹配的内容
+                sender_prefix = ""
+                if sender_consistency and sender_name == primary_sender:
+                    sender_prefix = "** "  # 标记为主要发送者
+                
+                # 添加格式化内容
+                formatted_content += f"[相关度: {score:.2f}] {sender_prefix}"
+                
+                # 根据是否为助手消息使用不同格式
+                if is_assistant:
+                    formatted_content += f"{sender_name} 与 {ai_name} 的对话:\n{content}\n\n"
+                else:
+                    formatted_content += f"{sender_name} 说过:\n{content}\n\n"
+            
+            return {
+                "content": formatted_content.strip(),
+                "senders": senders,
+                "has_results": True,
+                "primary_sender": primary_sender
+            }
+            
+        except Exception as e:
+            logger.error(f"处理查询结果失败: {str(e)}")
+            return {
+                "content": "",
+                "senders": [],
+                "has_results": False
+            }
+    
+    def _reorder_by_sender_consistency(self, results: List[Dict], primary_sender: str) -> List[Dict]:
+        """
+        根据发送者一致性重新排序结果
+        
+        Args:
+            results: 原始结果列表
+            primary_sender: 主要发送者
+            
+        Returns:
+            List[Dict]: 重新排序的结果列表
+        """
+        # 区分主要发送者和其他发送者的结果
+        primary_results = []
+        other_results = []
+        
+        for result in results:
+            metadata = result.get("metadata", {})
+            sender = metadata.get("sender_name", "")
+            
+            if sender == primary_sender:
+                primary_results.append(result)
+            else:
+                other_results.append(result)
+        
+        # 将主要发送者的结果排在前面，但保持各自的相对顺序
+        return primary_results + other_results
 
 # 嵌入模型实现
 class ApiEmbeddingModel:

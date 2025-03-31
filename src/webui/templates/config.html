@@ -3125,6 +3125,13 @@
         function updateRagTopK(value) {
             document.getElementById('RAG_TOP_K_display').textContent = value;
             document.getElementById('RAG_TOP_K').value = value;
+            
+            // 触发变更事件，确保值被正确更新到UI
+            const event = new Event('change', { bubbles: true });
+            document.getElementById('RAG_TOP_K').dispatchEvent(event);
+            
+            // 更新滑动块值，确保滑动块与显示值同步
+            document.getElementById('RAG_TOP_K_slider').value = value;
         }
         
         // 切换本地模型设置部分显示
@@ -3168,6 +3175,13 @@
                     if (savedRagConfig && typeof savedRagConfig.isRerank !== 'undefined') {
                         savedRerankState = Boolean(savedRagConfig.isRerank);
                         console.log(`从localStorage读取到的重排序状态: ${savedRerankState}`);
+                    }
+                    
+                    // 同时获取保存的top_k值
+                    if (savedRagConfig && savedRagConfig.topK) {
+                        // 确保更新滑动块和显示值
+                        updateRagTopK(savedRagConfig.topK);
+                        console.log(`从localStorage读取到的TOP_K值: ${savedRagConfig.topK}`);
                     }
                 }
             } catch (e) {
@@ -3393,6 +3407,7 @@
                     embeddingModel: document.getElementById('RAG_EMBEDDING_MODEL').value,
                     rerankerModel: document.getElementById('RAG_RERANKER_MODEL').value,
                     isRerank: isRerankCheckbox ? isRerankCheckbox.checked : false,
+                    topK: document.getElementById('RAG_TOP_K').value,
                     savedTime: new Date().getTime()
                 };
                 localStorage.setItem('ragConfig', JSON.stringify(ragConfig));
@@ -3567,6 +3582,17 @@
                         
                         // 更新所有表单字段
                         updateFormFields(data.config);
+                        
+                        // 特别处理RAG_TOP_K值
+                        if (data.config.RAG_TOP_K) {
+                            // 确保值为数字
+                            const topKValue = parseInt(data.config.RAG_TOP_K, 10);
+                            if (!isNaN(topKValue)) {
+                                // 使用updateRagTopK函数同步更新滑动块和显示值
+                                updateRagTopK(topKValue);
+                                console.log("从服务器更新RAG_TOP_K值:", topKValue);
+                            }
+                        }
                         
                         // 特别处理自动消息配置
                         const autoMessageInput = document.getElementById('AUTO_MESSAGE');

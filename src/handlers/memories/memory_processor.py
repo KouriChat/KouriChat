@@ -366,28 +366,33 @@ class MemoryProcessor:
             clean_user_id = user_id
             
             # 检查用户ID是否包含时间戳和消息内容格式
-            if user_id.startswith("[") and "]" in user_id:
+            if isinstance(user_id, str) and user_id.startswith("[") and "]" in user_id:
                 # 尝试提取真实用户ID
                 match_patterns = [
                     r"\[.*?\]ta\s+私聊对你说：\s*(.*?)$",  # 标准私聊格式
                     r"\[.*?\]ta\s+私聊对你说：\s*(.*?)\s*\$.*$",  # 带分隔符的格式
                     r"\[.*?\]ta.*?私聊.*?：\s*(.*?)$",  # 宽松私聊格式
                     r"\[.*?\].*?在群聊里.*?：\s*(.*?)$",  # 群聊格式
+                    r"\[.*?\]\s*(.*?)\s*[在私聊].*$",  # 另一种私聊格式
                 ]
                 
                 for pattern in match_patterns:
                     match = re.search(pattern, user_id)
                     if match:
                         extracted_id = match.group(1).strip()
-                        if extracted_id:
+                        # 避免空ID或过长ID（可能是消息内容而非用户ID）
+                        if extracted_id and len(extracted_id) < 30:
                             clean_user_id = extracted_id
                             logger.info(f"从消息格式中提取用户ID: '{user_id}' -> '{clean_user_id}'")
                             break
             
             # 判断是否为主动消息
             is_auto_message = False
-            if (("系统指令" in user_message and assistant_response) or 
-                (user_message.strip().startswith("(此时时间为") and "[系统指令]" in user_message)):
+            if user_message is None:
+                is_auto_message = True
+                user_message = ""  # 确保用户消息不是None
+            elif (("系统指令" in user_message and assistant_response) or 
+                  (isinstance(user_message, str) and user_message.strip().startswith("(此时时间为") and "[系统指令]" in user_message)):
                 # 如果用户消息包含"系统指令"，则认为是主动消息
                 logger.info("检测到主动消息")
                 is_auto_message = True
@@ -396,20 +401,24 @@ class MemoryProcessor:
             clean_user_msg, clean_assistant_msg = clean_memory_content(user_message, assistant_response)
             
             # 额外清理：确保移除memory_number及其后续内容
-            clean_assistant_msg = re.sub(r'\s*memory_number:.*?($|\n)', '', clean_assistant_msg)
-            
-            # 确保移除memory_number和$分隔符混合情况
-            clean_assistant_msg = re.sub(r'\s*memory_number:.*?\$', '', clean_assistant_msg)
-            
-            # 最后一道防线：直接移除包含memory_number的整行
-            if "memory_number:" in clean_assistant_msg:
-                lines = clean_assistant_msg.split('\n')
-                clean_lines = [line for line in lines if "memory_number:" not in line]
-                clean_assistant_msg = '\n'.join(clean_lines)
+            if isinstance(clean_assistant_msg, str):
+                clean_assistant_msg = re.sub(r'\s*memory_number:.*?($|\n)', '', clean_assistant_msg)
+                
+                # 确保移除memory_number和$分隔符混合情况
+                clean_assistant_msg = re.sub(r'\s*memory_number:.*?\$', '', clean_assistant_msg)
+                
+                # 最后一道防线：直接移除包含memory_number的整行
+                if "memory_number:" in clean_assistant_msg:
+                    lines = clean_assistant_msg.split('\n')
+                    clean_lines = [line for line in lines if "memory_number:" not in line]
+                    clean_assistant_msg = '\n'.join(clean_lines)
             
             # 清理场景转换标记和其他新增标记
             def clean_rag_content(text):
                 """清理要存入RAG的内容"""
+                if not isinstance(text, str):
+                    return "" if text is None else str(text)
+                    
                 # 移除场景转换标记
                 text = re.sub(r'\n\[场景切换：[^\]]+\]\n', ' ', text)
                 # 移除时间戳
@@ -427,8 +436,8 @@ class MemoryProcessor:
             # 创建记忆条目
             memory_entry = {
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "human_message": "None" if is_auto_message else clean_user_msg.replace('$', ' '),  # 替换$为空格
-                "assistant_message": clean_assistant_msg.replace('$', ' ')  # 替换$为空格
+                "human_message": "" if is_auto_message else clean_user_msg.replace('$', ' '),  # 自动消息人类部分为空字符串
+                "assistant_message": clean_assistant_msg.replace('$', ' ') if isinstance(clean_assistant_msg, str) else str(clean_assistant_msg)
             }
             
             # 确保用户ID存在于记忆数据中，并且是列表形式
@@ -440,11 +449,12 @@ class MemoryProcessor:
                 self.memory_data[clean_user_id] = []
                 if old_data and isinstance(old_data, dict):  # 如果有旧数据，添加为第一个元素
                     for key, value in old_data.items():
-                        self.memory_data[clean_user_id].append({
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            "human_message": key.replace('$', ' '),  # 替换$为空格
-                            "assistant_message": value.replace('$', ' ')  # 替换$为空格
-                        })
+                        if isinstance(key, str) and isinstance(value, str):
+                            self.memory_data[clean_user_id].append({
+                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "human_message": key.replace('$', ' '),  # 替换$为空格
+                                "assistant_message": value.replace('$', ' ')  # 替换$为空格
+                            })
             
             # 添加到记忆数据 - 以数组形式存储
             self.memory_data[clean_user_id].append(memory_entry)

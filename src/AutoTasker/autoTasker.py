@@ -116,9 +116,9 @@ class AutoTasker:
             def task_func():
                 try:
                     if self.tasks[task_id]['is_active']:
-                        self.message_handler.add_to_queue(
-                            chat_id=chat_id,
+                        self.message_handler.handle_user_message(
                             content=content,
+                            chat_id=chat_id,
                             sender_name="System",
                             username="AutoTasker",
                             is_group=False

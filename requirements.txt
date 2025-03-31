@@ -12,6 +12,7 @@ python-docx
 numpy==1.26.4
 ruamel.yaml
 pyyaml
+watchdog
 
 openai>=1.0.0
 huggingface-hub==0.10.0
