@@ -1535,28 +1535,27 @@ class MessageHandler:
             self.set_replying_status(True)
             
             try:
-                # 将图片内容添加到服务中进行识别
-                def callback(recognition_result):
-                    try:
-                        # 将识别结果作为普通消息处理
-                        if recognition_result:
-                            logger.info(f"图片识别结果: {recognition_result[:100]}...")
-                            # 构建消息格式
-                            formatted_content = f"[{current_time}] ta私聊对你说：{recognition_result}"
-                            # 调用API处理识别后的文本
-                            response = self.get_api_response(formatted_content, who)
+                # #将图片内容添加到服务中进行识别
+                #def callback(recognition_result):
+                #    try:
+                #        # 将识别结果作为普通消息处理
+                #        if recognition_result:
+                #           logger.info(f"图片识别结果: {recognition_result[:100]}...")
+                #            # 构建消息格式
+                #            formatted_content = f"[{current_time}] ta私聊对你说：{recognition_result}"
+                #            # 调用API处理识别后的文本
+                #            response = self.get_api_response(formatted_content, who)
                             
-                            # 发送回复
-                            if response and not self.is_debug:
-                                # 分割并发送消息
-                                split_messages = self._split_message_for_sending(response)
-                                self._send_split_messages(split_messages, who)
-                    except Exception as e:
-                        logger.error(f"处理图片识别回调时出错: {str(e)}")
+                #            # 发送回复
+                #           if response and not self.is_debug:
+                #                # 分割并发送消息
+                #                split_messages = self._split_message_for_sending(response)
+                #                self._send_split_messages(split_messages, who)
+                #    except Exception as e:
+                #        logger.error(f"处理图片识别回调时出错: {str(e)}")
                 
-                # 使用图像识别服务进行异步识别
                 if hasattr(self, 'image_recognition_service') and self.image_recognition_service:
-                    result = self.image_recognition_service.recognize_image(image_path, False, callback)
+                    result = self.image_recognition_service._recognize_image_impl(image_path, False)
                     logger.info(f"图片识别请求已添加到队列: {result}")
                     return result
                 else:
