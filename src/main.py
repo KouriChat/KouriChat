@@ -636,7 +636,7 @@ class ChatBot:
 
             if img_path:
                 logger.info(f"开始处理图片/表情 - 路径: {img_path}, 是否表情: {is_emoji}")
-                recognized_text = self.moonshot_ai.recognize_image(img_path, is_emoji)
+                recognized_text = self.moonshot_ai._recognize_image_impl(img_path, is_emoji)
                 logger.info(f"图片/表情识别结果: {recognized_text}")
                 content = recognized_text if content is None else f"{content} {recognized_text}"
                 is_image_recognition = True
