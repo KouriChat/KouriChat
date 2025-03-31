@@ -4470,52 +4470,31 @@
             }
         }
 
-        function showSaveNotification ( message, type = 'success', duration = 3000 )
+        function showSaveNotification ( message, type = 'success' )
         {
             const notification = document.getElementById( 'saveNotification' );
             const messageElement = document.getElementById( 'saveNotificationMessage' );
 
             // 移除现有的背景色类
-            notification.classList.remove( 'bg-success', 'bg-danger', 'bg-info', 'bg-warning' );
+            notification.classList.remove( 'bg-success', 'bg-danger' );
 
             // 根据类型设置样式
-            switch ( type )
+            if ( type === 'success' )
             {
-                case 'success':
-                    notification.classList.add( 'bg-success' );
-                    break;
-                case 'error':
-                    notification.classList.add( 'bg-danger' );
-                    break;
-                case 'info':
-                    notification.classList.add( 'bg-info' );
-                    break;
-                case 'warning':
-                    notification.classList.add( 'bg-warning' );
-                    break;
-                default:
-                    notification.classList.add( 'bg-success' );
+                notification.classList.add( 'bg-success' );
+            } else
+            {
+                notification.classList.add( 'bg-danger' );
             }
 
             messageElement.textContent = message;
 
-            // 配置自动隐藏，如果duration为负数，则不自动隐藏
-            const toastOptions = {
+            const toast = new bootstrap.Toast( notification, {
                 animation: true,
-                autohide: duration > 0,
-            };
-            
-            // 只有当启用自动隐藏时，才设置延迟时间
-            if ( duration > 0 )
-            {
-                toastOptions.delay = duration;
-            }
-            
-            const toast = new bootstrap.Toast( notification, toastOptions );
+                autohide: true,
+                delay: 3000
+            } );
             toast.show();
-            
-            // 返回toast对象，以便调用者可以手动控制(如close方法)
-            return toast;
         }
 
         // 修改显示添加任务模态框时的处理
@@ -6506,111 +6485,37 @@
         
         // 导出配置函数
         function exportConfig() {
-            // 显示加载状态
-            const loadingToast = showSaveNotification('正在准备配置文件...', 'info', -1);
-            
-            try {
-                // 对于直接下载，创建一个隐藏的iframe
-                const downloadFrame = document.createElement('iframe');
-                downloadFrame.style.display = 'none';
-                document.body.appendChild(downloadFrame);
-                
-                // 设置iframe的src为下载URL
-                downloadFrame.src = '/download_config';
-                
-                // 监听iframe加载完成事件
-                downloadFrame.onload = function() {
-                    // 关闭加载提示
-                    if (loadingToast && typeof loadingToast.close === 'function') {
-                        loadingToast.close();
+            // 获取当前所有配置数据
+            fetch('/get_config')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.config) {
+                        // 创建配置数据的Blob对象
+                        const configData = JSON.stringify(data.config, null, 2);
+                        const blob = new Blob([configData], { type: 'application/json' });
+                        
+                        // 创建下载链接
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = URL.createObjectURL(blob);
+                        downloadLink.download = `kourichat_config_${new Date().toISOString().slice(0,10)}.json`;
+                        
+                        // 添加到文档并触发点击
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        
+                        // 清理
+                        document.body.removeChild(downloadLink);
+                        URL.revokeObjectURL(downloadLink.href);
+                        
+                        showSaveNotification('配置导出成功！', 'success');
+                    } else {
+                        showSaveNotification('配置导出失败: ' + (data.message || '未知错误'), 'error');
                     }
-                    
-                    // 显示成功消息
-                    showSaveNotification('配置文件下载已开始', 'success');
-                    
-                    // 延迟移除iframe
-                    setTimeout(() => {
-                        document.body.removeChild(downloadFrame);
-                    }, 2000);
-                };
-                
-                // 处理下载错误
-                downloadFrame.onerror = function() {
-                    // 关闭加载提示
-                    if (loadingToast && typeof loadingToast.close === 'function') {
-                        loadingToast.close();
-                    }
-                    
-                    document.body.removeChild(downloadFrame);
-                    showSaveNotification('配置文件下载失败，请稍后重试', 'error');
-                    
-                    // 使用备用方法
-                    backupExportMethod();
-                };
-            } catch (error) {
-                // 关闭加载提示
-                if (loadingToast && typeof loadingToast.close === 'function') {
-                    loadingToast.close();
-                }
-                
-                console.error('使用iframe导出配置失败:', error);
-                showSaveNotification('尝试备用下载方式...', 'info');
-                
-                // 使用备用方法
-                backupExportMethod();
-            }
-        }
-        
-        // 备用导出方法
-        function backupExportMethod() {
-            const backupLoadingToast = showSaveNotification('正在使用备用方式下载...', 'info', -1);
-            
-            // 使用fetch API下载
-            fetch('/download_config', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/yaml,application/x-yaml,text/plain'
-                }
-            })
-            .then(response => {
-                // 关闭加载提示
-                if (backupLoadingToast && typeof backupLoadingToast.close === 'function') {
-                    backupLoadingToast.close();
-                }
-                
-                if (!response.ok) {
-                    console.error('服务器响应错误:', response.status, response.statusText);
-                    throw new Error('下载失败: ' + response.status);
-                }
-                
-                return response.blob();
-            })
-            .then(blob => {
-                // 创建Blob URL
-                const url = window.URL.createObjectURL(new Blob([blob], { type: 'text/yaml' }));
-                
-                // 创建下载链接
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = 'config.yaml';
-                
-                // 添加到文档并触发点击
-                document.body.appendChild(a);
-                a.click();
-                
-                // 清理
-                setTimeout(() => {
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                }, 100);
-                
-                showSaveNotification('配置导出成功！', 'success');
-            })
-            .catch(error => {
-                console.error('备用导出方法失败:', error);
-                showSaveNotification('导出配置失败: ' + error, 'error');
-            });
+                })
+                .catch(error => {
+                    console.error('导出配置失败:', error);
+                    showSaveNotification('导出配置失败: ' + error, 'error');
+                });
         }
         
         // 导入配置函数
@@ -6618,7 +6523,7 @@
             // 创建文件输入元素
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
-            fileInput.accept = '.yaml,.yml';
+            fileInput.accept = '.json';
             fileInput.style.display = 'none';
             
             // 添加到文档
@@ -6631,68 +6536,25 @@
                     return;
                 }
                 
-                // 验证文件类型
-                if (!file.name.endsWith('.yaml') && !file.name.endsWith('.yml')) {
-                    showSaveNotification('请选择YAML文件（.yaml或.yml）', 'error');
-                    document.body.removeChild(fileInput);
-                    return;
-                }
-                
-                // 确认导入
-                if (confirm(`确定要导入配置文件"${file.name}"吗？导入后将直接覆盖当前配置，此操作不可撤销。\n\n注意：请确保导入的是有效的YAML格式配置文件。`)) {
-                    // 显示加载状态
-                    const loadingToast = showSaveNotification('正在上传配置文件...', 'info', -1);
-                    
-                    // 创建FormData对象
-                    const formData = new FormData();
-                    formData.append('config_file', file);
-                    
-                    // 发送请求
-                    fetch('/upload_config', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => {
-                        // 先检查响应状态
-                        if (!response.ok) {
-                            console.error('服务器响应错误:', response.status, response.statusText);
-                            throw new Error('服务器响应错误: ' + response.status);
-                        }
-                        return response.text().then(text => {
-                            // 尝试解析为JSON，如果失败则直接返回文本
-                            try {
-                                return JSON.parse(text);
-                            } catch (e) {
-                                console.error('解析响应JSON失败:', e, '原始响应:', text);
-                                return { status: 'error', message: '服务器返回了无效的响应' };
-                            }
-                        });
-                    })
-                    .then(data => {
-                        // 关闭加载提示
-                        if (loadingToast && typeof loadingToast.close === 'function') {
-                            loadingToast.close();
-                        }
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        // 解析配置文件
+                        const importedConfig = JSON.parse(e.target.result);
                         
-                        if (data.status === 'success') {
-                            showSaveNotification('配置文件上传成功！即将刷新页面...', 'success');
-                            // 直接刷新页面以应用新配置
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 1500);
-                        } else {
-                            showSaveNotification('导入配置失败: ' + (data.message || '未知错误'), 'error');
+                        // 确认导入
+                        if (confirm('确定要导入此配置文件吗？导入后将覆盖当前配置，但需要点击保存按钮才会生效。')) {
+                            // 将导入的配置应用到表单
+                            applyImportedConfig(importedConfig);
+                            showSaveNotification('配置已导入，请点击保存按钮保存更改', 'success');
                         }
-                    })
-                    .catch(error => {
-                        // 关闭加载提示
-                        if (loadingToast && typeof loadingToast.close === 'function') {
-                            loadingToast.close();
-                        }
-                        console.error('导入配置失败:', error);
-                        showSaveNotification('导入配置失败: ' + error, 'error');
-                    });
-                }
+                    } catch (error) {
+                        console.error('解析导入配置失败:', error);
+                        showSaveNotification('导入配置失败: 无效的配置文件格式', 'error');
+                    }
+                };
+                
+                reader.readAsText(file);
                 
                 // 清理
                 document.body.removeChild(fileInput);
