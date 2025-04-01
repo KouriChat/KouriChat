@@ -505,7 +505,7 @@ class MessageHandler:
                                     context = (
                                         "以下是之前的对话记录：\n\n"
                                         + "\n\n".join(memory_parts)
-                                        + "\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容)\n\n"
+                                        + "\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容，并且回复不要重复！！！)\n\n"
                                     )
                                     logger.info(
                                         f"找到 {len(memory_parts)} 轮历史对话记录"
@@ -531,6 +531,31 @@ class MessageHandler:
                     )
 
                     if ai_response:
+                        # 进行AI回复内容的情感分析并发送表情包
+                        if hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
+                            try:
+                                # 异步处理表情包发送，避免阻塞主消息
+                                def emoji_callback(emoji_path):
+                                    if emoji_path and os.path.exists(emoji_path):
+                                        logger.info(f"发送AI回复情感表情包: {emoji_path}")
+                                        if hasattr(self, 'wx') and self.wx:
+                                            try:
+                                                self.wx.SendFiles(filepath=emoji_path, who=target_user)
+                                                logger.info(f"成功通过wxauto发送表情包文件: {emoji_path}")
+                                            except Exception as e:
+                                                logger.error(f"通过wxauto发送表情包失败: {str(e)}")
+                                        else:
+                                            logger.error("wx实例不可用，无法发送表情包")
+                                
+                                # 针对AI回复进行情感分析并获取表情
+                                self.emoji_handler.get_emotion_emoji(
+                                    ai_response, 
+                                    target_user,
+                                    callback=emoji_callback
+                                )
+                            except Exception as e:
+                                logger.error(f"处理AI回复表情包失败: {str(e)}")
+                        
                         # 将长消息分段发送
                         message_parts = self._split_message_for_sending(ai_response)
                         for part in message_parts["parts"]:
@@ -826,6 +851,31 @@ class MessageHandler:
             response = self.get_api_response(content, username)
 
             if response and not self.is_debug:
+                # 进行AI回复内容的情感分析并发送表情包
+                if hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
+                    try:
+                        # 异步处理表情包发送，避免阻塞主消息
+                        def emoji_callback(emoji_path):
+                            if emoji_path and os.path.exists(emoji_path):
+                                logger.info(f"发送未缓存消息AI回复情感表情包: {emoji_path}")
+                                if hasattr(self, 'wx') and self.wx:
+                                    try:
+                                        self.wx.SendFiles(filepath=emoji_path, who=chat_id)
+                                        logger.info(f"成功通过wxauto发送未缓存消息表情包文件: {emoji_path}")
+                                    except Exception as e:
+                                        logger.error(f"通过wxauto发送未缓存消息表情包失败: {str(e)}")
+                                else:
+                                    logger.error("wx实例不可用，无法发送表情包")
+                        
+                        # 针对AI回复进行情感分析并获取表情
+                        self.emoji_handler.get_emotion_emoji(
+                            response, 
+                            chat_id,
+                            callback=emoji_callback
+                        )
+                    except Exception as e:
+                        logger.error(f"处理AI回复表情包失败: {str(e)}")
+                
                 # 分割消息并发送
                 split_messages = self._split_message_for_sending(response)
                 self._send_split_messages(split_messages, chat_id)
@@ -855,11 +905,25 @@ class MessageHandler:
             "timestamp": timestamp,
             "added_time": current_time,
             "group_id": group_id,
+            "processed": False,  # 添加处理标记，避免重复处理
         }
 
         # 将消息添加到全局处理队列
         with self.global_message_queue_lock:
-            self.global_message_queue.append(message_obj)
+            # 检查是否已存在相同消息，避免重复添加
+            is_duplicate = False
+            for existing_msg in self.global_message_queue:
+                if (existing_msg.get("group_id") == group_id and 
+                    existing_msg.get("timestamp") == timestamp and
+                    existing_msg.get("username") == username):
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                self.global_message_queue.append(message_obj)
+                logger.info(f"消息已添加到全局队列: 群: {group_id}, 发送者: {sender_name}")
+            else:
+                logger.warning(f"检测到重复消息，跳过添加到队列: 群: {group_id}, 发送者: {sender_name}")
 
             # 如果没有正在处理的队列，启动处理
             if not self.is_processing_queue:
@@ -875,16 +939,19 @@ class MessageHandler:
                 self.queue_process_timer.daemon = True
                 self.queue_process_timer.start()
 
-        # 同时保持原有的群聊缓存机制作为备份
-        if group_id not in self.group_at_cache:
-            self.group_at_cache[group_id] = []
+        # 同时保持原有的群聊缓存机制作为备份，但仅在使用旧处理方式的兼容模式时使用
+        # 新版本完全依赖全局队列处理，不再使用群组缓存
+        if not hasattr(self, "use_global_queue_only"):
+            self.use_global_queue_only = True  # 默认使用全局队列模式
+            
+        if not self.use_global_queue_only:
+            if group_id not in self.group_at_cache:
+                self.group_at_cache[group_id] = []
+            # 添加到群聊@消息缓存
+            self.group_at_cache[group_id].append(message_obj)
+            logger.info(f"消息已添加到群组缓存(兼容模式): 群: {group_id}, 发送者: {sender_name}")
 
-        # 添加到群聊@消息缓存
-        self.group_at_cache[group_id].append(message_obj)
-
-        logger.info(
-            f"缓存群聊@消息: 群: {group_id}, 发送者: {sender_name}, 已添加到全局队列"
-        )
+        logger.info(f"缓存群聊@消息完成: 群: {group_id}, 发送者: {sender_name}")
         return None
 
     def _process_global_message_queue(self):
@@ -896,7 +963,24 @@ class MessageHandler:
                     self.is_processing_queue = False
                     return
 
-                current_message = self.global_message_queue.pop(0)
+                # 获取队列中第一条未处理的消息
+                current_message = None
+                for idx, msg in enumerate(self.global_message_queue):
+                    if not msg.get("processed", False):
+                        current_message = msg
+                        # 标记为已处理
+                        self.global_message_queue[idx]["processed"] = True
+                        break
+                
+                # 如果所有消息都已处理，清空队列并返回
+                if not current_message:
+                    self.global_message_queue.clear()
+                    self.is_processing_queue = False
+                    return
+                
+                # 如果剩余的都是已处理的消息，清空队列
+                if all(msg.get("processed", False) for msg in self.global_message_queue):
+                    self.global_message_queue.clear()
 
             # 处理当前消息
             group_id = current_message["group_id"]
@@ -915,7 +999,18 @@ class MessageHandler:
 
             # 处理完成后，检查队列中是否还有消息
             with self.global_message_queue_lock:
-                if self.global_message_queue:
+                # 移除已处理的消息
+                self.global_message_queue = [
+                    msg for msg in self.global_message_queue 
+                    if not (msg.get("group_id") == current_message["group_id"] and 
+                           msg.get("timestamp") == current_message["timestamp"] and
+                           msg.get("username") == current_message["username"])
+                ]
+                
+                # 如果还有未处理的消息，检查并继续处理
+                has_unprocessed = any(not msg.get("processed", False) for msg in self.global_message_queue)
+                
+                if has_unprocessed:
                     # 如果还有消息，设置定时器处理下一条
                     # 使用较短的延迟，但仍然保持一定间隔，避免消息发送过快
                     self.queue_process_timer = threading.Timer(
@@ -924,8 +1019,9 @@ class MessageHandler:
                     self.queue_process_timer.daemon = True
                     self.queue_process_timer.start()
                 else:
-                    # 如果没有更多消息，重置处理状态
+                    # 如果没有更多消息，重置处理状态并清空队列
                     self.is_processing_queue = False
+                    self.global_message_queue.clear()
 
         except Exception as e:
             logger.error(f"处理全局消息队列失败: {str(e)}")
@@ -936,6 +1032,11 @@ class MessageHandler:
     def _process_cached_group_at_messages(self, group_id: str):
         """处理缓存的群聊@消息 - 现在为兼容保留，实际处理由全局队列处理器完成"""
         try:
+            # 如果使用全局队列模式，则不再使用此方法处理消息
+            if hasattr(self, "use_global_queue_only") and self.use_global_queue_only:
+                logger.info(f"使用全局队列模式，跳过单独处理群 {group_id} 的缓存消息")
+                return None
+                
             # 检查全局队列处理是否正在进行
             with self.global_message_queue_lock:
                 if self.is_processing_queue:
@@ -946,22 +1047,42 @@ class MessageHandler:
 
                 # 如果全局队列未在处理，但该群组有缓存消息，则添加到全局队列
                 if group_id in self.group_at_cache and self.group_at_cache[group_id]:
+                    # 检查每条消息，避免重复添加
+                    added_count = 0
                     for msg in self.group_at_cache[group_id]:
-                        self.global_message_queue.append(msg)
+                        # 检查是否已经在全局队列中
+                        is_duplicate = False
+                        for existing_msg in self.global_message_queue:
+                            if (existing_msg.get("group_id") == msg.get("group_id") and 
+                                existing_msg.get("timestamp") == msg.get("timestamp") and
+                                existing_msg.get("username") == msg.get("username")):
+                                is_duplicate = True
+                                break
+                        
+                        # 只添加不在全局队列中的消息
+                        if not is_duplicate:
+                            # 添加处理标记
+                            msg["processed"] = False
+                            self.global_message_queue.append(msg)
+                            added_count += 1
 
                     # 清空该群组的缓存
                     self.group_at_cache[group_id] = []
 
-                    # 启动全局队列处理
-                    if not self.is_processing_queue:
-                        self.is_processing_queue = True
-                        self.queue_process_timer = threading.Timer(
-                            0.5, self._process_global_message_queue
-                        )
-                        self.queue_process_timer.daemon = True
-                        self.queue_process_timer.start()
-
-                    logger.info(f"已将群 {group_id} 的缓存消息添加到全局队列")
+                    if added_count > 0:
+                        logger.info(f"已将群 {group_id} 的 {added_count} 条缓存消息添加到全局队列")
+                        
+                        # 启动全局队列处理
+                        if not self.is_processing_queue:
+                            self.is_processing_queue = True
+                            self.queue_process_timer = threading.Timer(
+                                0.5, self._process_global_message_queue
+                            )
+                            self.queue_process_timer.daemon = True
+                            self.queue_process_timer.start()
+                    else:
+                        logger.info(f"群 {group_id} 的所有缓存消息都已在全局队列中，无需添加")
+                    
                     return None
 
             # 如果该群组没有缓存消息，直接返回
@@ -1203,6 +1324,31 @@ class MessageHandler:
                 # 清理回复内容
                 reply = self._clean_ai_response(reply)
 
+                # 进行AI回复内容的情感分析并发送表情包
+                if hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
+                    try:
+                        # 异步处理表情包发送，避免阻塞主消息
+                        def emoji_callback(emoji_path):
+                            if emoji_path and os.path.exists(emoji_path):
+                                logger.info(f"发送@群聊消息AI回复情感表情包: {emoji_path}")
+                                if hasattr(self, 'wx') and self.wx:
+                                    try:
+                                        self.wx.SendFiles(filepath=emoji_path, who=group_id)
+                                        logger.info(f"成功通过wxauto发送@群聊消息表情包文件: {emoji_path}")
+                                    except Exception as e:
+                                        logger.error(f"通过wxauto发送@群聊消息表情包失败: {str(e)}")
+                                else:
+                                    logger.error("wx实例不可用，无法发送表情包")
+                        
+                        # 针对AI回复进行情感分析并获取表情
+                        self.emoji_handler.get_emotion_emoji(
+                            reply, 
+                            group_id,
+                            callback=emoji_callback
+                        )
+                    except Exception as e:
+                        logger.error(f"处理AI回复表情包失败: {str(e)}")
+
                 # 在回复中显式提及发送者，确保回复的是正确的人（当前发消息的人）
                 if not reply.startswith(f"@{sender_name}"):
                     reply = f"@{sender_name} {reply}"
@@ -1285,14 +1431,30 @@ class MessageHandler:
         # 取消现有定时器
         if username in self.message_timer and self.message_timer[username]:
             self.message_timer[username].cancel()
+            self.message_timer[username] = None
 
         # 添加到消息缓存
         if username not in self.message_cache:
             self.message_cache[username] = []
+            
+        # 检查最近是否已经处理过相同内容的消息，避免重复处理
+        cleaned_content = self._clean_message_content(content)
+        for msg in self.message_cache[username]:
+            msg_content = self._clean_message_content(msg["content"])
+            # 如果内容一致且时间非常接近（3秒内）
+            if (msg_content == cleaned_content and 
+                current_time - msg["timestamp"] < 3.0):
+                logger.warning(f"检测到3秒内重复消息，跳过缓存: {cleaned_content[:30]}...")
+                # 仍然设置一个短时间的定时器，确保处理最终会被触发
+                timer = threading.Timer(
+                    1.0, self._process_cached_messages, args=[username]
+                )
+                timer.daemon = True
+                timer.start()
+                self.message_timer[username] = timer
+                return None
 
-        # 提取实际内容
-        actual_content = self._clean_message_content(content)
-
+        # 添加新消息到缓存
         self.message_cache[username].append(
             {
                 "content": content,
@@ -1316,7 +1478,7 @@ class MessageHandler:
         self.message_timer[username] = timer
 
         # 简化日志，只显示缓存内容和等待时间
-        logger.info(f"缓存消息: {actual_content} | 等待时间: {wait_time:.1f}秒")
+        logger.info(f"缓存消息: {cleaned_content} | 等待时间: {wait_time:.1f}秒")
 
         return None
 
@@ -1379,7 +1541,7 @@ class MessageHandler:
             merged_content = f"[{first_timestamp}]ta 私聊对你说：{content_text}"
 
             if context:
-                merged_content = f"{context}\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容)\n\n{merged_content}"
+                merged_content = f"{context}\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容，并且回复不要重复！！！)\n\n{merged_content}"
 
             # 处理合并后的消息
             last_message = messages[-1]
@@ -1623,7 +1785,7 @@ class MessageHandler:
             r"\n\n请注意保持自然的回复长度，与用户消息风格协调。",
             r"\n\n请保持简洁明了的回复。",
             # 其他系统提示词
-            r"\(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容\)",
+            r"\(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容，并且回复不要重复！！！\)",
             r"请你回应用户的结束语",
         ]
 
@@ -1927,7 +2089,7 @@ class MessageHandler:
                 cleaned = cleaned.replace(match.group(0), placeholder)
         
         # 3. 清理需要过滤的标点符号（普通标点）
-        filter_punctuation = "、—_-+=*&#@~"
+        filter_punctuation = "、_-+=*&#@~"
         
         # 清理分隔符$前的标点
         result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*\$', '$', cleaned)
@@ -1967,7 +2129,7 @@ class MessageHandler:
             return ""
             
         # 定义需要过滤的标点符号（不包括括号和引号等成对符号）
-        punct_chars = "、~—_-+=*&#@"
+        punct_chars = "、~_-+=*&#@"
         
         # 首先清理所有@用户名（包括其后的空格和周围的标点符号）
         # 1. 查找所有@开头的用户名及其后的特殊空格
@@ -2242,6 +2404,31 @@ class MessageHandler:
             # 清理API回复，移除系统标记和提示词
             cleaned_response = self._clean_ai_response(deepseek_response)
 
+            # 进行AI回复内容的情感分析并发送表情包
+            if hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
+                try:
+                    # 异步处理表情包发送，避免阻塞主消息
+                    def emoji_callback(emoji_path):
+                        if emoji_path and os.path.exists(emoji_path):
+                            logger.info(f"发送私聊AI回复情感表情包: {emoji_path}")
+                            if hasattr(self, 'wx') and self.wx:
+                                try:
+                                    self.wx.SendFiles(filepath=emoji_path, who=user_id)
+                                    logger.info(f"成功通过wxauto发送私聊表情包文件: {emoji_path}")
+                                except Exception as e:
+                                    logger.error(f"通过wxauto发送私聊表情包失败: {str(e)}")
+                            else:
+                                logger.error("wx实例不可用，无法发送表情包")
+                    
+                    # 针对AI回复进行情感分析并获取表情
+                    self.emoji_handler.get_emotion_emoji(
+                        cleaned_response, 
+                        user_id,
+                        callback=emoji_callback
+                    )
+                except Exception as e:
+                    logger.error(f"处理AI回复表情包失败: {str(e)}")
+
             # 处理回复，添加分隔符并清理标点
             processed = self._split_message_for_sending(cleaned_response)
 
@@ -2484,6 +2671,31 @@ class MessageHandler:
 
             # 发送回复消息
             if response and not self.is_debug:
+                # 进行AI回复内容的情感分析并发送表情包
+                if hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
+                    try:
+                        # 异步处理表情包发送，避免阻塞主消息
+                        def emoji_callback(emoji_path):
+                            if emoji_path and os.path.exists(emoji_path):
+                                logger.info(f"发送文本处理AI回复情感表情包: {emoji_path}")
+                                if hasattr(self, 'wx') and self.wx:
+                                    try:
+                                        self.wx.SendFiles(filepath=emoji_path, who=who)
+                                        logger.info(f"成功通过wxauto发送文本处理表情包文件: {emoji_path}")
+                                    except Exception as e:
+                                        logger.error(f"通过wxauto发送文本处理表情包失败: {str(e)}")
+                                else:
+                                    logger.error("wx实例不可用，无法发送表情包")
+                        
+                        # 针对AI回复进行情感分析并获取表情
+                        self.emoji_handler.get_emotion_emoji(
+                            response, 
+                            who,
+                            callback=emoji_callback
+                        )
+                    except Exception as e:
+                        logger.error(f"处理AI回复表情包失败: {str(e)}")
+                
                 # 分割并发送消息
                 split_messages = self._split_message_for_sending(response)
                 self._send_split_messages(split_messages, who)

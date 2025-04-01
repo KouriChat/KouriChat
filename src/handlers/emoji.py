@@ -21,11 +21,11 @@ from src.webui.routes.avatar import AVATARS_DIR
 from src.handlers.file import FileHandler
 
 # 基础表情包触发概率配置（巧可酱快来修改）
-EMOJI_TRIGGER_RATE = 0.3  # 基础触发概率30%
-TRIGGER_RATE_INCREMENT = 0.15  # 未触发时概率增加量
-MAX_TRIGGER_RATE = 0.8  # 最大触发概率
+EMOJI_TRIGGER_RATE = 0.6  # 基础触发概率50%
+TRIGGER_RATE_INCREMENT = 0.2  # 未触发时概率增加量
+MAX_TRIGGER_RATE = 1  # 最大触发概率
 LRU_CACHE_SIZE = 3  # 每个用户的LRU缓存大小
-PREFERENCE_WEIGHT = 0.3  # 偏好学习权重
+PREFERENCE_WEIGHT = 0.2  # 偏好学习权重
 
 # 修改logger获取方式，确保与main模块一致
 logger = logging.getLogger("main")
