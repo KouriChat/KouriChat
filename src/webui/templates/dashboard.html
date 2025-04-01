@@ -439,26 +439,38 @@
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 0.5rem;
-            overflow: hidden;
+            padding: 0.75rem;
+            margin-top: 1rem;
         }
 
-        .console-input-area .input-group {
-            background: transparent;
+        .console-input-container {
+            display: flex;
+            align-items: center;
+            width: 100%;
         }
 
-        .console-input-area .form-control {
-            background: transparent;
+        #consoleInput {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            background-color: rgba(255, 255, 255, 0.05);
             color: var(--text-color);
+            border: 1px solid var(--card-border);
+            border-radius: 0.25rem 0 0 0.25rem;
             font-family: 'Consolas', monospace;
         }
 
-        .console-input-area .form-control:focus {
-            box-shadow: none;
-            background: transparent;
+        #sendCommandBtn {
+            padding: 0.5rem 1rem;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 0 0.25rem 0.25rem 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
 
-        .console-input-area .input-group-text {
-            color: var(--text-color);
+        #sendCommandBtn:hover {
+            background-color: var(--secondary-color);
         }
 
         /* 命令输出样式 */
@@ -619,11 +631,11 @@
         #consoleInput {
             flex: 1;
             padding: 10px;
-            background-color: var(--input-bg);
+            background-color: var(--input-bg, rgba(255, 255, 255, 0.05));
             color: var(--text-color);
             border: 1px solid var(--card-border);
             border-radius: 4px 0 0 4px;
-            font-family: var(--monospace-font);
+            font-family: var(--monospace-font, 'Consolas', monospace);
         }
 
         #sendCommandBtn {
@@ -637,7 +649,7 @@
         }
 
         #sendCommandBtn:hover {
-            background-color: var(--primary-hover);
+            background-color: var(--secondary-color);
             transform: translateX(2px);
         }
 
@@ -1053,17 +1065,15 @@
                         <div class="logs"></div>
                     </div>
                     <!-- 添加控制台输入区域 -->
-                    <div class="console-input-area mt-3">
+                    <div class="console-input-area">
                         <div class="console-input-container">
                             <input type="text" 
-                                   class="form-control" 
                                    id="consoleInput" 
                                    placeholder="输入指令并按Enter发送..."
                                    onkeydown="handleConsoleInput(event)">
-                            <button class="btn" 
-                                    id="sendCommandBtn" 
+                            <button id="sendCommandBtn" 
                                     onclick="sendCommand()">
-                                <i class="bi bi-send"></i> 发送
+                                <i class="bi bi-send me-1"></i>发送
                             </button>
                         </div>
                     </div>
