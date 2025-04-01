@@ -2872,6 +2872,21 @@ def get_config():
             else:
                 config_data_response['RAG_IS_RERANK'] = bool(rerank_value)
         
+        # 处理RAG_EMBEDDING_MODEL
+        if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
+            'settings' in config_data['categories']['rag_settings'] and
+            'embedding_model' in config_data['categories']['rag_settings']['settings']):
+            embedding_value = config_data['categories']['rag_settings']['settings']['embedding_model'].get('value', '')
+            config_data_response['RAG_EMBEDDING_MODEL'] = embedding_value
+            logger.info(f"从配置文件读取到的嵌入模型值: {embedding_value}")
+            
+        # 处理RAG_TOP_K
+        if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
+            'settings' in config_data['categories']['rag_settings'] and
+            'top_k' in config_data['categories']['rag_settings']['settings']):
+            top_k_value = config_data['categories']['rag_settings']['settings']['top_k'].get('value', 5)
+            config_data_response['RAG_TOP_K'] = top_k_value
+            
         # 其他配置按需添加...
         
         return jsonify({
