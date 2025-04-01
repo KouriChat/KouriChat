@@ -562,11 +562,14 @@ class MessageHandler:
                                         target_user,  # 群聊ID
                                         self.robot_name,  # 发送者为机器人
                                         system_instruction,  # 保存系统指令作为输入
-                                        message_parts.get(
-                                            "memory_content", ai_response
-                                        ),  # 使用处理后的内容
+                                        is_at=True  # 标记为系统消息，使用is_at参数
+                                    )
+                                    
+                                    # 更新助手回复
+                                    self.group_chat_memory.update_assistant_response(
+                                        target_user,
                                         timestamp,
-                                        is_system=True,  # 标记为系统消息
+                                        message_parts.get("memory_content", ai_response)
                                     )
                                     logger.info(
                                         f"成功记录主动消息到群聊记忆: {target_user}"
@@ -1699,81 +1702,102 @@ class MessageHandler:
         # 1. 先移除文本中的引号，避免引号包裹非动作文本
         text = text.replace('"', '').replace('"', '').replace('"', '')
         
-        # 2. 保护已经存在的括号内容
-        protected_parts = {}
-        
-        # 匹配所有类型的括号及其内容
-        bracket_pattern = r'[\(\[（【][^\(\[（【\)\]）】]*[\)\]）】]'
-        brackets = list(re.finditer(bracket_pattern, text))
-        
-        # 保护已有的括号内容
-        for i, match in enumerate(brackets):
-            placeholder = f"__PROTECTED_{i}__"
-            protected_parts[placeholder] = match.group()
-            text = text.replace(match.group(), placeholder)
-        
-        # 3. 保护颜文字 - 使用更宽松的匹配规则
-        # 定义常用颜文字字符集
-        emoticon_chars_set = set(
-            '（()）~～‿⁀∀︿⌒▽△□◇○●ˇ＾∇＿゜◕ω・ノ丿╯╰つ⊂＼／┌┐┘└°△▲▽▼◇◆○●◎■□▢▣▤▥▦▧▨▩♡♥ღ☆★✡⁂✧✦❈❇✴✺✹✸✷✶✵✳✳✲✱✰✯✮✭✬✫✪✩✨✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁✀✿✾✽✼✻✺✹✸✷✶✵✴✳✲✱✰✯✮✭✬✫✪✩✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁❤♪♫♬♩♭♮♯°○◎●◯◐◑◒◓◔◕◖◗¤☼☀☁☂☃☄★☆☎☏⊙◎☺☻☯☭♠♣♧♡♥❤❥❣♂♀☿❀❁❃❈❉❊❋❖☠☢☣☤☥☦☧☨☩☪☫☬☭☮☯☸☹☺☻☼☽☾☿♀♁♂♃♄♆♇♈♉♊♋♌♍♎♏♐♑♒♓♔♕♖♗♘♙♚♛♜♝♞♟♠♡♢♣♤♥♦♧♨♩♪♫♬♭♮♯♰♱♲♳♴♵♶♷♸♹♺♻♼♽♾♿⚀⚁⚂⚃⚄⚆⚇⚈⚉⚊⚋⚌⚍⚎⚏⚐⚑⚒⚓⚔⚕⚖⚗⚘⚙⚚⚛⚜⚝⚞⚟*^_^')
-        
-        emoji_patterns = [
-            # 括号类型的颜文字
-            r'\([\w\W]{1,10}?\)',  # 匹配较短的括号内容
-            r'（[\w\W]{1,10}?）',  # 中文括号
-            
-            # 符号组合类型
-            r'[＼\\\/\*\-\+\<\>\^\$\%\!\?\@\#\&\|\{\}\=\;\:\,\.]{2,}',  # 常见符号组合
-            
-            # 常见表情符号
-            r'[◕◑◓◒◐•‿\^▽\◡\⌒\◠\︶\ω\´\`\﹏\＾\∀\°\◆\□\▽\﹃\△\≧\≦\⊙\→\←\↑\↓\○\◇\♡\❤\♥\♪\✿\★\☆]{1,}',
-            
-            # *号组合
-            r'\*[\w\W]{1,5}?\*'  # 星号强调内容
-        ]
-        
-        for pattern in emoji_patterns:
-            emojis = list(re.finditer(pattern, text))
-            for i, match in enumerate(emojis):
-                # 避免处理过长的内容，可能是动作描写而非颜文字
-                if len(match.group()) <= 15 and not any(p in match.group() for p in protected_parts.values()):
-                    # 检查是否包含足够的表情符号字符
-                    chars_count = sum(1 for c in match.group() if c in emoticon_chars_set)
-                    if chars_count >= 2 or len(match.group()) <= 5:
-                        placeholder = f"__EMOJI_{i}__"
-                        protected_parts[placeholder] = match.group()
-                        text = text.replace(match.group(), placeholder)
-        
-        # 4. 处理分隔符 - 保留原样
+        # 2. 处理分隔符 - 确保分隔符在括号外面
         parts = text.split('$')
-        new_parts = []
         
-        for i, part in enumerate(parts):
+        # 3. 保护已经存在的括号内容
+        protected_parts = {}
+        processed_parts = []
+        
+        for part_index, part in enumerate(parts):
             part = part.strip()
             if not part:  # 跳过空部分
                 continue
                 
-            # 直接添加部分，不添加括号
-            new_parts.append(part)
+            # 匹配所有类型的括号及其内容
+            bracket_pattern = r'[\(\[（【][^\(\[（【\)\]）】]*[\)\]）】]'
+            brackets = list(re.finditer(bracket_pattern, part))
+            
+            # 保护已有的括号内容
+            current_protected_parts = {}
+            for i, match in enumerate(brackets):
+                placeholder = f"__PROTECTED_{part_index}_{i}__"
+                current_protected_parts[placeholder] = match.group()
+                part = part.replace(match.group(), placeholder)
+            
+            # 3.1 保护颜文字 - 使用更宽松的匹配规则
+            # 定义常用颜文字字符集
+            emoticon_chars_set = set(
+                '（()）~～‿⁀∀︿⌒▽△□◇○●ˇ＾∇＿゜◕ω・ノ丿╯╰つ⊂＼／┌┐┘└°△▲▽▼◇◆○●◎■□▢▣▤▥▦▧▨▩♡♥ღ☆★✡⁂✧✦❈❇✴✺✹✸✷✶✵✳✳✲✱✰✯✮✭✬✫✪✩✨✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁✀✿✾✽✼✻✺✹✸✷✶✵✴✳✲✱✰✯✮✭✬✫✪✩✧✦✥✤✣✢✡✠✟✞✝✜✛✚✙✘✗✖✕✔✓✒✑✐✏✎✍✌✋✊✉✈✇✆✅✄✃✂✁❤♪♫♬♩♭♮♯°○◎●◯◐◑◒◓◔◕◖◗¤☼☀☁☂☃☄★☆☎☏⊙◎☺☻☯☭♠♣♧♡♥❤❥❣♂♀☿❀❁❃❈❉❊❋❖☠☢☣☤☥☦☧☨☩☪☫☬☭☮☯☸☹☺☻☼☽☾☿♀♁♂♃♄♆♇♈♉♊♋♌♍♎♏♐♑♒♓♔♕♖♗♘♙♚♛♜♝♞♟♠♡♢♣♤♥♦♧♨♩♪♫♬♭♮♯♰♱♲♳♴♵♶♷♸♹♺♻♼♽♾♿⚀⚁⚂⚃⚄⚆⚇⚈⚉⚊⚋⚌⚍⚎⚏⚐⚑⚒⚓⚔⚕⚖⚗⚘⚙⚚⚛⚜⚝⚞⚟*^_^')
+            
+            emoji_patterns = [
+                # 括号类型的颜文字
+                r'\([\w\W]{1,10}?\)',  # 匹配较短的括号内容
+                r'（[\w\W]{1,10}?）',  # 中文括号
+                
+                # 符号组合类型
+                r'[＼\\\/\*\-\+\<\>\^\$\%\!\?\@\#\&\|\{\}\=\;\:\,\.]{2,}',  # 常见符号组合
+                
+                # 常见表情符号
+                r'[◕◑◓◒◐•‿\^▽\◡\⌒\◠\︶\ω\´\`\﹏\＾\∀\°\◆\□\▽\﹃\△\≧\≦\⊙\→\←\↑\↓\○\◇\♡\❤\♥\♪\✿\★\☆]{1,}',
+                
+                # *号组合
+                r'\*[\w\W]{1,5}?\*'  # 星号强调内容
+            ]
+            
+            for pattern in emoji_patterns:
+                emojis = list(re.finditer(pattern, part))
+                for i, match in enumerate(emojis):
+                    # 避免处理过长的内容，可能是动作描写而非颜文字
+                    if len(match.group()) <= 15 and not any(p in match.group() for p in current_protected_parts.values()):
+                        # 检查是否包含足够的表情符号字符
+                        chars_count = sum(1 for c in match.group() if c in emoticon_chars_set)
+                        if chars_count >= 2 or len(match.group()) <= 5:
+                            placeholder = f"__EMOJI_{part_index}_{i}__"
+                            current_protected_parts[placeholder] = match.group()
+                            part = part.replace(match.group(), placeholder)
+                            
+            # 将处理后的部分和它的保护内容存储起来
+            processed_parts.append({
+                "content": part,
+                "protected_parts": current_protected_parts
+            })
+            
+            # 更新全局保护部分
+            protected_parts.update(current_protected_parts)
         
-        # 5. 特殊处理：同时兼容原来的 \ 分隔符
-        if len(new_parts) == 1:  # 如果没有找到 $ 分隔符，尝试处理 \ 分隔符
-            parts = text.split('\\')
-            if len(parts) > 1:  # 确认有实际分隔
-                new_parts = []
-                for i, part in enumerate(parts):
-                    part = part.strip()
-                    if not part:
+        # 4. 特殊处理：如果只有一个部分且没有$分隔符，尝试处理 \ 分隔符
+        if len(processed_parts) == 1:
+            part = processed_parts[0]["content"]
+            slash_parts = part.split('\\')
+            if len(slash_parts) > 1:  # 确认有实际分隔
+                # 重新处理使用\分隔的部分
+                processed_parts = []
+                for slash_idx, slash_part in enumerate(slash_parts):
+                    slash_part = slash_part.strip()
+                    if not slash_part:
                         continue
-                    # 直接添加部分，不添加括号
-                    new_parts.append(part)
+                    
+                    # 为每个部分创建新的保护项
+                    slash_protected_parts = {}
+                    processed_parts.append({
+                        "content": slash_part,
+                        "protected_parts": slash_protected_parts
+                    })
         
-        # 6. 重新组合文本
-        result = "$".join(new_parts)
-        
-        # 7. 恢复所有保护的内容
-        for placeholder, content in protected_parts.items():
-            result = result.replace(placeholder, content)
+        # 5. 重新组合文本，使用$作为分隔符
+        result_parts = []
+        for part_info in processed_parts:
+            part = part_info["content"]
+            
+            # 恢复该部分的保护内容
+            for placeholder, content in part_info["protected_parts"].items():
+                part = part.replace(placeholder, content)
+                
+            result_parts.append(part)
+            
+        # 6. 以$连接各部分，确保分隔符在括号外面
+        result = "$".join(result_parts)
             
         return result
 
@@ -1831,6 +1855,8 @@ class MessageHandler:
         ]  # 添加右方括号关闭列表
         
         protected_marks = {}
+        # 初始化占位符索引
+        placeholder_index = 0
         
         # 保护括号对
         bracket_types = [
@@ -1848,7 +1874,7 @@ class MessageHandler:
         for left, right in bracket_types:
             # 查找所有成对的括号
             pattern = f"{left}(.*?){right}"
-            matches = re.finditer(pattern, text, re.DOTALL)
+            matches = re.finditer(pattern, cleaned, re.DOTALL)
             for match in matches:
                 # 简单保护括号内容，不添加分隔符
                 full_match = match.group(0)
@@ -1856,55 +1882,55 @@ class MessageHandler:
                 placeholder = f"❄️括号保护{placeholder_index}❄️"
                 placeholder_index += 1
                 protected_marks[placeholder] = full_match
-                text = text.replace(full_match, placeholder)
+                cleaned = cleaned.replace(full_match, placeholder)
         
         # 如果文本以括号开头，特殊处理
         for left, _ in bracket_types:
-            if re.match(f"^\\s*{left}", text):
+            if re.match(f"^\\s*{left}", cleaned):
                 pattern = f"^\\s*{left}.*?(?=$|\\$|￥)"
-                match = re.search(pattern, text, re.DOTALL)
+                match = re.search(pattern, cleaned, re.DOTALL)
                 if match:
                     placeholder = f"❄️起始括号{placeholder_index}❄️"
                     placeholder_index += 1
                     protected_marks[placeholder] = match.group(0)
-                    text = text.replace(match.group(0), placeholder)
+                    cleaned = cleaned.replace(match.group(0), placeholder)
         
         # 如果文本以括号结尾，特殊处理
         for _, right in bracket_types:
-            if re.search(f"{right}\\s*$", text):
+            if re.search(f"{right}\\s*$", cleaned):
                 pattern = f"(?<=^|\\$|￥).*?{right}\\s*$"
-                match = re.search(pattern, text, re.DOTALL)
+                match = re.search(pattern, cleaned, re.DOTALL)
                 if match:
                     placeholder = f"❄️结束括号{placeholder_index}❄️"
                     placeholder_index += 1
                     protected_marks[placeholder] = match.group(0)
-                    text = text.replace(match.group(0), placeholder)
+                    cleaned = cleaned.replace(match.group(0), placeholder)
         
         # 2. 标记并保护特定符号
         for char in "!！?？.,，。;；:：":
             # 处理$分隔符前的特殊标点
             pattern = re.escape(char) + r'+\s*\$'
-            matches = re.finditer(pattern, text)
+            matches = re.finditer(pattern, cleaned)
             for match in matches:
                 placeholder = f"❄️标点保护{placeholder_index}❄️"
                 placeholder_index += 1
                 protected_marks[placeholder] = char + '$'
-                text = text.replace(match.group(0), placeholder)
+                cleaned = cleaned.replace(match.group(0), placeholder)
                 
             # 处理￥分隔符前的特殊标点
             pattern = re.escape(char) + r'+\s*￥'
-            matches = re.finditer(pattern, text)
+            matches = re.finditer(pattern, cleaned)
             for match in matches:
                 placeholder = f"❄️标点保护{placeholder_index}❄️"
                 placeholder_index += 1
                 protected_marks[placeholder] = char + '￥'
-                text = text.replace(match.group(0), placeholder)
+                cleaned = cleaned.replace(match.group(0), placeholder)
         
         # 3. 清理需要过滤的标点符号（普通标点）
         filter_punctuation = "、—_-+=*&#@~"
         
         # 清理分隔符$前的标点
-        result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*\$', '$', text)
+        result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*\$', '$', cleaned)
         
         # 清理分隔符$后的标点
         result = re.sub(r'\$\s*[' + re.escape(filter_punctuation) + r']+', '$', result)
