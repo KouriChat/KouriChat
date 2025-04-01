@@ -2196,18 +2196,73 @@ class MessageHandler:
         # 过滤掉可能的占位符和特殊标记
         filtered_content = self._filter_special_markers(content)
         
+        # 保护成对符号内的内容，防止在内部添加分隔符
+        protected_content = filtered_content
+        protected_marks = {}
+        placeholder_index = 0
+        
+        # 保护符号对
+        bracket_types = [
+            (r'\(', r'\)'),   # 小括号
+            (r'\[', r'\]'),   # 中括号
+            (r'\{', r'\}'),   # 大括号
+            (r'（', r'）'),   # 中文小括号
+            (r'【', r'】'),   # 中文中括号
+            (r'「', r'」'),   # 中文书名号
+            (r'『', r'』'),   # 中文书名号
+            (r'《', r'》'),   # 中文角括号
+            (r'“', r'”'),     # 中文双引号
+            (r'‘', r'’'),     # 中文单引号
+            (r'"', r'"'),     # 英文双引号
+            (r'\'', r'\''),   # 英文单引号
+        ]
+        
+        # 保护完整的括号对
+        for left, right in bracket_types:
+            # 查找所有成对的括号
+            pattern = f"{left}(.*?){right}"
+            matches = list(re.finditer(pattern, protected_content, re.DOTALL))
+            # 从后向前替换，避免嵌套问题
+            for match in reversed(matches):
+                full_match = match.group(0)
+                placeholder = f"❄️BRACKET{placeholder_index}❄️"
+                placeholder_index += 1
+                protected_marks[placeholder] = full_match
+                protected_content = protected_content[:match.start()] + placeholder + protected_content[match.end():]
+        
+        # 保护省略号 (中文省略号、连续的点)
+        ellipsis_patterns = [
+            r'……',                 # 中文省略号
+            r'\.{3,}',             # 英文省略号 (至少3个点)
+            r'。{2,}'               # 中文句号省略
+        ]
+        
+        for pattern in ellipsis_patterns:
+            matches = list(re.finditer(pattern, protected_content))
+            # 从后向前替换，避免位置变化
+            for match in reversed(matches):
+                full_match = match.group(0)
+                placeholder = f"❄️ELLIPSIS{placeholder_index}❄️"
+                placeholder_index += 1
+                protected_marks[placeholder] = full_match
+                protected_content = protected_content[:match.start()] + placeholder + protected_content[match.end():]
+        
         # 先将连续的换行符替换为特殊标记
-        filtered_content = re.sub(r'\n{2,}', '###DOUBLE_NEWLINE###', filtered_content)
+        protected_content = re.sub(r'\n{2,}', '###DOUBLE_NEWLINE###', protected_content)
         # 将单个换行符替换为$分隔符
-        filtered_content = filtered_content.replace('\n', '$')
+        protected_content = protected_content.replace('\n', '$')
         # 将特殊标记也转为$分隔符，确保每个句子单独一段
-        filtered_content = filtered_content.replace('###DOUBLE_NEWLINE###', '$')
+        protected_content = protected_content.replace('###DOUBLE_NEWLINE###', '$')
         
         # 首先使用_clean_delimiter_punctuation处理分隔符周围的标点符号
-        cleaned_content = self._clean_delimiter_punctuation(filtered_content)
+        cleaned_content = self._clean_delimiter_punctuation(protected_content)
         
         # 替换连续的多个$为单个$
         content_with_markers = re.sub(r"\${2,}", "$", cleaned_content)
+        
+        # 恢复所有保护的标记
+        for placeholder, original in protected_marks.items():
+            content_with_markers = content_with_markers.replace(placeholder, original)
         
         # 分割消息成不同部分
         dollar_parts = re.split(r"\$", content_with_markers)
@@ -2221,11 +2276,38 @@ class MessageHandler:
             has_emoji = bool(
                 re.search(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F700-\U0001F77F\U0001F780-\U0001F7FF\U0001F800-\U0001F8FF\U0001F900-\U0001F9FF\U0001FA00-\U0001FA6F\U0001FA70-\U0001FAFF]', content_with_markers)
             )
-            # 如果没有表情符号，使用句号等进行二次分割
+            # 如果没有表情符号，使用句号等进行二次分割，但避免分割省略号和成对符号内部
             if not has_emoji:
+                # 重新保护特殊内容
+                protected_content = content_with_markers
+                protected_marks = {}
+                placeholder_index = 0
+                
+                # 再次保护括号对
+                for left, right in bracket_types:
+                    pattern = f"{left}(.*?){right}"
+                    matches = list(re.finditer(pattern, protected_content, re.DOTALL))
+                    for match in reversed(matches):
+                        full_match = match.group(0)
+                        placeholder = f"❄️BRACKET{placeholder_index}❄️"
+                        placeholder_index += 1
+                        protected_marks[placeholder] = full_match
+                        protected_content = protected_content[:match.start()] + placeholder + protected_content[match.end():]
+                
+                # 保护省略号
+                for pattern in ellipsis_patterns:
+                    matches = list(re.finditer(pattern, protected_content))
+                    for match in reversed(matches):
+                        full_match = match.group(0)
+                        placeholder = f"❄️ELLIPSIS{placeholder_index}❄️"
+                        placeholder_index += 1
+                        protected_marks[placeholder] = full_match
+                        protected_content = protected_content[:match.start()] + placeholder + protected_content[match.end():]
+                
                 # 将句号、问号、感叹号等作为分隔点 (但保留这些标点)
                 pattern = r'([。！？\.!?])'
-                parts = re.split(pattern, content_with_markers)
+                parts = re.split(pattern, protected_content)
+                
                 # 重新组合分割后的内容，保留标点符号
                 merged_parts = []
                 for i in range(0, len(parts), 2):
@@ -2233,6 +2315,11 @@ class MessageHandler:
                         merged_parts.append(parts[i] + parts[i+1])
                     else:
                         merged_parts.append(parts[i])
+                
+                # 恢复保护的特殊内容
+                for i, part in enumerate(merged_parts):
+                    for placeholder, original in protected_marks.items():
+                        merged_parts[i] = merged_parts[i].replace(placeholder, original)
                 
                 # 过滤掉空部分
                 merged_parts = [part for part in merged_parts if part.strip()]
