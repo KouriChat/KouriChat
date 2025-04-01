@@ -54,98 +54,41 @@
     "models": {
         "kourichat": [
             {
-                "id": "bge-m3",
-                "name": "BGE M3",
+                "id": "kourichat-v3",
+                "name": "KouriChat V3",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-                "id": "bge-reranker-v2-m3",
-                "name": "BGE Reranker V2 M3",
+                "id": "kourichat-r1",
+                "name": "KouriChat R1",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "claude-3-7-sonnet-latest",
-                "name": "Claude 3.7 Sonnet",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "claude-3-7-thinking",
-                "name": "Claude 3.7 Thinking",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "deepseek-chat",
-                "name": "DeepSeek Chat",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "deepseek-r1",
-                "name": "DeepSeek R1",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "deepseek-r1-a800x128",
-                "name": "DeepSeek R1 A800x128",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "deepseek-reasoner",
-                "name": "DeepSeek Reasoner",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
                 "id": "deepseek-v3",
                 "name": "DeepSeek V3",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-                "id": "gemini-1.5-pro",
-                "name": "Gemini 1.5 Pro",
+                "id": "deepseek-r1",
+                "name": "DeepSeek R1",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-                "id": "gemini-2.0-flash",
-                "name": "Gemini 2.0 Flash",
+                "id": "grok-2-latest",
+                "name": "Grok 2代模型",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-                "id": "gemini-2.0-pro",
-                "name": "Gemini 2.0 Pro",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "gemma3",
-                "name": "Gemma 3",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-
                 "id": "grok-3-latest",
                 "name": "Grok 3代模型(网页逆向)",
                 "status": "active",
@@ -162,140 +105,86 @@
             {
                 "id": "gemini-2.0-flash",
                 "name": "Gemini 2.0 Flash模型",
-
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-
                 "id": "gemini-2.0-pro",
                 "name": "Gemini 2.0 Pro模型",
-
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-                "id": "grok-2",
-                "name": "Grok 2",
+                "id": "claude-3-5-sonnet-20240620",
+                "name": "Claude 3.5 Sonnet (2024/06)",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-                "id": "grok-2-latest",
-                "name": "Grok 2 Latest",
+                "id": "claude-3-5-sonnet-20241022",
+                "name": "Claude 3.5 Sonnet (2024/10)",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-                "id": "grok-2-vision-latest",
-                "name": "Grok 2 Vision Latest",
+                "id": "claude-3-7-sonnet-20250219",
+                "name": "Claude 3.7 Sonnet (2025/02)",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
+            },
+            {
+                "id": "claude-r1-thinking",
+                "name": "Claude R1 (思维优化版)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-chat",
+                "name": "DeepSeek Chat",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-reasoner",
+                "name": "DeepSeek Reasoning",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
             },
             {
                 "id": "grok-3",
-                "name": "Grok 3",
+                "name": "Grok 3 (官方版本)",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
-                "id": "grok-3-latest",
-                "name": "Grok 3 Latest",
+                "id": "grok-3-reasoning",
+                "name": "Grok 3 (推理增强版)",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "grok-beta",
-                "name": "Grok Beta",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "grok-vision-beta",
-                "name": "Grok Vision Beta",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "Kolors",
-                "name": "Kolors",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "kourichat-r1",
-                "name": "KouriChat R1",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "kourichat-v3",
-                "name": "KouriChat V3",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "kourichat-vision",
-                "name": "KouriChat Vision",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
                 "id": "qwq-32b",
-                "name": "QWQ 32B",
+                "name": "QWQ-32B (开源大模型)",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "text-embedding-3-large",
-                "name": "Text Embedding 3 Large",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "text-embedding-ada-002",
-                "name": "Text Embedding Ada 002",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-
-                "id": "deepseek-ai/DeepSeek-R1",
-                "name": "硅基格式R1模型（免费额度版）",
-                "status": "active", 
-
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "text-moderation-latest",
-                "name": "Text Moderation Latest",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
-            },
-            {
-                "id": "text-moderation-stable",
-                "name": "Text Moderation Stable",
-                "status": "active",
-                "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             }
         ],
         "deepseek": [
