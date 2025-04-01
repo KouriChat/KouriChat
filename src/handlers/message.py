@@ -878,7 +878,11 @@ class MessageHandler:
                 
                 # 分割消息并发送
                 split_messages = self._split_message_for_sending(response)
-                self._send_split_messages(split_messages, chat_id)
+                # 如果是群聊消息，传递发送者名称
+                if is_group:
+                    self._send_split_messages(split_messages, chat_id, sender_name)
+                else:
+                    self._send_split_messages(split_messages, chat_id)
 
             return response
 
@@ -1371,9 +1375,9 @@ class MessageHandler:
                         group_id, timestamp, filtered_reply
                     )
 
-                # 发送消息
+                # 发送消息，将艾特消息的发送者名称传递给_send_split_messages函数
                 if not self.is_debug:
-                    self._send_split_messages(split_messages, group_id)
+                    self._send_split_messages(split_messages, group_id, sender_name)
 
                 if isinstance(split_messages, dict):
                     return split_messages.get("parts", reply)
@@ -2401,7 +2405,7 @@ class MessageHandler:
         # 返回处理结果
         return processed
 
-    def _send_split_messages(self, messages, chat_id):
+    def _send_split_messages(self, messages, chat_id, at_sender_name=None):
         """发送分割后的消息"""
         if not messages or not isinstance(messages, dict) or not messages.get("parts"):
             return False
@@ -2424,18 +2428,23 @@ class MessageHandler:
 
             # 检查是否是群聊消息
             is_group_chat = False
-            sender_name = None
+            sender_name = at_sender_name  # 优先使用传入的艾特发送者名称
 
-            # 只有当消息不包含@标记时才尝试添加
-            if not already_has_at and hasattr(self, "group_chat_memory"):
-                    is_group_chat = chat_id in self.group_chat_memory.group_chats
-                    if is_group_chat:
-                        # 从最近的群聊消息中获取发送者名称
-                        recent_messages = self.group_chat_memory.get_memory_from_file(
-                            chat_id, limit=1
-                        )
-                        if recent_messages:
-                            sender_name = recent_messages[0].get("sender_name")
+            # 只有当消息不包含@标记，且没有提供艾特发送者名称时才尝试从最近消息获取
+            if not already_has_at and not sender_name and hasattr(self, "group_chat_memory"):
+                is_group_chat = chat_id in self.group_chat_memory.group_chats
+                if is_group_chat:
+                    # 从最近的群聊消息中获取发送者名称
+                    recent_messages = self.group_chat_memory.get_memory_from_file(
+                        chat_id, limit=1
+                    )
+                    if recent_messages:
+                        sender_name = recent_messages[0].get("sender_name")
+                        logger.info(f"从最近消息获取发送者名称: {sender_name}")
+            elif sender_name:
+                # 如果提供了艾特发送者名称，设置为群聊消息
+                is_group_chat = chat_id in (self.group_chat_memory.group_chats if hasattr(self, "group_chat_memory") else [])
+                logger.info(f"使用传入的艾特发送者名称: {sender_name}")
 
             # 发送每一部分消息
             for i, part in enumerate(messages["parts"]):
@@ -2785,7 +2794,27 @@ class MessageHandler:
                 
                 # 分割并发送消息
                 split_messages = self._split_message_for_sending(response)
-                self._send_split_messages(split_messages, who)
+                
+                # 检查是否是群聊
+                is_group_chat = False
+                sender_name = None
+                
+                if hasattr(self, "group_chat_memory"):
+                    is_group_chat = who in self.group_chat_memory.group_chats
+                    if is_group_chat:
+                        # 从群聊记忆中获取最近一条消息的发送者名称
+                        recent_messages = self.group_chat_memory.get_memory_from_file(
+                            who, limit=1
+                        )
+                        if recent_messages:
+                            sender_name = recent_messages[0].get("sender_name")
+                            logger.info(f"群聊消息获取发送者: {sender_name}")
+                
+                # 如果是群聊消息，传递发送者名称
+                if is_group_chat and sender_name:
+                    self._send_split_messages(split_messages, who, sender_name)
+                else:
+                    self._send_split_messages(split_messages, who)
 
             return response
 
