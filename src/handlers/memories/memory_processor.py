@@ -440,24 +440,27 @@ class MemoryProcessor:
                 "assistant_message": clean_assistant_msg.replace('$', ' ') if isinstance(clean_assistant_msg, str) else str(clean_assistant_msg)
             }
             
+            # 使用用户ID作为键，而不是从消息中提取
+            memory_key = clean_user_id
+            
             # 确保用户ID存在于记忆数据中，并且是列表形式
-            if clean_user_id not in self.memory_data:
-                self.memory_data[clean_user_id] = []
-            elif not isinstance(self.memory_data[clean_user_id], list):
+            if memory_key not in self.memory_data:
+                self.memory_data[memory_key] = []
+            elif not isinstance(self.memory_data[memory_key], list):
                 # 如果当前不是列表形式，转换为列表形式
-                old_data = self.memory_data[clean_user_id]
-                self.memory_data[clean_user_id] = []
+                old_data = self.memory_data[memory_key]
+                self.memory_data[memory_key] = []
                 if old_data and isinstance(old_data, dict):  # 如果有旧数据，添加为第一个元素
                     for key, value in old_data.items():
                         if isinstance(key, str) and isinstance(value, str):
-                            self.memory_data[clean_user_id].append({
+                            self.memory_data[memory_key].append({
                                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
                                 "human_message": key.replace('$', ' '),  # 替换$为空格
                                 "assistant_message": value.replace('$', ' ')  # 替换$为空格
                             })
             
             # 添加到记忆数据 - 以数组形式存储
-            self.memory_data[clean_user_id].append(memory_entry)
+            self.memory_data[memory_key].append(memory_entry)
             self.memory_count = sum(len(memories) if isinstance(memories, list) else 1 for memories in self.memory_data.values())
             
             # 添加到RAG系统
@@ -497,7 +500,7 @@ class MemoryProcessor:
             
             # 调用钩子
             for hook in self.memory_hooks:
-                hook(clean_user_id, memory_entry)
+                hook(memory_key, memory_entry)
             
             # 保存到文件
             self.save()
@@ -506,6 +509,75 @@ class MemoryProcessor:
         except Exception as e:
             logger.error(f"记住对话失败: {str(e)}")
             return False
+    
+    def _extract_key_from_message(self, message: str) -> str:
+        """
+        从消息中提取关键词作为记忆键
+        
+        Args:
+            message: 用户消息
+            
+        Returns:
+            str: 提取的关键词，用于作为简化的记忆键
+        """
+        try:
+            if not isinstance(message, str) or not message.strip():
+                return "默认记忆"
+                
+            # 清理消息，去除特殊字符和标点
+            clean_msg = message.strip()
+            
+            # 检测是否包含"发送了一个动画表情"或"发送了表情包"
+            has_animation = False
+            if "发送了一个动画表情" in clean_msg:
+                has_animation = True
+                clean_msg = "发送了一个动画表情"
+            elif "发送了表情包" in clean_msg:
+                has_animation = True
+                match = re.search(r"发送了表情包[：:]\s*(.*?)(?:。|$)", clean_msg)
+                if match:
+                    emoji_desc = match.group(1).strip()
+                    clean_msg = f"发送了表情包 $ {emoji_desc}"
+                else:
+                    clean_msg = "发送了表情包"
+            
+            # 如果不是表情包，提取前几个词作为键
+            if not has_animation:
+                # 首先尝试提取最多5个词或30个字符，以较短者为准
+                words = re.findall(r'[\w\u4e00-\u9fff]+', clean_msg)
+                if words:
+                    # 提取前5个词
+                    key_words = words[:5]
+                    key = " ".join(key_words)
+                    
+                    # 如果太长，截断到30个字符
+                    if len(key) > 30:
+                        key = key[:30]
+                else:
+                    # 如果没有提取到词，使用原始消息的前30个字符
+                    key = clean_msg[:30]
+            else:
+                key = clean_msg
+                
+            # 检测是否有额外关键词，如果有，使用$分隔添加
+            extra_keywords = []
+            
+            # 检测常见的表情关键词
+            emoji_keywords = ["嘿嘿", "嘤嘤嘤", "哈喽", "你好", "笑死"]
+            for keyword in emoji_keywords:
+                if keyword in message and keyword not in key:
+                    extra_keywords.append(keyword)
+            
+            # 组合最终键
+            if extra_keywords:
+                # 最多添加两个额外关键词
+                extra_str = " $ ".join(extra_keywords[:2])
+                key = f"{key} $ {extra_str}"
+            
+            return key
+        except Exception as e:
+            logger.error(f"提取记忆键失败: {str(e)}")
+            return "默认记忆"
     
     def _add_to_rag(self, memory_doc):
         """
@@ -788,54 +860,109 @@ class MemoryProcessor:
     
     def get_relevant_memories(self, query, username=None, top_k=5):
         """
-        获取相关记忆
-        将检索结果转换为结构化格式
+        获取与查询相关的记忆
         
         Args:
-            query: 查询文本
+            query: 查询字符串
             username: 用户名（可选）
-            top_k: 返回的记忆条数
+            top_k: 返回结果数量
             
         Returns:
-            list: 相关记忆内容列表，每项包含message和reply
+            List[Dict]: 相关记忆列表
         """
         try:
-            # 使用同步方式获取记忆文本
-            memories_text = self.retrieve(query, top_k)
-            
-            # 检查结果
-            if not memories_text or memories_text == "没有找到相关记忆":
-                logger.info("没有找到相关记忆")
+            if not query:
+                logger.info("查询为空，不执行记忆检索")
                 return []
+                
+            logger.info(f"开始检索记忆: '{query[:30]}...' (用户: {username})")
             
-            # 解析记忆文本并转换格式
-            memories = []
-            lines = memories_text.split('\n\n')
+            # 如果提供了username，优先直接获取该用户的记忆
+            direct_matches = []
+            if username and username in self.memory_data:
+                logger.info(f"找到用户 '{username}' 的记忆")
+                memories = self.memory_data[username]
+                if isinstance(memories, list) and memories:
+                    # 获取最新的几条记忆
+                    recent_memories = memories[-min(top_k, len(memories)):]
+                    
+                    # 逆序处理，最新的记忆放在前面
+                    for memory in reversed(recent_memories):
+                        if isinstance(memory, dict):
+                            direct_matches.append({
+                                "memory": f"{memory.get('human_message', '')}",
+                                "response": memory.get('assistant_message', ''),
+                                "timestamp": memory.get('timestamp', datetime.now().strftime("%Y-%m-%d %H:%M")),
+                                "score": 1.0,  # 直接匹配给予最高分
+                                "source": "direct_match"
+                            })
+                    
+                    logger.info(f"直接获取到用户 '{username}' 的 {len(direct_matches)} 条记忆")
+                    return direct_matches
             
-            for line in lines:
-                if not line.strip():
-                    continue
-                    
-                if line.startswith('相关记忆:'):
-                    continue
-                    
-                parts = line.split('\n')
-                if len(parts) >= 2:
-                    user_part = parts[0].strip()
-                    ai_part = parts[1].strip()
-                    
-                    # 提取用户消息和AI回复
-                    user_msg = user_part[user_part.find(': ')+2:] if ': ' in user_part else user_part
-                    ai_msg = ai_part[ai_part.find(': ')+2:] if ': ' in ai_part else ai_part
-                    
-                    # 添加到记忆列表
-                    memories.append({
-                        'message': user_msg,
-                        'reply': ai_msg
-                    })
+            # 如果没有提供username或找不到该用户的记忆，使用语义搜索
+            if self.rag_manager:
+                results_text = self.retrieve(query, top_k)
+                if results_text and results_text != "没有找到相关记忆":
+                    # 解析RAG结果
+                    rag_results = []
+                    try:
+                        # 按照记忆块分割
+                        memory_blocks = results_text.split("\n\n")
+                        for block in memory_blocks:
+                            if not block.strip():
+                                continue
+                                
+                            # 提取信息
+                            timestamp_match = re.search(r'\[(.*?)\]', block)
+                            timestamp = timestamp_match.group(1) if timestamp_match else "未知时间"
+                            
+                            # 提取相关度
+                            score_match = re.search(r'\(相关度: ([\d.]+)\)', block)
+                            score = float(score_match.group(1)) if score_match else 0.5
+                            
+                            # 提取内容
+                            content = re.sub(r'记忆 \d+ \[.*?\] \(相关度: [\d.]+\):', '', block).strip()
+                            
+                            # 尝试分离对话
+                            parts = content.split("\n")
+                            if len(parts) >= 2:
+                                # 假设第一行是用户消息，第二行是助手回复
+                                user_msg = parts[0]
+                                assistant_msg = parts[1]
+                                
+                                # 提取发送者和消息内容
+                                user_match = re.search(r'(.*?):\s*(.*)', user_msg)
+                                if user_match:
+                                    memory_content = user_match.group(2)
+                                else:
+                                    memory_content = user_msg
+                                    
+                                assistant_match = re.search(r'(.*?):\s*(.*)', assistant_msg)
+                                if assistant_match:
+                                    response_content = assistant_match.group(2)
+                                else:
+                                    response_content = assistant_msg
+                                    
+                                rag_results.append({
+                                    "memory": memory_content,
+                                    "response": response_content,
+                                    "timestamp": timestamp,
+                                    "score": score,
+                                    "source": "rag"
+                                })
+                        
+                        # 排序并返回结果
+                        if rag_results:
+                            rag_results.sort(key=lambda x: x["score"], reverse=True)
+                            logger.info(f"从RAG获取到 {len(rag_results)} 条记忆")
+                            return rag_results[:top_k]
+                    except Exception as e:
+                        logger.error(f"解析RAG结果失败: {str(e)}")
             
-            logger.info(f"解析出 {len(memories)} 条相关记忆")
-            return memories
+            logger.info("未找到相关记忆")
+            return []
+            
         except Exception as e:
             logger.error(f"获取相关记忆失败: {str(e)}")
             return []

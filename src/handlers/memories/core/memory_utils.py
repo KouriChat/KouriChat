@@ -102,8 +102,8 @@ def clean_memory_content(key: str, value: str) -> Tuple[str, str]:
     """
     try:
         # 基本清理
-        user_message = key.strip()
-        ai_reply = value.strip()
+        user_message = key.strip() if isinstance(key, str) else "" if key is None else str(key)
+        ai_reply = value.strip() if isinstance(value, str) else "" if value is None else str(value)
         
         # 系统提示词过滤规则
         system_prompts = [
@@ -174,11 +174,15 @@ def clean_memory_content(key: str, value: str) -> Tuple[str, str]:
         user_message = remove_special_instructions(user_message)
         ai_reply = remove_special_instructions(ai_reply)
         
-        # 注意：不再将$分隔符替换为空格，保持原始格式
+        # 注意：保留$符号，它用于分隔记忆键的不同部分
         
-        # 移除多余的空白字符
-        user_message = re.sub(r'\s+', ' ', user_message).strip()
-        ai_reply = re.sub(r'\s+', ' ', ai_reply).strip()
+        # 移除多余的空白字符，但保留$符号两侧的空格以便于格式化
+        user_message = re.sub(r'(?<!\$)\s+(?!\$)', ' ', user_message).strip()
+        ai_reply = re.sub(r'(?<!\$)\s+(?!\$)', ' ', ai_reply).strip()
+        
+        # 美化$符号格式，确保两边有空格
+        user_message = re.sub(r'\s*\$\s*', ' $ ', user_message)
+        ai_reply = re.sub(r'\s*\$\s*', ' $ ', ai_reply)
         
         # 截断过长的内容
         if len(user_message) > 500:
