@@ -127,6 +127,9 @@ class MessageHandler:
         self.unanswered_counters = {}
         self.unanswered_timers = {}
         self.quiet_time_config = {"start_hour": 22, "end_hour": 8}  # 默认安静时间配置
+        
+        # 添加表情包周期发送标记
+        self.emoji_sent_this_cycle = False
 
         # 添加群聊@消息处理相关属性
         self.group_at_cache = (
@@ -136,6 +139,9 @@ class MessageHandler:
 
         # 添加消息发送锁，确保消息发送的顺序性
         self.send_message_lock = threading.Lock()
+        
+        # 添加最后收到消息时间戳记录
+        self.last_received_message_timestamp: Dict[str, float] = {}
         
         # 添加自动任务队列专用锁
         self.auto_task_queue_lock = threading.Lock()
@@ -433,6 +439,9 @@ class MessageHandler:
             # 获取人设摘要
             prompt_content = get_personality_summary(self.prompt_content)
 
+            # 添加：重置表情发送标记
+            self.emoji_sent_this_cycle = False
+
             # 获取自动消息内容
             from src.config import config
 
@@ -564,32 +573,34 @@ class MessageHandler:
                     )
 
                     if ai_response:
-                        # 进行AI回复内容的情感分析并发送表情包
-                        if hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
+                        # 修改：同步获取表情路径并检查周期标记
+                        emoji_path = None
+                        if not self.emoji_sent_this_cycle and hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
                             try:
-                                # 异步处理表情包发送，避免阻塞主消息
-                                def emoji_callback(emoji_path):
-                                    if emoji_path and os.path.exists(emoji_path):
-                                        logger.info(f"发送AI回复情感表情包: {emoji_path}")
-                                        if hasattr(self, 'wx') and self.wx:
-                                            try:
-                                                self.wx.SendFiles(filepath=emoji_path, who=target_user)
-                                                logger.info(f"成功通过wxauto发送表情包文件: {emoji_path}")
-                                            except Exception as e:
-                                                logger.error(f"通过wxauto发送表情包失败: {str(e)}")
-                                        else:
-                                            logger.error("wx实例不可用，无法发送表情包")
-                                
-                                # 针对AI回复进行情感分析并获取表情
-                                self.emoji_handler.get_emotion_emoji(
+                                # 同步获取表情路径
+                                emoji_path = self.emoji_handler.get_emotion_emoji(
                                     ai_response, 
-                                    target_user,
-                                    callback=emoji_callback
+                                    target_user
                                 )
+                                
+                                # 如果获取到路径，先发送表情
+                                if emoji_path and os.path.exists(emoji_path):
+                                    logger.info(f"发送AI回复情感表情包: {emoji_path}")
+                                    if hasattr(self, 'wx') and self.wx:
+                                        try:
+                                            self.wx.SendFiles(filepath=emoji_path, who=target_user)
+                                            logger.info(f"成功通过wxauto发送表情包文件: {emoji_path}")
+                                            time.sleep(0.5) # 短暂等待，确保表情先显示
+                                            self.emoji_sent_this_cycle = True # 标记已发送
+                                        except Exception as e:
+                                            logger.error(f"通过wxauto发送表情包失败: {str(e)}")
+                                    else:
+                                        logger.error("wx实例不可用，无法发送表情包")
+                                
                             except Exception as e:
                                 logger.error(f"处理AI回复表情包失败: {str(e)}")
                         
-                        # 将长消息分段发送
+                        # 在发送表情后，再处理和发送文本
                         message_parts = self._split_message_for_sending(ai_response)
                         for part in message_parts["parts"]:
                             self._safe_send_msg(part, target_user)
@@ -667,6 +678,13 @@ class MessageHandler:
     ):
         """统一的消息处理入口"""
         try:
+            # 添加：记录收到消息的时间戳
+            current_ts = time.time()
+            self.last_received_message_timestamp[chat_id] = current_ts
+            
+            # 添加：在处理消息开始时重置表情发送标记
+            self.emoji_sent_this_cycle = False
+            
             # 验证并修正用户ID
             if not username or username == "System":
                 username = chat_id.split("@")[0] if "@" in chat_id else chat_id
@@ -721,6 +739,10 @@ class MessageHandler:
             return self._handle_uncached_message(
                 content, chat_id, sender_name, username, is_group, is_image_recognition
             )
+            
+        # 移除：之前错误放置的重置标记
+        # # 添加：在处理消息开始时重置表情发送标记
+        # self.emoji_sent_this_cycle = False
 
         except Exception as e:
             logger.error(f"处理消息失败: {str(e)}", exc_info=True)
@@ -735,6 +757,10 @@ class MessageHandler:
         is_at: bool = False,
     ):
         """处理群聊消息"""
+        # 添加：记录收到消息的时间戳
+        current_ts = time.time()
+        self.last_received_message_timestamp[group_id] = current_ts
+        
         # 开始处理之前，更新当前群聊发送者信息
         self._update_current_group_sender(group_id, sender_name, username)
         
@@ -922,35 +948,31 @@ class MessageHandler:
                 
                 if should_process_emoji and hasattr(self, 'emoji_handler') and self.emoji_handler and self.emoji_handler.enabled:
                     try:
-                        # 异步处理表情包发送
-                        def emoji_callback(emoji_path):
-                            try:
-                                if emoji_path and os.path.exists(emoji_path):
-                                    logger.info(f"发送未缓存消息表情包: {emoji_path}")
-                                    if hasattr(self, 'wx') and self.wx:
-                                        try:
-                                            self.wx.SendFiles(filepath=emoji_path, who=chat_id)
-                                            logger.info(f"成功通过wxauto发送未缓存消息表情包文件: {emoji_path}")
-                                        except Exception as e:
-                                            logger.error(f"通过wxauto发送未缓存消息表情包失败: {str(e)}")
-                                    else:
-                                        logger.error("wx实例不可用，无法发送表情包")
-                                else:
-                                    if emoji_path:
-                                        logger.error(f"表情包文件不存在: {emoji_path}")
-                                    else:
-                                        logger.info("没有生成表情包路径")
-                            except Exception as e:
-                                logger.error(f"表情回调处理失败: {str(e)}", exc_info=True)
-                        
-                        # 调用emoji_handler.get_emotion_emoji进行情感分析（异步，不等待）
-                        logger.info("调用emoji_handler.get_emotion_emoji进行情感分析（异步，不等待）")
-                        self.emoji_handler.get_emotion_emoji(
+                        # 修改：同步获取表情路径
+                        emoji_path = self.emoji_handler.get_emotion_emoji(
                             response, 
-                            chat_id,
-                            callback=emoji_callback
+                            chat_id
                         )
-                        logger.info("已调用emoji_handler.get_emotion_emoji，继续处理消息")
+                        
+                        # 如果获取到路径，先发送表情
+                        if emoji_path and os.path.exists(emoji_path):
+                            logger.info(f"发送未缓存消息表情包: {emoji_path}")
+                            if hasattr(self, 'wx') and self.wx:
+                                try:
+                                    self.wx.SendFiles(filepath=emoji_path, who=chat_id)
+                                    logger.info(f"成功通过wxauto发送未缓存消息表情包文件: {emoji_path}")
+                                    time.sleep(0.5) # 短暂等待
+                                    self.emoji_sent_this_cycle = True # 标记已发送
+                                except Exception as e:
+                                    logger.error(f"通过wxauto发送未缓存消息表情包失败: {str(e)}")
+                            else:
+                                logger.error("wx实例不可用，无法发送表情包")
+                        else:
+                            if emoji_path:
+                                logger.error(f"表情包文件不存在: {emoji_path}")
+                            else:
+                                logger.info("没有生成表情包路径")
+
                     except Exception as e:
                         logger.error(f"处理AI回复表情包失败: {str(e)}", exc_info=True)
                 
@@ -1462,66 +1484,61 @@ class MessageHandler:
                 
                 if should_process_emoji and hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
                     try:
-                        # 异步处理表情包发送
-                        def emoji_callback(emoji_path):
-                            try:
-                                if emoji_path and os.path.exists(emoji_path):
-                                    logger.info(f"发送@群聊消息AI回复情感表情包: {emoji_path}")
-                                    if hasattr(self, 'wx') and self.wx:
-                                        try:
-                                            self.wx.SendFiles(filepath=emoji_path, who=group_id)
-                                            logger.info(f"成功通过wxauto发送@群聊消息表情包文件: {emoji_path}")
-                                        except Exception as e:
-                                            logger.error(f"通过wxauto发送@群聊消息表情包失败: {str(e)}")
-                                    else:
-                                        logger.error("wx实例不可用，无法发送表情包")
+                        # 同步获取表情路径
+                        emoji_path = self.emoji_handler.get_emotion_emoji(
+                            reply, 
+                            group_id # 使用 group_id 作为 user_id
+                        )
+                        
+                        # 如果获取到路径，先发送表情
+                        if emoji_path and os.path.exists(emoji_path):
+                            logger.info(f"发送@群聊消息AI回复情感表情包: {emoji_path}")
+                            if hasattr(self, 'wx') and self.wx:
+                                try:
+                                    self.wx.SendFiles(filepath=emoji_path, who=group_id)
+                                    logger.info(f"成功通过wxauto发送@群聊消息表情包文件: {emoji_path}")
+                                    time.sleep(0.5) # 短暂等待
+                                    self.emoji_sent_this_cycle = True # 标记已发送
+                                except Exception as e:
+                                    logger.error(f"通过wxauto发送@群聊消息表情包失败: {str(e)}")
                                 else:
                                     logger.error("wx实例不可用，无法发送表情包")
-                            except Exception as e:
-                                logger.error(f"表情回调处理失败: {str(e)}", exc_info=True)
-                        
-                        # 针对AI回复进行情感分析并获取表情 - 异步处理不等待
-                        logger.info(f"异步处理@消息表情分析: 群={group_id}")
-                        self.emoji_handler.get_emotion_emoji(
-                            reply, 
-                            group_id,
-                            callback=emoji_callback
-                        )
                     except Exception as e:
                         logger.error(f"处理AI回复表情包失败: {str(e)}", exc_info=True)
-                
-                # 不等待表情处理，直接继续处理消息
-                
-                # 在回复中显式提及发送者，确保回复的是正确的人（当前发消息的人）
-                if not reply.startswith(f"@{sender_name}"):
-                    reply = f"@{sender_name} {reply}"
-                
-                # 分割消息并获取过滤后的内容
-                split_messages = self._split_message_for_sending(reply)
+                    
+                    # 在表情发送后处理文本
+                    # 在回复中显式提及发送者，确保回复的是正确的人（当前发消息的人）
+                    if not reply.startswith(f"@{sender_name}"):
+                        reply = f"@{sender_name} {reply}"
+                    
+                    # 分割消息并获取过滤后的内容
+                    split_messages = self._split_message_for_sending(reply)
 
-                # 使用memory_content更新群聊记忆
-                if isinstance(split_messages, dict) and split_messages.get(
-                    "memory_content"
-                ):
-                    memory_content = split_messages["memory_content"]
-                    self.group_chat_memory.update_assistant_response(
-                        group_id, timestamp, memory_content
-                    )
-                else:
-                    # 如果没有memory_content字段，则使用过滤动作和表情后的回复
-                    filtered_reply = self._filter_action_emotion(reply)
-                    self.group_chat_memory.update_assistant_response(
-                        group_id, timestamp, filtered_reply
-                    )
+                    # 使用memory_content更新群聊记忆
+                    if isinstance(split_messages, dict) and split_messages.get(
+                        "memory_content"
+                    ):
+                        memory_content = split_messages["memory_content"]
+                        self.group_chat_memory.update_assistant_response(
+                            group_id, timestamp, memory_content
+                        )
+                    else:
+                        # 如果没有memory_content字段，则使用过滤动作和表情后的回复
+                        filtered_reply = self._filter_action_emotion(reply)
+                        self.group_chat_memory.update_assistant_response(
+                            group_id, timestamp, filtered_reply
+                        )
 
-                # 发送消息，将艾特消息的发送者名称传递给_send_split_messages函数
-                if not self.is_debug:
-                    self._send_split_messages(split_messages, group_id, sender_name)
+                    # 发送消息，将艾特消息的发送者名称传递给_send_split_messages函数
+                    if not self.is_debug:
+                        self._send_split_messages(split_messages, group_id, sender_name)
 
-                if isinstance(split_messages, dict):
-                    return split_messages.get("parts", reply)
-                return reply
+                    # 返回发送的部分或原始回复
+                    if isinstance(split_messages, dict):
+                        return split_messages.get("parts", reply)
+                    return reply
 
+            # 如果没有回复，返回 None
             return None
 
         except Exception as e:
@@ -1633,7 +1650,7 @@ class MessageHandler:
         if msg_count == 1:
             wait_time = base_wait_time + 5.0
         else:
-            estimated_typing_time = min(4.0, typing_speed * 20)  # 假设用户输入20个字符
+            estimated_typing_time = min(4.0, typing_speed * 10)  # 假设用户输入10个字符
             wait_time = base_wait_time + estimated_typing_time
 
         # 简化日志，只在debug级别显示详细计算过程
@@ -1647,7 +1664,14 @@ class MessageHandler:
         """处理缓存的消息"""
         try:
             if not self.message_cache.get(username):
+                logger.info(f"用户 {username} 的消息缓存为空，无需处理。")
                 return None
+
+            # 增加日志：打印将要处理的缓存内容
+            cached_msgs = self.message_cache[username]
+            logger.info(f"开始处理用户 {username} 的缓存消息，共 {len(cached_msgs)} 条:")
+            for i, msg_data in enumerate(cached_msgs):
+                logger.info(f"  缓存消息 {i+1}: {self._clean_message_content(msg_data.get('content', ''))[:50]}... (时间戳: {msg_data.get('timestamp')})")
 
             messages = self.message_cache[username]
             messages.sort(key=lambda x: x.get("timestamp", 0))
@@ -1682,6 +1706,7 @@ class MessageHandler:
                 "%Y-%m-%d %H:%M"
             )
             merged_content = f"[{first_timestamp}]ta 私聊对你说：{content_text}"
+            logger.info(f"合并后的消息内容: {merged_content[:100]}...") # 记录合并后的内容
 
             if context:
                 merged_content = f"{context}\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容，并且回复不要重复！！！)\n\n{merged_content}"
@@ -1702,6 +1727,9 @@ class MessageHandler:
             if username in self.message_timer and self.message_timer[username]:
                 self.message_timer[username].cancel()
                 self.message_timer[username] = None
+                
+            # 增加日志：确认缓存已清空
+            logger.info(f"处理完成，已清空用户 {username} 的消息缓存。")
 
             return result
 
@@ -2576,6 +2604,9 @@ class MessageHandler:
 
         # 使用锁确保消息发送的原子性
         with self.send_message_lock:
+            # 修复：确保 start_send_time 在此处定义
+            start_send_time = time.time()
+            
             # 记录已发送的消息，防止重复发送
             sent_messages = set()
 
@@ -2637,6 +2668,12 @@ class MessageHandler:
                 # 模拟自然发送行为
                 time.sleep(base_interval)
 
+                # 添加：再次检查是否有新消息中断发送（在sleep之后）
+                if chat_id in self.last_received_message_timestamp and \
+                   self.last_received_message_timestamp[chat_id] > start_send_time:
+                    logger.info(f"检测到来自 {chat_id} 的新消息，在延迟后中断当前消息发送。")
+                    return False # 指示发送被中断
+
                 # 处理群聊@提及
                 if i == 0 and is_group_chat and sender_name and not already_has_at:
                     send_content = f"@{sender_name}\u2005{processed_part}"
@@ -2688,6 +2725,8 @@ class MessageHandler:
                                     try:
                                         self.wx.SendFiles(filepath=emoji_path, who=user_id)
                                         logger.info(f"成功通过wxauto发送私聊表情包文件: {emoji_path}")
+                                        time.sleep(0.5) # 短暂等待
+                                        self.emoji_sent_this_cycle = True # 标记已发送
                                     except Exception as e:
                                         logger.error(f"通过wxauto发送私聊表情包失败: {str(e)}")
                                 else:
@@ -2755,34 +2794,125 @@ class MessageHandler:
             # 设置所有处理器为"正在回复"状态
             self.set_replying_status(True)
 
+            # 添加：重置表情发送标记
+            self.emoji_sent_this_cycle = False
+
             # 检查消息类型
             if isinstance(message, dict) and "Type" in message:
-                # 检查是否是自己发送的消息
+                msg_type = message["Type"]
+                content = message.get("Content", "")
+                # 尝试更可靠地获取发送者昵称和判断群聊
+                sender_name = message.get("ActualNickName", message.get("Who", who))
+                username = who.split('@')[0] if '@' in who else who # 基础用户ID提取
+                is_group = "@chatroom" in who # 基础群聊检测
                 is_self_message = message.get("IsSelf", False)
 
-                if message["Type"] == 1:  # 文本消息
+                if msg_type == 1:  # 文本消息
                     return self.process_text_message(
-                        message["Content"], who, source, is_self_message
+                        content, who, source, is_self_message, sender_name, username, is_group
                     )
-                elif message["Type"] == 3:  # 图片消息
+                elif msg_type == 3:  # 图片消息
+                    # 图片消息的内容字段通常是图片路径
+                    image_path = content
                     return self.process_image_message(
-                        message.get("Content", ""), who, is_self_message
+                        image_path, who, is_self_message, sender_name, username, is_group
+                    )
+                elif msg_type == 47: # 动画表情消息 (Sticker)
+                    logger.info(f"处理动画表情消息 (Type 47): 来自 {sender_name} ({username}) in {who}")
+                    if is_self_message:
+                        logger.info("自己发送的动画表情，跳过处理。")
+                        return None
+
+                    # 尝试从消息体获取图片路径 (wxauto可能将路径放在不同字段)
+                    image_path = message.get("ImagePath", message.get("FileName"))
+
+                    if not image_path or not os.path.exists(image_path):
+                        # 如果直接获取路径失败，检查Content字段是否为有效路径
+                        if os.path.exists(content):
+                            image_path = content
+                        else:
+                            logger.warning(f"无法找到动画表情 (Type 47) 的图像路径。 消息体: {message}")
+                            # Fallback: 发送一个通用描述给处理流程
+                            recognized_content = "[收到一个动画表情，无法找到图片文件]"
+                            return self.handle_user_message(
+                                content=recognized_content,
+                                chat_id=who,
+                                sender_name=sender_name,
+                                username=username,
+                                is_group=is_group,
+                                is_image_recognition=False, # 标记未经过识别
+                                is_self_message=is_self_message,
+                                is_at=False
+                            )
+
+                    # 检查图像识别服务是否可用且启用
+                    recognition_result = None
+                    if hasattr(self, "image_recognition_service") and self.image_recognition_service:
+                        # 检查图像识别服务是否启用
+                        if hasattr(self.image_recognition_service, 'enabled') and self.image_recognition_service.enabled:
+                            logger.info(f"图像识别服务已启用，尝试识别表情图像: {image_path}")
+                            try:
+                                # 调用识别实现
+                                recognition_result = self.image_recognition_service._recognize_image_impl(image_path, is_group)
+                                if recognition_result:
+                                    logger.info(f"表情识别成功: {recognition_result}")
+                                    # 将识别结果作为消息内容处理
+                                    final_content = f"[用户发送了一个表情，内容是: {recognition_result}]"
+                                    return self.handle_user_message(
+                                        content=final_content,
+                                        chat_id=who,
+                                        sender_name=sender_name,
+                                        username=username,
+                                        is_group=is_group,
+                                        is_image_recognition=True,
+                                        is_self_message=is_self_message,
+                                        is_at=False
+                                    )
+                                else:
+                                    logger.warning("表情识别未返回有效结果。")
+                            except Exception as rec_err:
+                                logger.error(f"调用图像识别时出错: {rec_err}", exc_info=True)
+                        else:
+                            logger.info("图像识别服务存在但未启用 (相关配置未填写?)，跳过表情识别。")
+                    else:
+                        logger.warning("图像识别服务 (image_recognition_service) 不可用，跳过表情识别。")
+
+                    # 如果识别失败或服务不可用，返回默认描述
+                    default_content = "[收到一个动画表情]"
+                    return self.handle_user_message(
+                        content=default_content,
+                        chat_id=who,
+                        sender_name=sender_name,
+                        username=username,
+                        is_group=is_group,
+                        is_image_recognition=False,
+                        is_self_message=is_self_message,
+                        is_at=False
                     )
                 else:
-                    logger.warning(f"未支持的消息类型: {message['Type']}")
-                    return "抱歉，暂不支持此类型的消息。"
+                    logger.warning(f"收到未处理的消息类型: {msg_type}，内容: {content[:50]}...")
+                    # 可以选择忽略或返回通用提示
+                    return None # 暂时忽略其他未处理类型
             else:
-                # 直接处理文本内容
-                return self.process_text_message(message, who, source, False)
+                # 如果消息不是字典格式或没有Type，尝试作为纯文本处理
+                # 但需要识别发送者和群聊信息，这比较困难，暂时只处理已知格式
+                logger.warning(f"收到未知格式的消息，尝试作为文本处理: {str(message)[:100]}")
+                # 提取基础信息，可能不准确
+                sender_name = who
+                username = who.split('@')[0] if '@' in who else who
+                is_group = "@chatroom" in who
+                return self.process_text_message(str(message), who, source, False, sender_name, username, is_group)
+
         except Exception as e:
-            logger.error(f"处理消息失败: {str(e)}", exc_info=True)
+            logger.error(f"处理消息时发生严重错误: {str(e)}", exc_info=True)
             return "抱歉，处理您的消息时出现了错误，请稍后再试。"
         finally:
             # 确保处理完成后重置回复状态
             self.set_replying_status(False)
 
     def process_image_message(
-        self, image_path: str, who: str, is_self_message: bool = False
+        self, image_path: str, who: str, is_self_message: bool = False,
+        sender_name: str = None, username: str = None, is_group: bool = False # 添加新参数
     ):
         """处理图片消息，识别图片内容"""
         try:
@@ -2798,25 +2928,48 @@ class MessageHandler:
             self.set_replying_status(True)
 
             try:
-                # 判断是否是群聊 (通过检查who是否在group_chat_memory中的群聊列表)
-                is_group_chat = False
-                if hasattr(self, "group_chat_memory"):
-                    is_group_chat = who in self.group_chat_memory.group_chats
+                # # 判断是否是群聊 (通过检查who是否在group_chat_memory中的群聊列表)
+                # is_group_chat = False # 使用传入的 is_group 参数
+                # if hasattr(self, "group_chat_memory"):
+                #     is_group_chat = who in self.group_chat_memory.group_chats
                 
                 # 私聊：直接处理图片
-                if not is_group_chat:
+                if not is_group:
                     if (
                         hasattr(self, "image_recognition_service")
                         and self.image_recognition_service
+                        and hasattr(self.image_recognition_service, 'enabled') # 检查启用状态
+                        and self.image_recognition_service.enabled
                     ):
+                        logger.info(f"开始识别私聊图片: {image_path}")
+                        # 调用实现方法，传入 is_group=False
                         result = self.image_recognition_service._recognize_image_impl(
                             image_path, False
                         )
-                        logger.info(f"私聊图片识别请求已添加到队列: {result}")
-                        return result
+                        if result:
+                            logger.info(f"私聊图片识别结果: {result}")
+                            # 将识别结果作为消息内容处理
+                            final_content = f"[收到一张图片，内容是: {result}]"
+                            # 需要 sender_name 和 username，如果它们是None，需要回退
+                            sender_name = sender_name or username or who.split('@')[0]
+                            username = username or who.split('@')[0]
+                            
+                            return self.handle_user_message(
+                                content=final_content,
+                                chat_id=who,
+                                sender_name=sender_name,
+                                username=username,
+                                is_group=False,
+                                is_image_recognition=True,
+                                is_self_message=is_self_message,
+                                is_at=False
+                            )
+                        else:
+                            logger.warning("私聊图片识别未返回结果。")
+                            return None # 或者返回一个提示
                     else:
-                        logger.error("图像识别服务未初始化")
-                        return "抱歉，图片识别服务未准备好"
+                        logger.info("图像识别服务未启用或不可用，跳过私聊图片识别")
+                        return None # 或者返回一个提示
                 # 群聊：保存图片信息，等待被@引用时处理
                 else:
                     # 保存图片路径到群图片缓存
@@ -2873,6 +3026,8 @@ class MessageHandler:
                         try:
                             self.wx.SendFiles(filepath=emoji_path, who=chat_id)
                             logger.info(f"成功发送表情包文件: {emoji_path}")
+                            time.sleep(0.5) # 短暂等待
+                            self.emoji_sent_this_cycle = True # 标记已发送
                         except Exception as e:
                             logger.error(f"发送表情包文件失败: {str(e)}")
                     else:
@@ -2883,21 +3038,51 @@ class MessageHandler:
                 content, user_id, callback=send_emoji_callback, is_self_emoji=is_self_emoji
             )
             
-            # 处理返回结果
-            if result and isinstance(result, str):
-                logger.info(f"表情包请求处理结果: {result}")
-                
-                # 如果是文件路径，直接发送
-                if os.path.exists(result) and not self.is_debug:
-                    logger.info(f"直接发送表情包: {result}")
-                    if hasattr(self, 'wx') and self.wx:
+            # 修改：处理返回结果，成功发送后返回 None
+            if result and isinstance(result, str) and os.path.exists(result):
+                # 如果获取到表情包路径
+                logger.info(f"表情包请求获取到路径: {result}")
+                # # 如果提供了回调函数，交给回调处理 (保留，以防万一)
+                # if callback:
+                #     threading.Timer(0.5, lambda: callback(result)).start()
+                #     return None # 返回 None 表示已处理
+                # 如果有wxauto实例，直接发送
+                if hasattr(self, 'wx') and self.wx:
+                    try:
                         self.wx.SendFiles(filepath=result, who=chat_id)
-                        return "表情包已发送"
-                
-                # 如果不是文件路径，返回提示信息
-                return "正在为您准备表情包，请稍等..."
+                        logger.info(f"已发送表情包: {result}")
+                        return None # 返回 None 表示已处理
+                    except Exception as e:
+                        logger.error(f"发送表情包失败: {str(e)}")
+                        return "发送表情包失败" # 返回错误信息
+                else:
+                    # 既没有回调也没有wx实例，返回路径供调用者处理
+                    logger.warning("wx实例不可用，无法直接发送表情包请求的表情")
+                    return result # 返回路径
+            elif isinstance(result, str):
+                 # 如果返回的是字符串但不是有效路径，则认为是错误或状态信息
+                 logger.info(f"表情包请求处理结果: {result}")
+                 return result # 返回如 "未找到合适的表情包" 等信息
+            else:
+                 # 如果返回 None 或其他非字符串，则表示未找到或出错
+                 return "未找到合适的表情包"
             
-            return "正在为您准备表情包，请稍等..."
+            # 移除旧逻辑
+            # # 处理返回结果
+            # if result and isinstance(result, str):
+            #     logger.info(f"表情包请求处理结果: {result}")
+            #     
+            #     # 如果是文件路径，直接发送
+            #     if os.path.exists(result) and not self.is_debug:
+            #         logger.info(f"直接发送表情包: {result}")
+            #         if hasattr(self, 'wx') and self.wx:
+            #             self.wx.SendFiles(filepath=result, who=chat_id)
+            #             return "表情包已发送"
+            #     
+            #     # 如果不是文件路径，返回提示信息
+            #     return "正在为您准备表情包，请稍等..."
+            # 
+            # return "正在为您准备表情包，请稍等..."
             
         except Exception as e:
             logger.error(f"处理表情包请求出错: {str(e)}", exc_info=True)
@@ -2909,6 +3094,9 @@ class MessageHandler:
         who: str,
         source: str = "wechat",
         is_self_message: bool = False,
+        sender_name: str = None, # 添加新参数
+        username: str = None,    # 添加新参数
+        is_group: bool = False   # 添加新参数
     ):
         """处理文本消息"""
         try:
@@ -2916,14 +3104,15 @@ class MessageHandler:
             if not content or not content.strip():
                 return None
 
-            # 检查是否是表情包请求
-            if (
-                hasattr(self, "emoji_handler")
-                and self.emoji_handler
-                and self.emoji_handler.is_emoji_request(content)
-            ):
-                logger.info(f"检测到表情包请求: {content}")
-                return self._handle_emoji_message(content, who, who, is_self_message)
+            # 移除：不再直接处理表情包请求
+            # # 检查是否是表情包请求
+            # if (
+            #     hasattr(self, "emoji_handler")
+            #     and self.emoji_handler
+            #     and self.emoji_handler.is_emoji_request(content)
+            # ):
+            #     logger.info(f"检测到表情包请求: {content}")
+            #     return self._handle_emoji_message(content, who, who, is_self_message)
 
             # 检查是否是随机图片请求
             if (
@@ -2976,56 +3165,73 @@ class MessageHandler:
                 
                 if should_process_emoji and hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
                     try:
-                        # 异步处理表情包发送
-                        def emoji_callback(emoji_path):
-                            try:
-                                if emoji_path and os.path.exists(emoji_path):
-                                    logger.info(f"发送文本处理AI回复情感表情包: {emoji_path}")
-                                    if hasattr(self, 'wx') and self.wx:
-                                        try:
-                                            self.wx.SendFiles(filepath=emoji_path, who=who)
-                                            logger.info(f"成功通过wxauto发送文本处理表情包文件: {emoji_path}")
-                                        except Exception as e:
-                                            logger.error(f"通过wxauto发送文本处理表情包失败: {str(e)}")
-                                    else:
-                                        logger.error("wx实例不可用，无法发送表情包")
-                                else:
-                                    logger.error("wx实例不可用，无法发送表情包")
-                            except Exception as e:
-                                logger.error(f"表情回调处理失败: {str(e)}", exc_info=True)
+                        # 修改：同步获取表情路径
+                        emoji_path = self.emoji_handler.get_emotion_emoji(
+                            response, 
+                            who
+                        )
+                        
+                        # 如果获取到路径，先发送表情
+                        if emoji_path and os.path.exists(emoji_path):
+                            logger.info(f"发送文本处理AI回复情感表情包: {emoji_path}")
+                            if hasattr(self, 'wx') and self.wx:
+                                try:
+                                    self.wx.SendFiles(filepath=emoji_path, who=who)
+                                    logger.info(f"成功通过wxauto发送文本处理表情包文件: {emoji_path}")
+                                    time.sleep(0.5) # 短暂等待
+                                    self.emoji_sent_this_cycle = True # 标记已发送
+                                except Exception as e:
+                                    logger.error(f"通过wxauto发送文本处理表情包失败: {str(e)}")
+                            else:
+                                logger.error("wx实例不可用，无法发送表情包")
+                        # 移除回调逻辑
+                        # def emoji_callback(emoji_path):
+                        #     try:
+                        #         if emoji_path and os.path.exists(emoji_path):
+                        #             logger.info(f"发送文本处理AI回复情感表情包: {emoji_path}")
+                        #             if hasattr(self, 'wx') and self.wx:
+                        #                 try:
+                        #                     self.wx.SendFiles(filepath=emoji_path, who=who)
+                        #                     logger.info(f"成功通过wxauto发送文本处理表情包文件: {emoji_path}")
+                        #                 except Exception as e:
+                        #                     logger.error(f"通过wxauto发送文本处理表情包失败: {str(e)}")
+                        #             else:
+                        #                 logger.error("wx实例不可用，无法发送表情包")
+                        #         else:
+                        #             logger.error("wx实例不可用，无法发送表情包")
+                        #     except Exception as e:
+                        #         logger.error(f"表情回调处理失败: {str(e)}", exc_info=True)
                         
                         # 异步处理表情，不等待结果
-                        logger.info(f"异步处理文本消息表情分析: 用户={who}")
-                        self.emoji_handler.get_emotion_emoji(
-                            response, 
-                            who,
-                            callback=emoji_callback
-                        )
+                        # logger.info(f"异步处理文本消息表情分析: 用户={who}")
+                        # self.emoji_handler.get_emotion_emoji(
+                        #     response, 
+                        #     who,
+                        #     callback=emoji_callback
+                        # )
                     except Exception as e:
                         logger.error(f"处理AI回复表情包失败: {str(e)}", exc_info=True)
                 
-                # 不等待表情处理，直接处理文本消息
-                
-                # 分割并发送消息
+                # 在表情发送后处理文本
                 split_messages = self._split_message_for_sending(response)
                 
-                # 检查是否是群聊
-                is_group_chat = False
-                sender_name = None
+                # 检查是否是群聊 (使用传入的 is_group 参数)
+                # is_group_chat = False
+                # sender_name = None # 使用传入的 sender_name 参数
                 
-                if hasattr(self, "group_chat_memory"):
-                    is_group_chat = who in self.group_chat_memory.group_chats
-                    if is_group_chat:
-                        # 从群聊记忆中获取最近一条消息的发送者名称
-                        recent_messages = self.group_chat_memory.get_memory_from_file(
-                            who, limit=1
-                        )
-                        if recent_messages:
-                            sender_name = recent_messages[0].get("sender_name")
-                            logger.info(f"群聊消息获取发送者: {sender_name}")
+                # if hasattr(self, "group_chat_memory"):
+                #     is_group_chat = who in self.group_chat_memory.group_chats
+                #     if is_group_chat:
+                #         # 从群聊记忆中获取最近一条消息的发送者名称
+                #         recent_messages = self.group_chat_memory.get_memory_from_file(
+                #             who, limit=1
+                #         )
+                #         if recent_messages:
+                #             sender_name = recent_messages[0].get("sender_name")
+                #             logger.info(f"群聊消息获取发送者: {sender_name}")
                 
                 # 如果是群聊消息，传递发送者名称
-                if is_group_chat and sender_name:
+                if is_group and sender_name:
                     self._send_split_messages(split_messages, who, sender_name)
                 else:
                     self._send_split_messages(split_messages, who)
@@ -3034,16 +3240,16 @@ class MessageHandler:
                 try:
                     if hasattr(self, "memory_handler") and self.memory_handler:
                         # 如果是群聊消息
-                        if is_group_chat:
+                        if is_group:
                             # 将消息存入群聊记忆
                             if hasattr(self, "group_chat_memory") and self.group_chat_memory:
                                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                 # 将消息存入群聊记忆
                                 self.group_chat_memory.add_message(
                                     who,  # 群聊ID
-                                    sender_name or "未知用户",  # 发送者
+                                    sender_name or "未知用户",  # 发送者 (使用传入的sender_name)
                                     content,  # 用户原始消息
-                                    is_at=False
+                                    is_at=False # 文本消息通常不是@
                                 )
                                 
                                 # 更新助手回复
@@ -3055,10 +3261,12 @@ class MessageHandler:
                                 logger.info(f"成功记录群聊对话到记忆: {who}")
                         else:
                             # 普通私聊消息记忆
+                            # 私聊时 username 通常等于 who
+                            memory_user_id = username or who
                             self.memory_handler.remember(
-                                content, response, who
+                                content, response, memory_user_id
                             )
-                            logger.info(f"成功记录对话到个人记忆: {who}")
+                            logger.info(f"成功记录对话到个人记忆: {memory_user_id}")
                 except Exception as e:
                     logger.error(f"记录对话到记忆失败: {str(e)}")
 

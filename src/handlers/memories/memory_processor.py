@@ -110,7 +110,7 @@ class MemoryProcessor:
                             r"\[.*?\]ta\s+私聊对你说：\s*(.*?)\s*\$.*$",  # 带分隔符的格式
                             r"\[.*?\]ta.*?私聊.*?：\s*(.*?)$",  # 宽松私聊格式
                             r"\[.*?\].*?在群聊里.*?：\s*(.*?)$",  # 群聊格式
-                            r"\[.*?\](.*?)$"  # 最宽松模式，只提取时间戳后的内容
+                            r"\[.*?\]\s*(.*?)\s*[在私聊].*$",  # 另一种私聊格式
                         ]
                         
                         for pattern in match_patterns:
@@ -484,14 +484,16 @@ class MemoryProcessor:
                 # 预处理过滤 - 检查内容质量
                 if self._is_valid_for_rag(clean_user_msg, clean_assistant_msg):
                     # 使用线程池异步处理RAG添加操作
-                    import threading
-                    rag_thread = threading.Thread(
-                        target=self._add_to_rag_thread,
-                        args=(memory_doc,)
-                    )
-                    rag_thread.daemon = True
-                    rag_thread.start()
-                    logger.debug(f"启动线程添加记忆到RAG: {clean_user_msg[:30]}...，角色: {avatar_name}")
+                    try:
+                        # 直接调用方法，不再使用线程
+                        logger.info(f"开始添加记忆到RAG: {clean_user_msg[:30]}...，角色: {avatar_name}")
+                        success = self._add_to_rag(memory_doc)
+                        if success:
+                            logger.info("成功添加记忆到RAG系统")
+                        else:
+                            logger.warning("添加记忆到RAG系统失败")
+                    except Exception as e:
+                        logger.error(f"添加记忆到RAG系统出错: {str(e)}")
             
             # 调用钩子
             for hook in self.memory_hooks:
@@ -505,16 +507,20 @@ class MemoryProcessor:
             logger.error(f"记住对话失败: {str(e)}")
             return False
     
-    def _add_to_rag_thread(self, memory_doc):
+    def _add_to_rag(self, memory_doc):
         """
-        在线程中添加记忆到RAG系统
+        添加记忆到RAG系统（直接方法而非线程）
         
         Args:
             memory_doc: 记忆文档
+            
+        Returns:
+            bool: 是否成功添加
         """
         try:
             if not self.rag_manager:
-                return
+                logger.warning("RAG管理器未初始化，无法添加记忆到RAG系统")
+                return False
                 
             # 创建事件循环
             try:
@@ -522,14 +528,21 @@ class MemoryProcessor:
                 asyncio.set_event_loop(loop)
                 
                 # 在事件循环中运行异步方法
-                loop.run_until_complete(self.rag_manager.add_document(memory_doc))
+                result = loop.run_until_complete(self.rag_manager.add_document(memory_doc))
                 loop.close()
                 
-                logger.debug(f"成功添加记忆到RAG系统: {memory_doc['id']}")
+                if result:
+                    logger.info(f"成功添加记忆到RAG系统: {memory_doc['id']}")
+                else:
+                    logger.warning(f"添加记忆到RAG系统失败: {memory_doc['id']}")
+                
+                return result
             except Exception as e:
-                logger.error(f"在线程中添加记忆到RAG系统失败: {str(e)}")
+                logger.error(f"在调用RAG添加文档时出错: {str(e)}", exc_info=True)
+                return False
         except Exception as e:
-            logger.error(f"添加记忆到RAG系统失败: {str(e)}")
+            logger.error(f"添加记忆到RAG系统失败: {str(e)}", exc_info=True)
+            return False
     
     def _is_valid_for_rag(self, sender_text: str, receiver_text: str) -> bool:
         """
@@ -542,9 +555,15 @@ class MemoryProcessor:
         Returns:
             bool: 是否适合添加到RAG
         """
-        # 检查长度
+        # 用户要求所有消息都要添加到RAG，移除长度限制
+        # 原有的长度检查（已废弃）:
+        # if len(sender_text) < 5 or len(receiver_text) < 5:
+        #     logger.info(f"RAG filter: Text too short. Sender: {len(sender_text)}, Receiver: {len(receiver_text)}")
+        #     return False
+        
+        # 允许短消息，只记录长度信息但不过滤
         if len(sender_text) < 5 or len(receiver_text) < 5:
-            return False
+            logger.info(f"短文本消息添加到RAG: Sender长度: {len(sender_text)}, Receiver长度: {len(receiver_text)}")
             
         # 检查是否包含特定的无意义内容
         noise_patterns = [
@@ -552,8 +571,10 @@ class MemoryProcessor:
             "你是谁", "你叫什么", "再见", "拜拜", "晚安", "早安", "午安"
         ]
         
+        # 修改：不再过滤噪音模式，只记录日志
         if sender_text.strip() in noise_patterns or receiver_text.strip() in noise_patterns:
-            return False
+            logger.info(f"包含噪音模式但仍添加到RAG: Sender: '{sender_text[:20]}...', Receiver: '{receiver_text[:20]}...'")
+            # 不再返回 False
             
         # 检查是否为API错误消息
         api_error_patterns = [

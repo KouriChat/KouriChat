@@ -69,26 +69,69 @@ class RagManager:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 config = yaml.safe_load(f)
                 
-            # 尝试从rag_config中获取API设置
+            # 尝试从配置文件的 categories.rag_settings.settings 获取更多配置项
             try:
-                from src.config import rag_config
+                from src.config import SettingReader
+                config_reader = SettingReader()
                 
-                # 使用rag_config中的值覆盖yaml中的设置
-                if "embedding_model" in config and isinstance(config["embedding_model"], dict):
-                    config["embedding_model"]["name"] = rag_config.EMBEDDING_MODEL
+                # 获取重排序模型配置
+                reranker_model = getattr(config_reader.rag, "reranker_model", None) 
+                is_rerank = getattr(config_reader.rag, "is_rerank", False)
                 
-                if "is_rerank" not in config:
-                    config["is_rerank"] = rag_config.RAG_IS_RERANK
-                    
+                logger.info(f"从配置读取器获取RAG配置: reranker_model={reranker_model}, is_rerank={is_rerank}")
+                
+                # 更新配置
                 if "reranker" in config and isinstance(config["reranker"], dict):
-                    config["reranker"]["name"] = rag_config.RAG_RERANKER_MODEL
+                    if reranker_model:
+                        config["reranker"]["name"] = reranker_model
+                        logger.info(f"使用配置的重排序模型: {reranker_model}")
                     
-                if "top_k" not in config:
-                    config["top_k"] = rag_config.RAG_TOP_K
-            except ImportError:
-                logger.warning("无法导入rag_config模块，使用yaml配置")
+                if is_rerank is not None:  
+                    config["is_rerank"] = is_rerank
+                    logger.info(f"使用配置的重排序设置: is_rerank={is_rerank}")
+                
+                # 获取其他RAG配置
+                top_k = getattr(config_reader.rag, "top_k", None)
+                embedding_model = getattr(config_reader.rag, "embedding_model", None)
+                
+                if top_k is not None:
+                    config["top_k"] = top_k
+                    logger.info(f"使用配置的top_k值: {top_k}")
+                    
+                if embedding_model and "embedding_model" in config and isinstance(config["embedding_model"], dict):
+                    config["embedding_model"]["name"] = embedding_model
+                    logger.info(f"使用配置的嵌入模型: {embedding_model}")
+                    
             except Exception as e:
-                logger.warning(f"从rag_config获取配置失败: {str(e)}")
+                logger.warning(f"无法从SettingReader获取RAG配置: {str(e)}")
+                
+                # 尝试读取配置文件本身
+                try:
+                    with open(self.config_path, "r", encoding="utf-8") as f:
+                        yaml_config = yaml.safe_load(f)
+                    
+                    # 从配置文件中获取RAG配置
+                    if "categories" in yaml_config and "rag_settings" in yaml_config["categories"]:
+                        rag_settings = yaml_config["categories"]["rag_settings"]["settings"]
+                        
+                        # 更新重排序设置
+                        if "reranker_model" in rag_settings:
+                            reranker_model = rag_settings["reranker_model"].get("value")
+                            if reranker_model and "reranker" in config and isinstance(config["reranker"], dict):
+                                config["reranker"]["name"] = reranker_model
+                                logger.info(f"从YAML配置文件直接读取重排序模型: {reranker_model}")
+                        
+                        # 更新是否重排序
+                        if "is_rerank" in rag_settings:
+                            is_rerank_value = rag_settings["is_rerank"].get("value")
+                            if is_rerank_value is not None:
+                                # 转换字符串 'true'/'false' 为布尔值
+                                if isinstance(is_rerank_value, str):
+                                    is_rerank_value = is_rerank_value.lower() == 'true'
+                                config["is_rerank"] = is_rerank_value
+                                logger.info(f"从YAML配置文件直接读取重排序设置: is_rerank={is_rerank_value}")
+                except Exception as yaml_error:
+                    logger.warning(f"无法直接从YAML配置获取RAG设置: {str(yaml_error)}")
                 
             logger.info(f"已加载RAG配置: {self.config_path}")
             return config
@@ -140,6 +183,8 @@ class RagManager:
         model_type = model_config.get("type", "openai")
         model_name = model_config.get("name", "text-embedding-3-large")
         
+        logger.info(f"初始化嵌入模型: 类型={model_type}, 名称={model_name}")
+        
         # 检查是否启用本地模型
         local_model_config = self.config.get("local_model", {})
         use_local_model = local_model_config.get("enabled", False)
@@ -157,32 +202,59 @@ class RagManager:
         # 如果api_wrapper为None，尝试初始化一个
         if self.api_wrapper is None:
             try:
-                # 尝试从配置文件获取RAG专用的API密钥和URL
+                # 尝试从配置文件获取API密钥和URL
+                api_key = self.config.get("api_key", "")
+                base_url = self.config.get("base_url", "")
+                
+                # 尝试从rag_config获取
                 try:
                     from src.config import rag_config as config
                     
-                    # 直接使用rag_config中的属性
-                    api_key = config.OPENAI_API_KEY
-                    base_url = config.OPENAI_API_BASE
+                    # 如果配置文件中的API密钥为空，使用rag_config中的配置
+                    if not api_key:
+                        api_key = getattr(config, "OPENAI_API_KEY", "")
+                        logger.info("使用rag_config中的API密钥")
                     
-                    # 如果找到了API密钥，创建API包装器
-                    if api_key:
-                        # 导入APIWrapper
-                        try:
-                            from src.api_client.wrapper import APIWrapper
-                            self.api_wrapper = APIWrapper(
-                                api_key=api_key,
-                                base_url=base_url if base_url else None
-                            )
-                            logger.info("成功从配置文件创建RAG专用API包装器")
-                        except ImportError:
-                            logger.error("无法导入APIWrapper，嵌入功能将不可用")
+                    # 如果配置文件中的base_url为空，使用rag_config中的配置
+                    if not base_url:
+                        base_url = getattr(config, "OPENAI_API_BASE", "")
+                        logger.info("使用rag_config中的API基础URL")
+                        
                 except Exception as config_error:
-                    logger.error(f"从配置文件获取RAG API设置失败: {str(config_error)}")
-                    
+                    logger.warning(f"从rag_config获取API设置失败: {str(config_error)}")
+                
+                # 如果仍然没有API密钥，尝试从环境变量获取
+                if not api_key:
+                    import os
+                    api_key = os.environ.get("OPENAI_API_KEY", "")
+                    if api_key:
+                        logger.info("使用环境变量中的API密钥")
+                
+                # 检查API密钥是否有效
+                if not api_key:
+                    logger.error("未找到有效的API密钥，嵌入功能将不可用")
+                    return None
+                
+                # 创建API包装器
+                try:
+                    from src.api_client.wrapper import APIWrapper
+                    self.api_wrapper = APIWrapper(
+                        api_key=api_key,
+                        base_url=base_url if base_url else None
+                    )
+                    logger.info("成功创建API包装器")
+                except ImportError:
+                    logger.error("无法导入APIWrapper，嵌入功能将不可用")
+                    return None
             except Exception as e:
                 logger.error(f"初始化API包装器失败: {str(e)}")
+                return None
         
+        # 检查API包装器是否有效
+        if self.api_wrapper is None:
+            logger.error("API包装器无效，嵌入功能将不可用")
+            return None
+            
         # 使用API模型
         logger.info(f"使用API嵌入模型: {model_name}")
         return ApiEmbeddingModel(self.api_wrapper, model_name, model_type)
@@ -287,11 +359,15 @@ class RagManager:
                 
             # 生成嵌入向量
             content = document.get("content", "")
+            logger.info(f"开始生成嵌入向量: 文档ID={document.get('id')}, 内容长度={len(content)}")
+            
             embedding = await self.embedding_model.get_embedding(content)
             
             if embedding is None:
-                logger.warning("生成嵌入向量失败，跳过添加文档")
+                logger.warning(f"生成嵌入向量失败，跳过添加文档: 文档ID={document.get('id')}")
                 return False
+                
+            logger.info(f"成功生成嵌入向量: 文档ID={document.get('id')}, 向量长度={len(embedding)}")
                 
             # 添加嵌入向量到文档
             document["embedding"] = embedding
@@ -303,12 +379,15 @@ class RagManager:
                 document["metadata"]["user_id"] = user_id
             
             # 保存到存储
+            logger.info(f"开始保存文档到存储: 文档ID={document.get('id')}")
             success = self.storage.add_document(document)
-            
+
             if success:
                 self.document_count = self.storage.get_document_count()
                 logger.info(f"成功添加文档到RAG系统，当前文档数: {self.document_count}")
-            
+            else:
+                logger.warning(f"未能将文档添加到存储: ID={document.get('id')}")
+
             return success
         except Exception as e:
             logger.error(f"添加文档失败: {str(e)}")
@@ -1050,25 +1129,33 @@ class ApiEmbeddingModel:
         # 检查缓存
         if text in self.cache:
             self.cache_hits += 1
+            logger.debug(f"嵌入向量缓存命中: 文本长度={len(text)}, 命中次数={self.cache_hits}")
             return self.cache[text]
             
         self.cache_misses += 1
+        logger.debug(f"嵌入向量缓存未命中: 文本长度={len(text)}, 未命中次数={self.cache_misses}")
         
         try:
             if not self.api_wrapper:
                 logger.error("API包装器未初始化，无法获取嵌入向量")
                 return None
                 
+            # 记录API调用
+            logger.info(f"开始调用API获取嵌入向量: 模型={self.model_name}, 文本长度={len(text)}")
+                
             # 使用API获取嵌入向量
             try:
                 # 首先尝试异步方法
                 if hasattr(self.api_wrapper, 'async_embedding'):
+                    logger.debug("使用async_embedding方法")
                     embedding = await self.api_wrapper.async_embedding(text, self.model_name)
                 # 如果不存在异步方法，则使用同步方法
                 elif hasattr(self.api_wrapper, 'embedding'):
+                    logger.debug("使用embedding方法")
                     embedding = self.api_wrapper.embedding(text, self.model_name)
                 else:
                     # 直接调用底层API
+                    logger.debug("使用底层API")
                     response = await self.api_wrapper.embeddings.create(
                         model=self.model_name,
                         input=text
@@ -1080,8 +1167,15 @@ class ApiEmbeddingModel:
                     else:
                         logger.error(f"无法解析嵌入向量响应: {response}")
                         return None
+                        
+                # 检查嵌入向量是否为空或无效
+                if not embedding or not isinstance(embedding, (list, tuple)) or len(embedding) < 10:
+                    logger.error(f"获取到的嵌入向量无效: {embedding}")
+                    return None
+                    
+                logger.info(f"成功获取嵌入向量: 长度={len(embedding)}")
             except Exception as e:
-                logger.error(f"调用嵌入API失败: {str(e)}")
+                logger.error(f"调用嵌入API失败: {str(e)}", exc_info=True)
                 return None
                 
             # 缓存结果
@@ -1092,10 +1186,11 @@ class ApiEmbeddingModel:
                 # 删除最旧的项
                 oldest_key = next(iter(self.cache))
                 del self.cache[oldest_key]
+                logger.debug(f"缓存超过最大大小，删除最旧的项: 当前大小={len(self.cache)}")
                 
             return embedding
         except Exception as e:
-            logger.error(f"获取嵌入向量失败: {str(e)}")
+            logger.error(f"获取嵌入向量失败: {str(e)}", exc_info=True)
             return None
             
     def get_cache_stats(self) -> Dict:

@@ -12,10 +12,14 @@ import math
 import jieba
 import pandas as pd
 from collections import defaultdict
+import logging
 
 # 配置基础路径
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR.parent.parent.parent))
+
+# 获取 logger 实例
+logger = logging.getLogger("main")
 
 # 情感分类映射表
 CATEGORY_MAPPING = {
@@ -102,6 +106,10 @@ class SentimentAnalyzer:
         self.degree_adverbs = self.res.degree_adverbs
         self.negative_words = self.res.negative_words
         self.degree_weights = self.res.degree_weights
+        
+        # 添加：定义强攻击性/侮辱性词汇模式 (使用更通用的代表，实际应填充具体词汇)
+        # 注意：这里的词汇仅为示例，需要根据实际情况填充或使用更复杂的匹配
+        self.abusive_keywords = {"傻逼", "草泥马", "操你", "日你", "傻叉", "脑残", "垃圾", "废物", "滚蛋", "去死", "傻O", "草你O"} # 示例
 
     def _warm_up(self):
         """预热关键组件"""
@@ -119,6 +127,7 @@ class SentimentAnalyzer:
         current_negation = False
         current_weight = 1.0
         total_words = len(words)
+        abusive_detected = False
 
         # 将常用方法转为局部变量加速访问
         degree_adverbs = self.degree_adverbs
@@ -141,6 +150,15 @@ class SentimentAnalyzer:
                 current_negation = not current_negation
                 emotion_counts['negative'] += 1.5 * (1.2 - i/total_words)
                 continue
+                
+            # 添加：检测攻击性/侮辱性词汇
+            if word in self.abusive_keywords:
+                logger.warning(f"检测到攻击性词汇: {word}")
+                abusive_detected = True
+                # 降低分数提升幅度
+                emotion_counts['anger'] += 2.5
+                emotion_counts['negative'] += 2.5
+                break
 
             # 情感词处理
             emotion_type, polarity = get_sentiment(word)
@@ -166,8 +184,23 @@ class SentimentAnalyzer:
         intensity = total_emotion / text_len
         log_intensity = math.log1p(intensity * 100)
         final_intensity = math.tanh(log_intensity / 3)
+        
+        # 如果检测到攻击性词汇，调整强度下限
+        if abusive_detected:
+            final_intensity = max(final_intensity, 0.6)
+            logger.info(f"因检测到攻击性词汇，调整强度下限为 0.6，最终强度: {final_intensity:.2f}")
 
         if final_intensity < 0.15 or abs(positive - negative) < 0.1:
+            # 即便强度低，如果检测到攻击性词汇，也应判定为负面/愤怒
+            if abusive_detected:
+                logger.info("检测到攻击性词汇，即使强度低也判定为愤怒/负面")
+                return {
+                   'sentiment_type': 'Anger', # 强制为愤怒
+                   'polarity': '负面',
+                   'sentiment_score': -5.0, # 强制负分
+                   'intensity': round(final_intensity, 2)
+                }
+            # 原有中性判断逻辑
             return {
                 'sentiment_type': 'Neutral',
                 'polarity': '中立',
@@ -177,7 +210,21 @@ class SentimentAnalyzer:
 
         direction = 1 if (positive - negative) > 0 else -1
         score = direction * final_intensity * 5
+        
+        # 添加：如果检测到攻击性词汇，确保结果是愤怒/负面
+        if abusive_detected:
+            main_emotion = 'Anger' # 强制主要情感为愤怒
+            polarity_text = '负面'
+            final_score = min(score, -abs(final_intensity * 5)) # 确保是负分
+            logger.info(f"攻击性词汇覆盖情感判断: {main_emotion}, {polarity_text}, {final_score:.2f}")
+            return {
+                'sentiment_type': main_emotion,
+                'polarity': polarity_text,
+                'sentiment_score': round(final_score, 2),
+                'intensity': round(final_intensity, 2)
+            }
 
+        # 原有逻辑计算主要情感和得分
         return {
             'sentiment_type': self._get_main_emotion(counts),
             'polarity': '正面' if direction > 0 else '负面',
