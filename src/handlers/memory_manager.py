@@ -145,8 +145,9 @@ def remember(user_message, assistant_response, user_id=None):
         if isinstance(user_message, str) and "[当前用户问题]" in user_message:
             user_message = user_message.replace("[当前用户问题]", "").strip()
             
-        # 直接调用，MemoryProcessor.remember已改为同步方法
-        return _memory_processor.remember(user_message, assistant_response, user_id)
+        # 直接调用 MemoryProcessor.remember，修正参数顺序
+        # 原错误调用: _memory_processor.remember(user_message, assistant_response, user_id)
+        return _memory_processor.remember(user_id, user_message, assistant_response) # 修正后的调用
     except Exception as e:
         logger.error(f"调用remember方法时出错: {str(e)}")
         return False

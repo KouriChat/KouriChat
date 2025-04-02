@@ -14,7 +14,6 @@ from datetime import datetime
 from typing import Tuple, Optional, Callable, Deque, Dict, List
 from collections import deque, defaultdict
 import threading
-import queue
 import time
 from src.config import config
 from src.webui.routes.avatar import AVATARS_DIR
@@ -67,14 +66,6 @@ class EmojiHandler:
         # 功能开关属性
         self._enabled = True  # 默认启用表情功能
         self._enable_stats = False  # 统计功能默认关闭
-
-        # 使用任务队列替代处理锁
-        self.task_queue = queue.Queue()
-        self.is_replying = False
-        self.worker_thread = threading.Thread(
-            target=self._process_emoji_queue, daemon=True
-        )
-        self.worker_thread.start()
 
         # 情感目录映射（实在没办法了，要适配之前的文件结构）
         # 相信后人的智慧喵~
@@ -181,6 +172,11 @@ class EmojiHandler:
 
     def is_emoji_request(self, text: str) -> bool:
         """判断是否为表情包请求"""
+        # 如果是系统生成的动画表情描述，不视为表情包请求
+        if text.strip() in ["[动画表情]", "[表情]", "发送了一个动画表情","发送了一个动画表情"]:
+            logger.info(f"检测到系统表情描述文本，不视为表情包请求: {text}")
+            return False
+            
         # 转换为小写便于匹配
         text_lower = text.lower()
         
@@ -208,6 +204,7 @@ class EmojiHandler:
         # 短语匹配，确保是明确的表情包请求
         for keyword in emoji_keywords:
             if keyword in text_lower:
+                logger.info(f"检测到表情包请求关键词: {keyword}")
                 return True
                 
         # 正则表达式匹配更复杂的表达方式
@@ -221,6 +218,7 @@ class EmojiHandler:
         
         for pattern in patterns:
             if re.search(pattern, text_lower):
+                logger.info(f"检测到表情包请求模式: {pattern}")
                 return True
         
         return False
@@ -258,81 +256,21 @@ class EmojiHandler:
         # 确保使用至少EMOJI_TRIGGER_RATE的概率
         adjusted_prob = max(current_prob, EMOJI_TRIGGER_RATE)  
         
-        # 生成0-1之间的随机值，代表当前"发送表情包的欲望"
+        # 生成0-1之间的随机数
         random_value = random.random()
         
-        # 修改判断逻辑：当随机值(欲望)大于概率阈值时发送表情包
-        # 欲望值越高，越容易触发表情包发送
-        should_send = random_value > (1 - adjusted_prob)
+        # 直接使用调整后的概率进行判断
+        # 如果随机数小于调整后的概率，则发送表情
+        should_send = random_value < adjusted_prob
         
         # 添加详细日志，帮助诊断问题
-        logger.info(f"表情触发判断 - 用户: {user_id}, 基础概率: {EMOJI_TRIGGER_RATE}, 当前概率: {current_prob:.2f}, 调整后概率: {adjusted_prob:.2f}, 随机欲望值: {random_value:.2f}, 阈值: {1-adjusted_prob:.2f}, 结果: {'发送' if should_send else '不发送'}")
+        logger.info(f"表情触发判断 - 用户: {user_id}, 基础概率: {EMOJI_TRIGGER_RATE}, 当前概率: {current_prob:.2f}, 调整后概率 (发送几率): {adjusted_prob:.2f}, 随机数: {random_value:.2f}, 结果: {'发送' if should_send else '不发送'}")
         
         if should_send:
             self._update_trigger_prob(user_id, True)
             return True
         self._update_trigger_prob(user_id, False)
         return False
-
-    def _process_emoji_queue(self):
-        """处理表情包任务队列"""
-        while True:
-            try:
-                # 等待队列中的任务
-                task = self.task_queue.get()
-                if task is None:
-                    time.sleep(0.5)
-                    continue
-
-                # 不再等待回复结束，直接处理表情包任务
-                # 注释掉等待逻辑，避免阻塞表情发送
-                # if self.is_replying:
-                #     logger.debug("表情处理器正在回复中，但仍继续处理表情任务")
-
-                # 解析任务
-                text, user_id, callback = task
-                
-                # 记录更详细的处理信息
-                is_request = self.is_emoji_request(text)
-                logger.info(f"处理表情包任务: {'表情请求' if is_request else 'AI回复'}, 用户: {user_id}, 文本长度: {len(text)}")
-
-                # 执行表情包获取
-                result = self._get_emotion_emoji_impl(text, user_id)
-                
-                # 如果获取到表情包路径
-                if result:
-                    logger.info(f"获取到表情包: {result}")
-                    # 如果提供了回调函数，调用回调
-                    if callback and os.path.exists(result):
-                        # 不再添加延迟，直接调用回调发送表情包
-                        logger.info(f"通过回调发送表情包: {result}")
-                        callback(result)
-                    elif hasattr(self, 'wx') and self.wx and os.path.exists(result):
-                        # 如果有wx实例但没有回调，尝试直接发送
-                        try:
-                            self.wx.SendFiles(filepath=result, who=user_id)
-                            logger.info(f"直接发送表情包成功: {result}")
-                        except Exception as e:
-                            logger.error(f"直接发送表情包失败: {str(e)}")
-                else:
-                    logger.info(f"未获取到表情包或判断不发送，用户: {user_id}")
-
-            except Exception as e:
-                logger.error(f"处理表情包队列时出错: {str(e)}", exc_info=True)
-            finally:
-                # 标记任务完成
-                try:
-                    self.task_queue.task_done()
-                except:
-                    pass
-                time.sleep(0.1)
-
-    def set_replying_status(self, is_replying: bool):
-        """设置当前是否在进行回复"""
-        self.is_replying = is_replying
-        logger.debug(
-            f"表情包处理回复状态已更新: {'正在回复' if is_replying else '回复结束'}"
-        )
 
     def _get_emotion_emoji_impl(self, text: str, user_id: str) -> Optional[str]:
         """实际执行表情包获取的内部方法"""
@@ -446,7 +384,7 @@ class EmojiHandler:
         callback: Callable = None,
         is_self_emoji: bool = False,
     ) -> Optional[str]:
-        """将表情包获取任务添加到队列"""
+        """同步获取表情包路径，或处理表情包请求"""
         try:
             # 如果是自己发送的表情包，直接跳过处理
             if is_self_emoji:
@@ -458,39 +396,13 @@ class EmojiHandler:
                 logger.info(f"消息内容过短，跳过表情分析: {text}")
                 return None
                 
-            # 表情包请求需要立即处理，AI回复则添加到队列
-            if self.is_emoji_request(text):
-                # 表情包请求，直接处理而不是添加到队列
-                logger.info(f"直接处理表情包请求: {text}")
-                emoji_path = self._get_emotion_emoji_impl(text, user_id)
-                
-                # 如果获取到表情包路径
-                if emoji_path and os.path.exists(emoji_path):
-                    # 如果提供了回调函数，交给回调处理
-                    if callback:
-                        threading.Timer(0.5, lambda: callback(emoji_path)).start()
-                        return "表情包处理中..."
-                    # 如果有wxauto实例，直接发送
-                    elif hasattr(self, 'wx') and self.wx:
-                        try:
-                            self.wx.SendFiles(filepath=emoji_path, who=user_id)
-                            logger.info(f"已发送表情包: {emoji_path}")
-                            return "表情包已发送"
-                        except Exception as e:
-                            logger.error(f"发送表情包失败: {str(e)}")
-                            return "发送表情包失败"
-                    else:
-                        # 既没有回调也没有wx实例，返回路径
-                        return emoji_path
-                else:
-                    return "未找到合适的表情包"
-            else:
-                # AI回复情感分析，添加到队列处理
-                logger.info(f"AI回复情感分析处理: 用户={user_id}, 内容长度={len(text)}")
-                self.task_queue.put((text, user_id, callback))
-                return None
+            # 统一处理：所有文本都经过情感分析和概率判断
+            logger.info(f"统一处理表情分析: 用户={user_id}, 内容长度={len(text)}")
+            emoji_path = self._get_emotion_emoji_impl(text, user_id)
+            return emoji_path # 返回路径或 None
+
         except Exception as e:
-            logger.error(f"添加表情包获取任务失败: {str(e)}")
+            logger.error(f"获取表情包失败: {str(e)}", exc_info=True)
             return None
 
     def update_wx_instance(self, wx_instance):
@@ -500,3 +412,10 @@ class EmojiHandler:
             logger.info("表情包处理器更新了微信实例")
         else:
             logger.warning("尝试更新表情包处理器的微信实例为空")
+            
+    def set_replying_status(self, is_replying: bool):
+        """设置回复状态 (当前主要用于接口统一，实际逻辑可按需添加)"""
+        # 这里可以根据需要添加实际逻辑，例如设置内部状态标记
+        # self._is_replying = is_replying 
+        # logger.debug(f"EmojiHandler 设置回复状态: {is_replying}")
+        pass # 保持接口一致性，暂无具体实现
