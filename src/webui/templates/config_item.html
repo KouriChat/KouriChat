@@ -792,14 +792,375 @@
         <input type="text" class="form-control mb-2" 
             id="{{ key }}" name="{{ key }}" 
             value="{{ config.value }}"
-            placeholder="请输入 Moonshot API 密钥">
+            placeholder="请输入密钥">
         <a href="https://platform.moonshot.cn/console/api-keys" 
             class="btn btn-primary w-100"
             target="_blank"
-            rel="noopener">
+            rel="noopener"
+            id="imgRecogRegisterBtn"
+            style="display: none;">
             <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
         </a>
     </div>
+{% elif key == 'MOONSHOT_BASE_URL' %}
+    <div class="mb-3">
+        <select class="form-select mb-2" id="img_recog_provider_select" onchange="updateImgRecogProvider(this.value)" aria-label="选择图像识别API提供商">
+            <option value="ciallo" data-url="https://api.ciallo.ac.cn/v1">KouriChat API (亚太备线)</option>
+            <option value="kourichat" data-url="https://api.kourichat.com/v1">KouriChat API (全球优化)</option>
+            <option value="moonshot" data-url="https://api.moonshot.cn/v1">Moonshot（月之暗面）</option>
+            <option value="custom">自定义</option>
+        </select>
+
+        <!-- 添加自定义 API 输入框 -->
+        <div id="imgRecogCustomApiInput" class="mb-2" style="display: none;">
+            <input type="text" class="form-control" 
+                   placeholder="请输入自定义 API 地址"
+                   onchange="updateImgRecogCustomApi(this.value)">
+        </div>
+
+        <input type="hidden" class="form-control" 
+            id="{{ key }}" name="{{ key }}" 
+            value="{{ config.value }}">
+    </div>
+
+    <script>
+    // 更新图像识别API提供商
+    function updateImgRecogProvider(value) {
+        const baseUrlInput = document.getElementById('MOONSHOT_BASE_URL');
+        const customApiInput = document.getElementById('imgRecogCustomApiInput');
+        const registerBtn = document.getElementById('imgRecogRegisterBtn');
+        const modelSelect = document.getElementById('img_recog_model_select');
+
+        // 重置状态
+        customApiInput.style.display = 'none';
+        
+        // 控制注册按钮显示
+        if (value === 'moonshot') {
+            registerBtn.style.display = 'block';
+        } else {
+            registerBtn.style.display = 'none';
+        }
+
+        // 处理自定义选项
+        if (value === 'custom') {
+            customApiInput.style.display = 'block';
+            const inputElement = customApiInput.querySelector('input');
+            inputElement.value = baseUrlInput.value || '';
+            
+            // 当选择自定义时，如未填写则清空API URL输入框
+            if (!inputElement.value) {
+                baseUrlInput.value = ''; 
+            }
+            
+            updateImgRecogModelOptions('custom');
+            return;
+        }
+
+        // 获取选中的提供商配置
+        const selectedOption = document.querySelector(`#img_recog_provider_select option[value="${value}"]`);
+        if (!selectedOption) return;
+
+        // 更新API URL
+        const apiUrl = selectedOption.dataset.url;
+        baseUrlInput.value = apiUrl;
+        
+        // 更新模型选项
+        updateImgRecogModelOptions(value);
+    }
+
+    // 更新自定义API URL
+    function updateImgRecogCustomApi(value) {
+        const baseUrlInput = document.getElementById('MOONSHOT_BASE_URL');
+        baseUrlInput.value = value;
+    }
+    
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        // 设置初始选中值
+        const providerSelect = document.getElementById('img_recog_provider_select');
+        const baseUrl = document.getElementById('MOONSHOT_BASE_URL').value;
+        
+        let initialProvider = 'ciallo'; // 默认值
+        
+        if (baseUrl === 'https://api.kourichat.com/v1') {
+            initialProvider = 'kourichat';
+        } else if (baseUrl === 'https://api.ciallo.ac.cn/v1') {
+            initialProvider = 'ciallo';
+        } else if (baseUrl === 'https://api.moonshot.cn/v1') {
+            initialProvider = 'moonshot';
+        } else if (baseUrl) {
+            initialProvider = 'custom';
+        }
+        
+        providerSelect.value = initialProvider;
+        updateImgRecogProvider(initialProvider);
+    });
+    </script>
+{% elif key == 'MOONSHOT_TEMPERATURE' %}
+    <style>
+        .img-recog-temperature-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, 
+                #3498db 0%,
+                #2ecc71 40%,
+                #f39c12 70%,
+                #e74c3c 100%
+            );
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        
+        .img-recog-temperature-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+            border: 2px solid #0d6efd;
+        }
+        
+        .img-recog-temperature-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+            border: 2px solid #0d6efd;
+        }
+    </style>
+    
+    <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value }}</strong></span>
+        </div>
+        <input type="range" 
+            class="img-recog-temperature-slider" 
+            id="{{ key }}_slider" 
+            min="0"
+            max="1.7"
+            step="0.01"
+            value="{{ config.value }}"
+            oninput="updateImgRecogTemperature('{{ key }}', this.value)"
+            style="cursor: pointer;"
+            title="温度参数滑动条">
+        <div class="d-flex justify-content-between slider-labels">
+            <span class="low">精确 0</span>
+            <span class="high">创造 1.7</span>
+        </div>
+        <!-- 隐藏的实际提交值输入框 -->
+        <input type="hidden" 
+            id="{{ key }}" 
+            name="{{ key }}" 
+            value="{{ config.value }}">
+    </div>
+
+    <script>
+        // 获取配置文件中的最新温度值
+        async function fetchCurrentTemperature() {
+            try {
+                const response = await fetch('/get_config');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success' && data.config && 
+                        typeof data.config.MOONSHOT_TEMPERATURE !== 'undefined') {
+                        return parseFloat(data.config.MOONSHOT_TEMPERATURE);
+                    }
+                }
+                return null;
+            } catch (error) {
+                console.error("获取温度值失败:", error);
+                return null;
+            }
+        }
+        
+        function updateImgRecogTemperature(key, value) {
+            // 将字符串转换为数字
+            const numValue = parseFloat(value);
+            
+            // 更新显示值
+            const displayElement = document.getElementById(key + '_display');
+            if (displayElement) {
+                displayElement.classList.add('updating');
+                displayElement.textContent = numValue;
+                setTimeout(() => {
+                    displayElement.classList.remove('updating');
+                }, 300);
+            }
+            
+            // 更新隐藏的实际提交值
+            const inputElement = document.getElementById(key);
+            if (inputElement) {
+                inputElement.value = numValue;
+            }
+        }
+        
+        // 立即初始化滑块
+        (function initializeSlider() {
+            const slider = document.getElementById('{{ key }}_slider');
+            const displayEl = document.getElementById('{{ key }}_display');
+            const inputEl = document.getElementById('{{ key }}');
+            
+            if (slider && displayEl && inputEl) {
+                // 使用模板值作为初始值（可能是默认值）
+                let initialValue = {{ config.value }};
+                console.log("模板初始温度值:", initialValue);
+                
+                // 确保滑块、显示和隐藏输入的值一致
+                slider.value = initialValue;
+                displayEl.textContent = initialValue;
+                inputEl.value = initialValue;
+            }
+        })();
+        
+        // 文档加载完成后，尝试从服务器获取实际值
+        document.addEventListener('DOMContentLoaded', async function() {
+            // 从服务器获取最新值
+            const serverValue = await fetchCurrentTemperature();
+            if (serverValue !== null) {
+                // 获取元素
+                const slider = document.getElementById('{{ key }}_slider');
+                const displayEl = document.getElementById('{{ key }}_display');
+                const inputEl = document.getElementById('{{ key }}');
+                
+                console.log("从服务器获取的温度值:", serverValue);
+                
+                // 更新所有相关元素
+                if (slider) slider.value = serverValue;
+                if (displayEl) displayEl.textContent = serverValue;
+                if (inputEl) inputEl.value = serverValue;
+                
+                console.log("滑块值已更新为:", serverValue);
+            } else {
+                console.warn("无法获取服务器温度值，使用默认值");
+            }
+        });
+    </script>
+{% elif key == 'MOONSHOT_MODEL' %}
+    <div class="mb-3">
+        <select class="form-select mb-2" id="img_recog_model_select" onchange="updateImgRecogModel(this.value)" aria-label="选择图像识别模型">
+            <!-- 动态填充选项 -->
+        </select>
+
+        <!-- 添加自定义模型输入框 -->
+        <div id="imgRecogCustomModelInput" class="mb-2" style="display: none;">
+            <input type="text" class="form-control" 
+                   placeholder="请输入自定义模型名称"
+                   onchange="updateImgRecogCustomModel(this.value)">
+        </div>
+
+        <input type="hidden" class="form-control" 
+            id="{{ key }}" name="{{ key }}" 
+            value="{{ config.value }}">
+    </div>
+
+    <script>
+    // 更新模型选项
+    function updateImgRecogModelOptions(providerId) {
+        const modelSelect = document.getElementById('img_recog_model_select');
+        const modelInput = document.getElementById('MOONSHOT_MODEL');
+        const customModelInput = document.getElementById('imgRecogCustomModelInput');
+        
+        modelSelect.innerHTML = '';
+        customModelInput.style.display = 'none';
+        
+        if (providerId === 'kourichat' || providerId === 'ciallo') {
+            // KouriChat API 固定使用 koala
+            modelSelect.innerHTML = '<option value="koala">koala</option>';
+            modelInput.value = 'koala';
+        } else if (providerId === 'moonshot') {
+            // Moonshot 有多个选项
+            modelSelect.innerHTML = `
+                <option value="moonshot-v1-8k-vision-preview">moonshot-v1-8k-vision-preview</option>
+                <option value="custom">自定义</option>
+            `;
+            
+            // 根据当前值设置选中项
+            if (modelInput.value && modelInput.value !== 'koala') {
+                if (modelInput.value === 'moonshot-v1-8k-vision-preview') {
+                    modelSelect.value = 'moonshot-v1-8k-vision-preview';
+                } else {
+                    modelSelect.value = 'custom';
+                    customModelInput.style.display = 'block';
+                    customModelInput.querySelector('input').value = modelInput.value;
+                }
+            } else {
+                modelSelect.value = 'moonshot-v1-8k-vision-preview';
+                modelInput.value = 'moonshot-v1-8k-vision-preview';
+            }
+        } else if (providerId === 'custom') {
+            // 自定义API
+            modelSelect.innerHTML = '<option value="custom">自定义</option>';
+            modelSelect.value = 'custom';
+            customModelInput.style.display = 'block';
+            customModelInput.querySelector('input').value = modelInput.value || '';
+        }
+    }
+    
+    // 更新模型选择
+    function updateImgRecogModel(value) {
+        const modelInput = document.getElementById('MOONSHOT_MODEL');
+        const customModelInput = document.getElementById('imgRecogCustomModelInput');
+        
+        if (value === 'custom') {
+            customModelInput.style.display = 'block';
+            const currentValue = modelInput.value;
+            if (currentValue && currentValue !== 'custom') {
+                customModelInput.querySelector('input').value = currentValue;
+            }
+        } else {
+            customModelInput.style.display = 'none';
+            modelInput.value = value;
+        }
+    }
+    
+    // 更新自定义模型
+    function updateImgRecogCustomModel(value) {
+        const modelInput = document.getElementById('MOONSHOT_MODEL');
+        if (value.trim()) {
+            modelInput.value = value.trim();
+        }
+    }
+    
+    // 初始化模型选择
+    document.addEventListener('DOMContentLoaded', function() {
+        const providerSelect = document.getElementById('img_recog_provider_select');
+        const currentProvider = providerSelect.value;
+        
+        // 设置初始模型
+        setTimeout(() => {
+            updateImgRecogModelOptions(currentProvider);
+            
+            // 根据当前模型值设置显示
+            const modelInput = document.getElementById('MOONSHOT_MODEL');
+            const currentModel = modelInput.value;
+            const modelSelect = document.getElementById('img_recog_model_select');
+            
+            if (currentModel) {
+                // 检查当前模型是否在选项中
+                const optionExists = Array.from(modelSelect.options).some(opt => opt.value === currentModel);
+                
+                if (optionExists) {
+                    modelSelect.value = currentModel;
+                } else if (currentProvider === 'moonshot' || currentProvider === 'custom') {
+                    modelSelect.value = 'custom';
+                    const customModelInput = document.getElementById('imgRecogCustomModelInput');
+                    customModelInput.style.display = 'block';
+                    customModelInput.querySelector('input').value = currentModel;
+                }
+            }
+        }, 100);
+    });
+    </script>
 {% elif key == 'QUIET_TIME_START' or key == 'QUIET_TIME_END' %}
     <div class="mb-3">
         <input type="text" 

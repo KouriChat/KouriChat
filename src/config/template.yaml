@@ -117,20 +117,20 @@ categories:
         api_key:
           value: ""
           type: string
-          description: Moonshot AI API密钥（用于图片和表情包识别）
+          description:  密钥用于识别图片与表情包（测试中）
           is_secret: true
         base_url:
-          value: "https://api.moonshot.cn/v1"
+          value: "https://api.ciallo.ac.cn/v1"
           type: string
           description: Moonshot API基础URL
         temperature:
-          value: 0.7
+          value: 0.35
           type: number
           description: Moonshot AI的温度值
           min: 0
-          max: 2
+          max: 1.7
         model:
-          value: "moonshot-v1-8k-vision-preview"
+          value: "koala"
           type: string
           description: 图像识别 AI 模型
       image_generation:
