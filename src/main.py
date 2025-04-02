@@ -4,9 +4,6 @@ from datetime import datetime, timedelta
 import threading
 import time
 import os
-import shutil
-import win32gui
-import win32con
 from src.config import config
 from wxauto import WeChat
 import re
@@ -26,6 +23,8 @@ from src.AutoTasker.autoTasker import AutoTasker
 import sys
 import asyncio
 from difflib import SequenceMatcher
+import win32gui
+import pyautogui
 
 def _run_async(coro):
     """
@@ -631,7 +630,111 @@ class ChatBot:
 
             if content and "[动画表情]" in content:
                 logger.info("检测到动画表情")
-                # 不再使用截图功能，直接将动画表情标记为特定类型的文本消息
+                # 截图并保存表情包
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                emoji_dir = os.path.join(root_dir, "temp", "emoji")
+                os.makedirs(emoji_dir, exist_ok=True)
+                emoji_path = os.path.join(emoji_dir, f"emoji_{username}_{timestamp}.png")
+                
+                try:
+                    # 使用win32gui直接获取微信窗口句柄，不再调用不存在的GetWeChatWindow方法
+                    hwnd = win32gui.FindWindow("WeChatMainWndForPC", None)
+                    if hwnd:
+                        # 保存对话框的截图
+                        chat_rect = win32gui.GetWindowRect(hwnd)
+                        
+                        # 不再使用不存在的GetImageOfChatRoom方法，改用pyautogui实现截图
+                        try:
+                            # 确保窗口处于前台
+                            win32gui.SetForegroundWindow(hwnd)
+                            time.sleep(0.2)
+                            
+                            # 截取对应区域的图像
+                            left, top, right, bottom = chat_rect
+                            width = right - left
+                            height = bottom - top
+                            chat_img = pyautogui.screenshot(region=(left, top, width, height))
+                            
+                            if chat_img:
+                                chat_img.save(emoji_path)
+                                logger.info(f"表情包截图已保存: {emoji_path}")
+                                
+                                # 使用图像识别服务识别表情包
+                                def emoji_recognition_callback(recognized_text):
+                                    try:
+                                        if not recognized_text or "抱歉" in recognized_text:
+                                            logger.warning(f"表情包识别失败: {recognized_text}")
+                                            # 识别失败时使用默认文本
+                                            recognized_text = "发送了一个动画表情"
+                                        
+                                        # 将识别结果添加到记忆和消息队列
+                                        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        group_info = f"在群聊里" if is_group else "私聊"
+                                        time_aware_content = f"(此时时间为{current_time}) ta{group_info}对你说{recognized_text}"
+                                        
+                                        # 保存到群聊记忆
+                                        if is_group and hasattr(self.message_handler, 'group_chat_memory'):
+                                            self.message_handler.group_chat_memory.add_message(chatName, username, recognized_text, is_at_robot)
+                                            logger.info(f"群聊表情包识别结果已保存到记忆: {chatName}, 发送者: {username}")
+                                        
+                                        # 如果是群聊且@机器人，添加到群聊消息队列
+                                        if is_group and is_at_robot:
+                                            with self.group_queue_lock:
+                                                if chatName not in self.group_message_queues:
+                                                    self.group_message_queues[chatName] = {
+                                                        'messages': [],
+                                                        'sender_name': username,
+                                                        'username': username,
+                                                        'last_message_time': current_time,
+                                                        'is_at': is_at_robot
+                                                    }
+                                                self.group_message_queues[chatName]['messages'].append(time_aware_content)
+                                                
+                                                # 设置处理延迟
+                                                if len(self.group_message_queues[chatName]['messages']) == 1:
+                                                    threading.Timer(1.0, self.process_user_messages, args=[chatName]).start()
+                                        # 如果是私聊，添加到私聊消息队列
+                                        elif not is_group:
+                                            with self.queue_lock:
+                                                if chatName not in self.user_queues:
+                                                    self.user_queues[chatName] = {
+                                                        'messages': [],
+                                                        'sender_name': username,
+                                                        'username': username,
+                                                        'last_message_time': current_time,
+                                                        'is_at': False
+                                                    }
+                                                self.user_queues[chatName]['messages'].append(time_aware_content)
+                                                
+                                                # 设置处理延迟
+                                                if len(self.user_queues[chatName]['messages']) == 1:
+                                                    threading.Timer(1.0, self.process_user_messages, args=[chatName]).start()
+                                        
+                                        logger.info(f"表情包识别结果已添加至消息队列: {recognized_text}")
+                                    except Exception as e:
+                                        logger.error(f"表情包识别回调处理失败: {str(e)}", exc_info=True)
+                                
+                                # 异步处理表情包识别
+                                if self.moonshot_ai:
+                                    self.moonshot_ai.recognize_image(
+                                        image_path=emoji_path,
+                                        is_emoji=True,
+                                        callback=emoji_recognition_callback
+                                    )
+                                    # 暂时返回None，识别结果会通过回调处理
+                                    return None
+                                else:
+                                    logger.warning("图像识别服务未初始化，无法识别表情包")
+                            else:
+                                logger.warning("截图失败，无法获取聊天窗口图像")
+                        except Exception as inner_e:
+                            logger.error(f"截图操作失败: {str(inner_e)}")
+                    else:
+                        logger.warning("无法获取微信窗口句柄")
+                except Exception as e:
+                    logger.error(f"表情包截图或识别失败: {str(e)}", exc_info=True)
+                
+                # 如果截图或识别失败，使用默认处理方式
                 is_emoji = True
                 content = "发送了一个动画表情"
 

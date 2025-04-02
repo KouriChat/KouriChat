@@ -172,9 +172,9 @@ class SentimentAnalyzer:
                 emotion_counts[emotion_type] += pos_weight
                 current_weight = 1.0
 
-        return self._compute_result(emotion_counts, total_words)
+        return self._compute_result(emotion_counts, total_words, abusive_detected)
 
-    def _compute_result(self, counts, text_len):
+    def _compute_result(self, counts, text_len, abusive_detected=False):
         """计算最终结果"""
         positive = counts.get('positive', 0.0)
         negative = counts.get('negative', 0.0)

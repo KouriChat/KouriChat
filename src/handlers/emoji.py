@@ -56,10 +56,11 @@ logger = logging.getLogger("main")
 
 
 class EmojiHandler:
-    def __init__(self, root_dir, wx_instance=None, sentiment_analyzer=None):
+    def __init__(self, root_dir, wx_instance=None, sentiment_analyzer=None, image_recognition_service=None):
         self.root_dir = root_dir
         self.wx = wx_instance  # 使用传入的 WeChat 实例
         self.sentiment_analyzer = sentiment_analyzer  # 情感分析器实例
+        self.image_recognition_service = image_recognition_service  # 图像识别服务实例
         avatar_name = config.behavior.context.avatar_dir
         self.emoji_dir = os.path.join(AVATARS_DIR, avatar_name, "emojis")
 
@@ -419,3 +420,48 @@ class EmojiHandler:
         # self._is_replying = is_replying 
         # logger.debug(f"EmojiHandler 设置回复状态: {is_replying}")
         pass # 保持接口一致性，暂无具体实现
+
+    def recognize_emoji(self, image_path: str, user_id: str, callback: Callable = None) -> None:
+        """调用图像识别服务识别表情包内容
+        
+        Args:
+            image_path: 表情包图片路径
+            user_id: 用户ID
+            callback: 回调函数，用于处理识别结果
+        
+        Returns:
+            None，识别结果通过callback返回
+        """
+        try:
+            if not self.image_recognition_service:
+                logger.warning("未配置图像识别服务，无法识别表情包")
+                if callback:
+                    callback("无法识别表情包内容")
+                return
+                
+            if not os.path.exists(image_path):
+                logger.error(f"表情包文件不存在: {image_path}")
+                if callback:
+                    callback("表情包文件不存在")
+                return
+                
+            logger.info(f"开始识别表情包: {image_path}")
+            # 调用图像识别服务识别表情包，is_emoji=True表示这是一个表情包
+            self.image_recognition_service.recognize_image(
+                image_path=image_path, 
+                is_emoji=True,
+                callback=callback
+            )
+            
+        except Exception as e:
+            logger.error(f"识别表情包失败: {str(e)}", exc_info=True)
+            if callback:
+                callback(f"表情包识别失败: {str(e)}")
+
+    def update_image_recognition_service(self, image_recognition_service):
+        """更新图像识别服务实例"""
+        if image_recognition_service:
+            self.image_recognition_service = image_recognition_service
+            logger.info("表情包处理器更新了图像识别服务实例")
+        else:
+            logger.warning("尝试更新表情包处理器的图像识别服务实例为空")
