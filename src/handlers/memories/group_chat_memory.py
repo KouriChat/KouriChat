@@ -77,6 +77,8 @@ class GroupChatMemory:
                         api_wrapper=self.api_wrapper,
                         storage_dir=group_storage_dir  # 使用群聊专属的存储目录
                     )
+                    # 显式设置avatar_name，确保使用正确的角色名
+                    rag_manager.avatar_name = self.avatar_name
                     self.rag_managers[group_id] = rag_manager
                     logger.info(f"初始化群聊 {group_id} 的 RAG 系统成功")
                 except Exception as e:
@@ -159,6 +161,8 @@ class GroupChatMemory:
                         api_wrapper=self.api_wrapper,
                         storage_dir=group_storage_dir  # 使用群聊专属的存储目录
                     )
+                    # 显式设置avatar_name，确保使用正确的角色名
+                    rag_manager.avatar_name = self.avatar_name
                     self.rag_managers[group_id] = rag_manager
                     logger.info(f"动态初始化群聊 {group_id} 的 RAG 系统成功")
                 except Exception as e:
