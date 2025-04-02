@@ -190,19 +190,19 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             {
                 "MOONSHOT_API_KEY": {
                     "value": config.media.image_recognition.api_key,
-                    "description": "Moonshot API密钥（用于图片和表情包识别）\n API申请https://platform.moonshot.cn/console/api-keys （免费15元额度）",
+                    "description": "请选择API提供商",
                 },
                 "MOONSHOT_BASE_URL": {
                     "value": config.media.image_recognition.base_url,
-                    "description": "Moonshot API基础URL",
+                    "description": "图像识别API基础URL",
                 },
                 "MOONSHOT_TEMPERATURE": {
                     "value": config.media.image_recognition.temperature,
-                    "description": "Moonshot温度参数",
+                    "description": "图像识别温度参数",
                 },
                 "MOONSHOT_MODEL": {
                     "value": config.media.image_recognition.model,
-                    "description": "Moonshot AI模型",
+                    "description": "图像识别模型",
                 }
             }
         )

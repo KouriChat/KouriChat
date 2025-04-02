@@ -12,10 +12,13 @@
     <link rel="icon" type="image/x-icon" href="/static/mom.ico">
     <style>
         :root {
-            --primary-color: #6366f1;
-            --secondary-color: #4f46e5;
+            --primary-color: #4e73df;
+            --secondary-color: #858796;
+            --text-color: #5a5c69;
+            --border-color: #e3e6f0;
+            --hover-color: #f8f9fc;
+            --sidebar-width: 280px;
             --background-color: #f0f4f8;  /* 更柔和的浅蓝灰色背景 */
-            --text-color: #1e293b;
             --card-bg: rgba(255, 255, 255, 0.494);
             --card-border: rgba(255, 255, 255, 0.5);
             --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -207,7 +210,7 @@
         .password-input-group {
             position: relative;
         }
-
+        
         .password-toggle {
             position: absolute;
             right: 10px;
@@ -219,9 +222,38 @@
             color: var(--text-color);
             opacity: 0.7;
         }
-
+        
         .password-toggle:hover {
             opacity: 1;
+        }
+        
+        /* 文本安全性样式支持 */
+        input[type="text"][style*="webkit-text-security"],
+        input[type="text"][style*="text-security"] {
+            font-family: Consolas, monospace;
+        }
+        
+        .password-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--bs-secondary-bg);
+            border: 1px solid var(--bs-border-color);
+            border-left: none;
+            padding: 0 10px;
+            cursor: pointer;
+            border-top-right-radius: 5px;
+            border-bottom-right-radius: 5px;
+            transition: all 0.2s;
+        }
+        
+        .password-toggle:hover {
+            background-color: rgba(var(--bs-primary-rgb), 0.1);
+        }
+        
+        .password-toggle i {
+            font-size: 1rem;
+            color: var(--bs-primary);
         }
 
         /* 修改左右两栏的间距 */
@@ -684,8 +716,8 @@
                                                 <i class="bi bi-server me-2"></i>API服务商
                                             </label>
                                             <select class="form-select" id="rag_api_provider_select" onchange="updateRagApiProvider(this.value)">
-                                                <option value="ciallo" data-url="https://api.ciallo.ac.cn/">KouriChat API (亚太备选)</option>
                                                 <option value="kourichat" data-url="https://api.kourichat.com">KouriChat API (全球优化)</option>
+                                                <option value="ciallo" data-url="https://api.ciallo.ac.cn/">KouriChat API (亚太备选)</option>
                                                 <option value="siliconflow" data-url="https://api.siliconflow.cn/v1">硅基流动 API</option>
                                                 <!--option value="kouri" data-url="https://api.kourichat.com/v1">KouriChat API</option-->
                                                 <option value="custom">自定义 API</option>
@@ -707,12 +739,7 @@
                                             <label for="RAG_API_KEY" class="form-label">
                                                 <i class="bi bi-key me-2"></i>API密钥
                                             </label>
-                                            <div class="password-input-group">
-                                                <input type="password" class="form-control" id="RAG_API_KEY" name="RAG_API_KEY" placeholder="sk-..." autocomplete="off">
-                                                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('RAG_API_KEY')">
-                                                    <i class="bi bi-eye"></i>
-                                                </button>
-                                            </div>
+                                            <input type="text" class="form-control" id="RAG_API_KEY" name="RAG_API_KEY" placeholder="sk-..." autocomplete="new-password" data-lpignore="true">
                                             <div class="form-text">嵌入API密钥，不填写则使用LLM模块配置</div>
                                         </div>
 
@@ -818,17 +845,6 @@
                                                        placeholder="例如: paraphrase-multilingual-MiniLM-L12-v2">
                                                 <div class="form-text">输入Hugging Face模型ID或本地模型路径</div>
                                             </div>
-                                        </div>
-
-                                        <!-- 硅基流动自动适配设置 -->
-                                        <div class="mb-3">
-                                            <div class="form-check form-switch">
-                                                <input class="form-check-input" type="checkbox" id="AUTO_ADAPT_SILICONFLOW" name="AUTO_ADAPT_SILICONFLOW" checked>
-                                                <label class="form-check-label" for="AUTO_ADAPT_SILICONFLOW">
-                                                    硅基流动自动适配
-                                                </label>
-                                            </div>
-                                            <div class="form-text">使用硅基流动API时自动切换到兼容模型</div>
                                         </div>
                                     </div>
                                 </div>

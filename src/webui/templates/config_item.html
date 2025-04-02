@@ -208,7 +208,6 @@
         // 初始化API提供商选择框
         const apiSelect = document.getElementById('api_provider_select');
         apiSelect.innerHTML = '<option value="">请选择API提供商</option>';
-        apiSelect.innerHTML += '<option value="custom">自定义API提供商</option>';
         
         // 按优先级排序并添加选项
         modelConfigs.api_providers
@@ -221,17 +220,42 @@
                         >${provider.name}</option>`;
                 }
             });
+            
+        apiSelect.innerHTML += '<option value="custom">自定义API提供商</option>';
 
         // 根据当前配置设置初始值
         const currentUrl = document.getElementById('DEEPSEEK_BASE_URL').value;
-        const currentProvider = modelConfigs.api_providers.find(p => p.url === currentUrl);
         
-        if (currentProvider) {
-            apiSelect.value = currentProvider.id;
-            updateApiProvider(currentProvider.id);
-        } else if (currentUrl) {
-            apiSelect.value = 'custom';
-            showCustomApiInput(currentUrl);
+        // 优先选择KouriChat API
+        if (currentUrl && (currentUrl.includes('kourichat.com') || currentUrl.includes('ciallo.ac.cn'))) {
+            // 尝试找到匹配的KouriChat提供商
+            const kouriOptions = Array.from(apiSelect.options).filter(opt => 
+                (opt.value === 'kourichat' || opt.value === 'ciallo') && 
+                opt.dataset && opt.dataset.url && 
+                (opt.dataset.url.includes(currentUrl) || currentUrl.includes(opt.dataset.url))
+            );
+            
+            if (kouriOptions.length > 0) {
+                // 找到匹配的选项
+                apiSelect.value = kouriOptions[0].value;
+            } else {
+                // 没找到精确匹配的，默认选择kourichat
+                apiSelect.value = 'kourichat';
+            }
+            
+            // 触发更新
+            updateApiProvider(apiSelect.value);
+        } else {
+            // 非KouriChat URL的处理方式
+            const currentProvider = modelConfigs.api_providers.find(p => p.url === currentUrl);
+            
+            if (currentProvider) {
+                apiSelect.value = currentProvider.id;
+                updateApiProvider(currentProvider.id);
+            } else if (currentUrl) {
+                apiSelect.value = 'custom';
+                showCustomApiInput(currentUrl);
+            }
         }
     }
 
@@ -328,15 +352,38 @@
             // 设置当前选中的模型
             const currentModel = modelInput.value;
             const modelOptions = Array.from(modelSelect.options);
+            
+            // 特殊处理KouriChat V3模型 - 优先匹配准确的名称或ID
+            if (currentModel === 'KouriChat V3' || currentModel === 'kourichat-v3') {
+                const kouriV3Option = modelOptions.find(option => 
+                    option.value === 'kourichat-v3' || 
+                    option.textContent.trim() === 'KouriChat V3'
+                );
+                
+                if (kouriV3Option) {
+                    modelSelect.value = kouriV3Option.value;
+                    customModelInput.style.display = 'none';
+                    return;
+                }
+            }
+            
+            // 检查当前值是否在预设选项中
             const modelExists = modelOptions.some(option => option.value === currentModel);
 
             if (modelExists) {
                 modelSelect.value = currentModel;
                 customModelInput.style.display = 'none';
             } else if (currentModel) {
-                modelSelect.value = 'custom';
-                customModelInput.style.display = 'block';
-                customModelInput.querySelector('input').value = currentModel;
+                // 再次尝试匹配显示名称
+                const optionByText = modelOptions.find(option => option.textContent.trim() === currentModel);
+                if (optionByText) {
+                    modelSelect.value = optionByText.value;
+                    customModelInput.style.display = 'none';
+                } else {
+                    modelSelect.value = 'custom';
+                    customModelInput.style.display = 'block';
+                    customModelInput.querySelector('input').value = currentModel;
+                }
             } else {
                 // 如果没有当前模型，选择第一个可用的模型
                 const firstModel = modelOptions.find(option => option.value && option.value !== 'custom');
@@ -393,6 +440,7 @@
         const customApiInput = document.getElementById('customApiInput');
         const registerLinks = document.getElementById('register_links');
         const modelSelect = document.getElementById('model_select');
+        const modelInput = document.getElementById('MODEL');
 
         // 重置所有状态
         customApiInput.style.display = 'none';
@@ -427,6 +475,12 @@
             baseUrlInput.dataset.isOllama = 'true';
         } else {
             baseUrlInput.dataset.isOllama = 'false';
+        }
+
+        // 特殊处理KouriChat API
+        if (value === 'kourichat' || value === 'ciallo') {
+            // 直接设置模型为KouriChat V3
+            modelInput.value = 'KouriChat V3';
         }
 
         // 创建注册按钮
@@ -787,19 +841,424 @@
             {% if config.min is defined %}min="{{ config.min }}"{% endif %}
             {% if config.max is defined %}max="{{ config.max }}"{% endif %}>
     {% endif %}
+{% elif key == 'DEEPSEEK_API_KEY' %}
+    <input type="text" class="form-control" 
+        id="{{ key }}" name="{{ key }}" 
+        placeholder="sk-..."
+        value="{{ config.value }}"
+        autocomplete="new-password" 
+        data-lpignore="true">
 {% elif key == 'MOONSHOT_API_KEY' %}
     <div class="mb-3">
-        <input type="text" class="form-control mb-2" 
-            id="{{ key }}" name="{{ key }}" 
-            value="{{ config.value }}"
-            placeholder="请输入 Moonshot API 密钥">
-        <a href="https://platform.moonshot.cn/console/api-keys" 
-            class="btn btn-primary w-100"
-            target="_blank"
-            rel="noopener">
-            <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
-        </a>
+        <select class="form-select mb-2" id="image_api_provider_select" onchange="updateImageApiProvider(this.value)" aria-label="选择图像API提供商">
+            <option value="">请选择API提供商</option>
+            <option value="kourichat" data-url="https://api.kourichat.com/">KouriChat API (全球优化)</option>
+            <option value="ciallo" data-url="https://api.ciallo.ac.cn/">KouriChat API (亚太备选)</option>
+            <option value="moonshot" data-url="https://api.moonshot.cn/v1">Moonshot API</option>
+            <option value="custom">自定义API提供商</option>
+        </select>
+
+        <!-- API密钥输入框，总是显示 -->
+        <div class="mb-2">
+            <input type="text" class="form-control" 
+                   id="{{ key }}" name="{{ key }}" 
+                   value="{{ config.value }}"
+                   placeholder="请输入API密钥"
+                   autocomplete="new-password" 
+                   data-lpignore="true">
+        </div>
+
+        <!-- 自定义 API URL 输入框，仅在选择自定义时显示 -->
+        <div id="customImageApiUrlInput" class="mb-2" style="display: none;">
+            <label class="form-label">图像识别API基础URL</label>
+            <input type="text" class="form-control" 
+                   placeholder="请输入自定义 API 地址"
+                   id="custom_image_api_url"
+                   onchange="updateCustomImageApiUrl(this.value)">
+        </div>
+
+        <!-- 注册链接容器 -->
+        <div id="image_register_links" class="mt-2">
+            <a href="https://api.kourichat.com/" 
+                class="btn btn-primary w-100"
+                target="_blank"
+                rel="noopener">
+                <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
+            </a>
+        </div>
+
+        <!-- 隐藏的API URL输入框 -->
+        <input type="hidden" 
+            id="MOONSHOT_BASE_URL" name="MOONSHOT_BASE_URL" 
+            value="{{ config_groups['图像识别API配置']['MOONSHOT_BASE_URL'].value if '图像识别API配置' in config_groups and 'MOONSHOT_BASE_URL' in config_groups['图像识别API配置'] else '' }}">
     </div>
+
+    <script>
+    // 更新图像API提供商
+    function updateImageApiProvider(value) {
+        const apiKeyInput = document.getElementById('MOONSHOT_API_KEY');
+        const apiUrlInput = document.getElementById('MOONSHOT_BASE_URL');
+        const customApiUrlInput = document.getElementById('customImageApiUrlInput');
+        const registerLinks = document.getElementById('image_register_links');
+        
+        // 根据选择的提供商设置注册链接和显示/隐藏自定义URL输入框
+        if (value === 'custom') {
+            // 显示自定义输入框
+            customApiUrlInput.style.display = 'block';
+            registerLinks.style.display = 'none';
+            
+            // 如果已有值，填入自定义输入框
+            const currentApiUrl = apiUrlInput.value;
+            if (currentApiUrl) {
+                document.getElementById('custom_image_api_url').value = currentApiUrl;
+            }
+        } else {
+            // 隐藏自定义输入框
+            customApiUrlInput.style.display = 'none';
+            registerLinks.style.display = 'block';
+            
+            // 根据选择的提供商设置API URL和注册链接
+            const selectedOption = document.querySelector(`#image_api_provider_select option[value="${value}"]`);
+            if (selectedOption && selectedOption.dataset.url) {
+                apiUrlInput.value = selectedOption.dataset.url;
+            }
+            
+            if (value === 'kourichat') {
+                registerLinks.innerHTML = `
+                    <a href="https://api.kourichat.com/" 
+                       class="btn btn-primary w-100"
+                       target="_blank"
+                       rel="noopener">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
+                    </a>
+                `;
+            } else if (value === 'ciallo') {
+                registerLinks.innerHTML = `
+                    <a href="https://api.ciallo.ac.cn/" 
+                       class="btn btn-primary w-100"
+                       target="_blank"
+                       rel="noopener">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
+                    </a>
+                `;
+            } else if (value === 'moonshot') {
+                registerLinks.innerHTML = `
+                    <a href="https://platform.moonshot.cn/console/api-keys" 
+                       class="btn btn-primary w-100"
+                       target="_blank"
+                       rel="noopener">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
+                    </a>
+                `;
+            }
+        }
+        
+        // 更新图像识别模型选择器状态
+        if (typeof updateImageModelSelectors === 'function') {
+            updateImageModelSelectors();
+        }
+    }
+    
+    // 更新自定义API URL
+    function updateCustomImageApiUrl(value) {
+        const apiUrlInput = document.getElementById('MOONSHOT_BASE_URL');
+        apiUrlInput.value = value;
+    }
+    
+    // 初始化时设置选择框的值
+    document.addEventListener('DOMContentLoaded', function() {
+        const apiKeyInput = document.getElementById('MOONSHOT_API_KEY');
+        const apiUrlInput = document.getElementById('MOONSHOT_BASE_URL');
+        const apiSelect = document.getElementById('image_api_provider_select');
+        
+        if (apiKeyInput && apiSelect) {
+            // 尝试根据当前API URL判断选择哪个选项
+            const currentApiUrl = apiUrlInput.value;
+            let found = false;
+            
+            if (currentApiUrl) {
+                // 检查是否匹配预设URL
+                document.querySelectorAll('#image_api_provider_select option').forEach(option => {
+                    if (option.dataset.url && currentApiUrl.includes(option.dataset.url)) {
+                        apiSelect.value = option.value;
+                        found = true;
+                    }
+                });
+                
+                if (!found) {
+                    // 不是预设值，选择自定义
+                    apiSelect.value = 'custom';
+                }
+            }
+            
+            // 如果没有选择任何值，默认选择kourichat
+            if (!apiSelect.value) {
+                apiSelect.value = 'kourichat';
+            }
+            
+            // 触发change事件
+            updateImageApiProvider(apiSelect.value);
+        }
+    });
+    </script>
+{% elif key == 'MOONSHOT_MODEL' %}
+    <div class="mb-3" id="image_model_container">
+        <div id="image_model_select_container" style="display: none;">
+            <select class="form-select mb-2" id="image_model_select" onchange="updateImageModel(this.value)" aria-label="选择图像识别模型">
+                <option value="">请选择图像识别模型</option>
+                <option value="moonshot-v1-8k">Moonshot-v1-8k</option>
+                <option value="moonshot-v1-32k">Moonshot-v1-32k</option>
+                <option value="moonshot-v1-128k">Moonshot-v1-128k</option>
+                <option value="custom">自定义模型</option>
+            </select>
+
+            <!-- 添加自定义模型输入框 -->
+            <div id="customImageModelInput" class="mb-2" style="display: none;">
+                <input type="text" class="form-control" 
+                       placeholder="请输入自定义模型名称"
+                       id="custom_image_model"
+                       onchange="updateCustomImageModel(this.value)">
+            </div>
+        </div>
+
+        <div id="kourichat_model_hint" class="text-muted">
+            <p>使用KouriChat图像识别API时，默认使用Koala模型，无需手动选择。</p>
+        </div>
+
+        <input type="hidden" 
+            id="{{ key }}" name="{{ key }}" 
+            value="{{ config.value|default('koala', true) }}">
+    </div>
+
+    <script>
+    // 根据所选的API提供商更新图像模型选择器的可见性
+    function updateImageModelSelectors() {
+        const apiSelect = document.getElementById('image_api_provider_select');
+        const modelSelectContainer = document.getElementById('image_model_select_container');
+        const kouriHint = document.getElementById('kourichat_model_hint');
+        
+        if (!apiSelect || !modelSelectContainer || !kouriHint) return;
+        
+        const selectedProvider = apiSelect.value;
+        
+        // 如果是moonshot或custom，显示模型选择器，隐藏默认文本
+        if (selectedProvider === 'moonshot' || selectedProvider === 'custom') {
+            modelSelectContainer.style.display = 'block';
+            kouriHint.style.display = 'none';
+        } else {
+            // 否则隐藏模型选择器，显示默认文本
+            modelSelectContainer.style.display = 'none';
+            kouriHint.style.display = 'block';
+            // 设置默认值为koala
+            document.getElementById('{{ key }}').value = 'koala';
+        }
+        
+        // 同时处理自定义模型输入框的可见性
+        const modelSelect = document.getElementById('image_model_select');
+        const customModelInput = document.getElementById('customImageModelInput');
+        
+        if (modelSelect && customModelInput && modelSelect.value === 'custom') {
+            customModelInput.style.display = 'block';
+        } else if (customModelInput) {
+            customModelInput.style.display = 'none';
+        }
+    }
+    
+    // 更新图像识别模型
+    function updateImageModel(value) {
+        const modelInput = document.getElementById('{{ key }}');
+        const customModelInput = document.getElementById('customImageModelInput');
+        
+        if (value === 'custom') {
+            // 显示自定义输入框
+            customModelInput.style.display = 'block';
+            
+            // 如果已有值，填入自定义输入框
+            const currentModel = modelInput.value;
+            if (currentModel && currentModel !== 'koala') {
+                document.getElementById('custom_image_model').value = currentModel;
+            }
+        } else {
+            // 隐藏自定义输入框
+            customModelInput.style.display = 'none';
+            modelInput.value = value;
+        }
+    }
+    
+    // 更新自定义模型
+    function updateCustomImageModel(value) {
+        const modelInput = document.getElementById('{{ key }}');
+        modelInput.value = value;
+    }
+    
+    // 初始化时设置选择框的值
+    document.addEventListener('DOMContentLoaded', function() {
+        const modelInput = document.getElementById('{{ key }}');
+        const modelSelect = document.getElementById('image_model_select');
+        
+        if (modelInput && modelSelect) {
+            const currentModel = modelInput.value;
+            
+            // 先等待API提供商选择器初始化完成
+            setTimeout(() => {
+                // 检查当前选择的API提供商
+                const apiSelect = document.getElementById('image_api_provider_select');
+                if (apiSelect) {
+                    // 先更新模型选择器状态，根据API提供商决定是否显示
+                    updateImageModelSelectors();
+                    
+                    // 然后如果需要显示模型选择框，再设置选中的值
+                    if (apiSelect.value === 'moonshot' || apiSelect.value === 'custom') {
+                        // 查找当前模型是否在预设中
+                        const modelOption = Array.from(modelSelect.options).find(option => 
+                            option.value === currentModel && option.value !== '' && option.value !== 'custom'
+                        );
+                        
+                        if (modelOption) {
+                            modelSelect.value = currentModel;
+                        } else if (currentModel && currentModel !== 'koala') {
+                            // 不在预设中且不是koala，设为自定义
+                            modelSelect.value = 'custom';
+                            document.getElementById('customImageModelInput').style.display = 'block';
+                            document.getElementById('custom_image_model').value = currentModel;
+                        } else {
+                            // 默认选择第一个有效选项
+                            modelSelect.value = 'moonshot-v1-8k';
+                            modelInput.value = 'moonshot-v1-8k';
+                        }
+                    }
+                    
+                    // 监听API提供商选择变化
+                    apiSelect.addEventListener('change', updateImageModelSelectors);
+                }
+            }, 100); // 短暂延迟确保API选择器已初始化
+        }
+    });
+    </script>
+{% elif key == 'MOONSHOT_TEMPERATURE' %}
+    <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value }}</strong></span>
+        </div>
+        <input type="range" 
+            class="temperature-slider" 
+            id="{{ key }}_slider" 
+            min="0.00"
+            max="1.70"
+            step="0.01"
+            value="{{ config.value }}"
+            oninput="updateImageTemperature('{{ key }}', this.value)"
+            style="cursor: pointer;"
+            title="温度参数滑动条">
+        <div class="d-flex justify-content-between slider-labels">
+            <span class="low">0.0 - 精确</span>
+            <span class="high">1.7 - 创造性</span>
+        </div>
+        <!-- 隐藏的实际提交值输入框 -->
+        <input type="hidden" 
+            id="{{ key }}" 
+            name="{{ key }}" 
+            value="{{ config.value }}">
+    </div>
+
+    <style>
+        .temperature-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, 
+                #3498db 0%,
+                #3498db 60%,
+                #9b59b6 70%,
+                #e74c3c 80%,
+                #e74c3c 100%
+            );
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        
+        .temperature-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+            border: 2px solid #0d6efd;
+        }
+        
+        .temperature-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+            border: 2px solid #0d6efd;
+        }
+        
+        .temperature-value {
+            transition: all 0.2s ease;
+        }
+        .temperature-value.updating {
+            color: #0d6efd;
+            transform: scale(1.1);
+        }
+        
+        .slider-labels {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        .slider-labels .low {
+            color: #3498db;
+        }
+        .slider-labels .high {
+            color: #e74c3c;
+        }
+    </style>
+
+    <script>
+        function updateImageTemperature(key, value) {
+            // 将字符串转换为数字
+            const numValue = parseFloat(value);
+            
+            // 更新显示值
+            const displayElement = document.getElementById(key + '_display');
+            if (displayElement) {
+                displayElement.classList.add('updating');
+                displayElement.textContent = numValue;
+                setTimeout(() => {
+                    displayElement.classList.remove('updating');
+                }, 300);
+            }
+            
+            // 更新隐藏的实际提交值
+            const inputElement = document.getElementById(key);
+            if (inputElement) {
+                inputElement.value = numValue;
+                // 触发 change 事件以确保表单能捕获到值的变化
+                const event = new Event('change', { bubbles: true });
+                inputElement.dispatchEvent(event);
+            }
+
+            // 调试输出
+            console.log(`Temperature updated - key: ${key}, value: ${numValue}, type: ${typeof numValue}`);
+        }
+
+        // 确保页面加载时初始化温度值
+        document.addEventListener('DOMContentLoaded', function() {
+            const slider = document.getElementById('{{ key }}_slider');
+            if (slider) {
+                updateImageTemperature('{{ key }}', slider.value);
+            }
+        });
+    </script>
 {% elif key == 'QUIET_TIME_START' or key == 'QUIET_TIME_END' %}
     <div class="mb-3">
         <input type="text" 
@@ -1123,6 +1582,11 @@
             }
         });
     </script>
+{% elif key == 'MOONSHOT_BASE_URL' %}
+    <!-- 已经整合到MOONSHOT_API_KEY配置项中，保持隐藏字段以兼容后端逻辑 -->
+    <input type="hidden" 
+        id="{{ key }}" name="{{ key }}" 
+        value="{{ config.value }}">
 {% else %}
     <input type="text" class="form-control" 
         id="{{ key }}" name="{{ key }}" 
