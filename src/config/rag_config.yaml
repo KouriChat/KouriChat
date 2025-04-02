@@ -13,7 +13,7 @@ environment:
 
 # API密钥和基础URL
 api_key: sk-hnobnlsgbethdjpsopkflppjezpntlwujdxxicrdheawqxfi
-base_url: https://api.siliconflow.cn/v1/
+base_url: https://api.kourichat.com/v1/
 
 # 嵌入模型配置
 embedding_model:
@@ -21,13 +21,13 @@ embedding_model:
   model_name: BAAI/bge-m3
   name: text-embedding-3-large
   api_key: sk-hnobnlsgbethdjpsopkflppjezpntlwujdxxicrdheawqxfi
-  api_url: https://api.siliconflow.cn/v1/embeddings
+  api_url: https://api.kourichat.com/v1/embeddings
 
 # 重排序器配置
 reranker:
   type: siliconflow_native
   model_name: BAAI/bge-reranker-v2-m3
   api_key: sk-hnobnlsgbethdjpsopkflppjezpntlwujdxxicrdheawqxfi
-  api_url: https://api.siliconflow.cn/v1/rerank
+  api_url: https://api.kourichat.com/v1/rerank
   return_documents: false
   top_n: 5

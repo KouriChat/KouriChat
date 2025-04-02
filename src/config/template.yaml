@@ -17,14 +17,15 @@ categories:
         description: DeepSeek API密钥
         is_secret: true
       base_url:
-        value: "https://api.siliconflow.cn/v1"
+        value: "https://api.kourichat.com/v1"
         type: string
-        description: DeepSeek API基础URL
+        description: KouriChat API基础URL
       model:
-        value: "deepseek-ai/DeepSeek-V3"
+        value: "KouriChat V3"
         type: string
         description: 使用的AI模型名称
         options:
+          - "KouriChat V3"
           - "deepseek-ai/DeepSeek-V3"
           - "Pro/deepseek-ai/DeepSeek-V3"
           - "Pro/deepseek-ai/DeepSeek-R1"
