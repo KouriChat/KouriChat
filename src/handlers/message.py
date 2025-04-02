@@ -556,7 +556,7 @@ class MessageHandler:
                             logger.error(f"获取历史对话记录失败: {str(e)}")
 
                     # 构建系统指令和上下文
-                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
                     system_instruction = (
                         f"{context}(此时时间为{current_time}) [系统指令] {auto_message}"
                     )
@@ -624,7 +624,7 @@ class MessageHandler:
                                 if is_group_chat:
                                     # 标记为系统发送的消息，确保机器人名称正确
                                     timestamp = datetime.now().strftime(
-                                        "%Y-%m-%d %H:%M:%S"
+                                        "%Y-%m-%d %H:%M"
                                     )
                                     # 将消息存入群聊记忆
                                     self.group_chat_memory.add_message(
@@ -993,7 +993,7 @@ class MessageHandler:
                         if is_group:
                             # 将消息存入群聊记忆
                             if hasattr(self, "group_chat_memory") and self.group_chat_memory:
-                                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
                                 # 将消息存入群聊记忆
                                 self.group_chat_memory.add_message(
                                     chat_id,  # 群聊ID
@@ -1012,7 +1012,9 @@ class MessageHandler:
                         else:
                             # 普通私聊消息记忆
                             self.memory_handler.remember(
-                                content, response, username
+                                username,  # 第一个参数是用户ID
+                                content,   # 第二个参数是用户消息
+                                response   # 第三个参数是AI回复
                             )
                             logger.info(f"成功记录对话到个人记忆: {username}")
                 except Exception as e:
@@ -1353,7 +1355,7 @@ class MessageHandler:
                     for msg in time_based_messages
                     if (
                         current_time
-                        - datetime.strptime(msg["timestamp"], "%Y-%m-%d %H:%M:%S")
+                        - datetime.strptime(msg["timestamp"], "%Y-%m-%d %H:%M")
                     ).total_seconds()
                     <= 21600  # 6小时
                 ]
@@ -1448,7 +1450,7 @@ class MessageHandler:
                     context = "[上下文]\n" + "\n".join(context_parts) + "\n[/上下文]\n\n"
 
             # 构建API请求内容，明确标识当前@发送者
-            current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
+            current_time_str = current_time.strftime("%Y-%m-%d %H:%M")
             api_content = f"[时间]{current_time_str}[/时间]\n[群组]{group_id}[/群组]\n[发送者]{sender_name}[/发送者]\n{context}[消息内容]{content}[/消息内容]"
 
             # 在日志中明确记录谁@了机器人
@@ -1741,7 +1743,7 @@ class MessageHandler:
         """获取对话上下文"""
         try:
             # 构建更精确的查询，包含用户ID和当前时间信息，以获取更相关的记忆
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
             query = f"与用户 {username} 相关的最近重要对话 {current_time}"
 
             # 结合语义检索和传统检索
@@ -2922,7 +2924,7 @@ class MessageHandler:
                 return None
 
             # 获取当前时间
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
 
             # 设置所有处理器为"正在回复"状态
             self.set_replying_status(True)
@@ -3243,7 +3245,7 @@ class MessageHandler:
                         if is_group:
                             # 将消息存入群聊记忆
                             if hasattr(self, "group_chat_memory") and self.group_chat_memory:
-                                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
                                 # 将消息存入群聊记忆
                                 self.group_chat_memory.add_message(
                                     who,  # 群聊ID
@@ -3348,7 +3350,7 @@ class MessageHandler:
         message_dict = {
             "chat_id": chat_id,
             "content": content,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
         }
         
         # 线程安全地添加到队列
@@ -3403,7 +3405,7 @@ class MessageHandler:
             return 30
 
     def _calculate_time_decay_weight(
-        self, timestamp, current_time=None, time_format="%Y-%m-%d %H:%M:%S"
+        self, timestamp, current_time=None, time_format="%Y-%m-%d %H:%M"
     ):
         """
         计算基于时间衰减的权重
@@ -3940,7 +3942,7 @@ class MessageHandler:
             self.group_user_mapping[group_id].update({
                 'current_user_id': username,
                 'current_sender_name': sender_name,
-                'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M")
             })
             
             # 记录群聊最近的几位发言者，用于多人对话场景
@@ -3957,13 +3959,13 @@ class MessageHandler:
                     
             if existing_sender:
                 # 更新现有发言者的时间戳
-                existing_sender['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                existing_sender['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M")
             else:
                 # 添加新发言者
                 recent_senders.append({
                     'user_id': username,
                     'sender_name': sender_name,
-                    'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M")
                 })
                 
                 # 保持最近发言者列表不超过10人
@@ -3973,3 +3975,28 @@ class MessageHandler:
                     self.group_user_mapping[group_id]['recent_senders'] = recent_senders[-10:]
         except Exception as e:
             logger.error(f"更新群聊发送者信息失败: {str(e)}")
+
+    def _remember_conversation(self, user_id: str, user_message: str, assistant_response: str) -> None:
+        """将对话存入记忆
+        
+        Args:
+            user_id: 用户ID
+            user_message: 用户消息
+            assistant_response: 助手回复
+        """
+        try:
+            # 确保ID和消息都不为空
+            if not user_id or not user_message or not assistant_response:
+                return
+                
+            # 打印调试信息确认字段分配正确
+            logger.debug(f"记忆存储: 用户ID={user_id}, 用户消息={user_message[:30]}..., 助手回复={assistant_response[:30]}...")
+                
+            # 确保键字段顺序正确
+            self.memory_handler.remember(
+                user_id=user_id,
+                user_message=user_message,  # 用户消息 - 人类消息
+                assistant_response=assistant_response  # 助手回复 - AI消息
+            )
+        except Exception as e:
+            logger.error(f"记忆对话失败: {str(e)}")

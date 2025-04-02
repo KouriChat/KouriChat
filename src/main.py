@@ -1561,7 +1561,7 @@ def main(debug_mode=True):
                             user_msg = user_msg.replace("[当前用户问题]", "").strip()
                         
                         logger.info(f"将移除的上下文对话保存到记忆: 用户={user_id}")
-                        memory_handler.remember(user_msg, ai_msg, user_id)
+                        memory_handler.remember(user_id, user_msg, ai_msg)
                 except Exception as e:
                     logger.error(f"处理移除的上下文失败: {str(e)}")
             

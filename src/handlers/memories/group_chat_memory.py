@@ -66,7 +66,8 @@ class GroupChatMemory:
                     # 初始化空的memory.json，使用新的格式
                     with open(memory_json_path, "w", encoding="utf-8") as f:
                         json.dump({
-                            group_id: []
+                            "memories": {},
+                            "embeddings": {}
                         }, f, ensure_ascii=False, indent=2)
                     logger.info(f"为群聊 {group_id} 创建了memory.json文件")
                 
@@ -147,7 +148,8 @@ class GroupChatMemory:
                     # 初始化空的memory.json，使用新的格式
                     with open(memory_json_path, "w", encoding="utf-8") as f:
                         json.dump({
-                            group_id: []
+                            "memories": {},
+                            "embeddings": {}
                         }, f, ensure_ascii=False, indent=2)
                     logger.info(f"为群聊 {group_id} 创建了memory.json文件")
                 
@@ -194,6 +196,9 @@ class GroupChatMemory:
                 "memory.json"
             )
             
+            # 使用发送者名称作为键
+            memory_key = sender_name
+            
             # 更新memory.json文件
             if os.path.exists(memory_json_path):
                 try:
@@ -201,12 +206,16 @@ class GroupChatMemory:
                     with open(memory_json_path, "r", encoding="utf-8") as f:
                         memory_data = json.load(f)
                     
-                    # 确保群聊ID存在
-                    if group_id not in memory_data:
-                        memory_data[group_id] = []
+                    # 确保memories字段存在
+                    if "memories" not in memory_data:
+                        memory_data["memories"] = {}
+                    
+                    # 确保发送者键存在
+                    if memory_key not in memory_data["memories"]:
+                        memory_data["memories"][memory_key] = []
                     
                     # 添加新消息
-                    memory_data[group_id].append(message_data)
+                    memory_data["memories"][memory_key].append(message_data)
                     
                     # 保存更新后的数据
                     with open(memory_json_path, "w", encoding="utf-8") as f:
@@ -238,6 +247,75 @@ class GroupChatMemory:
         except Exception as e:
             logger.error(f"添加群聊消息失败: {str(e)}")
             return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+    def _extract_key_from_message(self, message: str) -> str:
+        """
+        从消息中提取关键词作为记忆键
+        
+        Args:
+            message: 用户消息
+            
+        Returns:
+            str: 提取的关键词，用于作为简化的记忆键
+        """
+        try:
+            if not isinstance(message, str) or not message.strip():
+                return "默认记忆"
+                
+            # 清理消息，去除特殊字符和标点
+            clean_msg = message.strip()
+            
+            # 检测是否包含"发送了一个动画表情"或"发送了表情包"
+            has_animation = False
+            if "发送了一个动画表情" in clean_msg:
+                has_animation = True
+                clean_msg = "发送了一个动画表情"
+            elif "发送了表情包" in clean_msg:
+                has_animation = True
+                match = re.search(r"发送了表情包[：:]\s*(.*?)(?:。|$)", clean_msg)
+                if match:
+                    emoji_desc = match.group(1).strip()
+                    clean_msg = f"发送了表情包 $ {emoji_desc}"
+                else:
+                    clean_msg = "发送了表情包"
+            
+            # 如果不是表情包，提取前几个词作为键
+            if not has_animation:
+                # 首先尝试提取最多5个词或30个字符，以较短者为准
+                words = re.findall(r'[\w\u4e00-\u9fff]+', clean_msg)
+                if words:
+                    # 提取前5个词
+                    key_words = words[:5]
+                    key = " ".join(key_words)
+                    
+                    # 如果太长，截断到30个字符
+                    if len(key) > 30:
+                        key = key[:30]
+                else:
+                    # 如果没有提取到词，使用原始消息的前30个字符
+                    key = clean_msg[:30]
+            else:
+                key = clean_msg
+                
+            # 检测是否有额外关键词，如果有，使用$分隔添加
+            extra_keywords = []
+            
+            # 检测常见的表情关键词
+            emoji_keywords = ["嘿嘿", "嘤嘤嘤", "哈喽", "你好", "笑死"]
+            for keyword in emoji_keywords:
+                if keyword in message and keyword not in key:
+                    extra_keywords.append(keyword)
+            
+            # 组合最终键
+            if extra_keywords:
+                # 最多添加两个额外关键词
+                extra_str = " $ ".join(extra_keywords[:2])
+                key = f"{key} $ {extra_str}"
+            
+            return key
+        except Exception as e:
+            logger.error(f"提取记忆键失败: {str(e)}")
+            return "默认记忆"
             
     def update_assistant_response(self, group_id: str, timestamp: str, response: str) -> bool:
         """
@@ -275,23 +353,35 @@ class GroupChatMemory:
                     with open(memory_json_path, "r", encoding="utf-8") as f:
                         memory_data = json.load(f)
                     
-                    # 确保群聊ID存在
-                    if group_id not in memory_data:
-                        memory_data[group_id] = []
+                    # 确保memories字段存在
+                    if "memories" not in memory_data:
+                        memory_data["memories"] = {}
                     
                     # 查找是否有相同时间戳的消息
                     found = False
-                    for i, memory in enumerate(memory_data[group_id]):
-                        if isinstance(memory, dict) and memory.get("timestamp") == timestamp:
-                            # 更新现有消息
-                            memory["assistant_message"] = response
-                            found = True
-                            break
                     
-                    # 如果没有找到，添加新消息
+                    # 遍历所有用户的记忆
+                    for user_id, memories in memory_data["memories"].items():
+                        if isinstance(memories, list):
+                            for memory in memories:
+                                if isinstance(memory, dict) and memory.get("timestamp") == timestamp:
+                                    # 更新现有消息
+                                    memory["assistant_message"] = response
+                                    found = True
+                                    logger.info(f"已更新用户 {user_id} 的消息回复")
+                                    break
+                            if found:
+                                break
+                    
+                    # 如果没有找到，添加到默认键下
                     if not found:
+                        # 确保默认键存在
+                        default_key = "系统消息"
+                        if default_key not in memory_data["memories"]:
+                            memory_data["memories"][default_key] = []
+                        
                         # 创建新消息条目
-                        memory_data[group_id].append({
+                        memory_data["memories"][default_key].append({
                             "timestamp": timestamp,
                             "sender_name": "未知用户",  # 这里可能缺少发送者信息
                             "human_message": "",  # 这里可能缺少原始消息
@@ -363,7 +453,32 @@ class GroupChatMemory:
             with open(memory_json_path, "r", encoding="utf-8") as f:
                 memory_data = json.load(f)
             
-            # 检查群聊ID是否存在
+            # 检查是否使用新格式
+            if "memories" in memory_data:
+                # 新格式：从所有用户的记忆中收集消息
+                all_messages = []
+                for user_id, messages in memory_data["memories"].items():
+                    if isinstance(messages, list):
+                        for msg in messages:
+                            # 添加用户ID到消息中，便于区分
+                            if isinstance(msg, dict):
+                                msg_copy = msg.copy()  # 创建副本避免修改原数据
+                                if "sender_name" not in msg_copy:
+                                    msg_copy["sender_name"] = user_id
+                                all_messages.append(msg_copy)
+                
+                # 如果没有找到任何消息，返回空列表
+                if not all_messages:
+                    logger.warning(f"群聊 {group_id} 在memory.json中没有找到任何消息")
+                    return []
+                
+                # 按时间戳排序（最新的在前）
+                all_messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+                
+                # 返回指定数量的消息
+                return all_messages[:limit]
+            
+            # 旧格式的兼容处理
             if group_id not in memory_data:
                 logger.warning(f"群聊 {group_id} 在memory.json中不存在")
                 return []

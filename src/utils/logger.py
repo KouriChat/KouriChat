@@ -43,9 +43,9 @@ class LoggerConfig:
         # 创建控制台处理器
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
-        # 修改日志格式：行号[日期时间] - 级别 - 消息
+        # 修改日志格式：[日期时间] - 级别 - 消息
         console_formatter = logging.Formatter(
-            '%(lineno)d[%(asctime)s] - %(levelname)s - %(message)s',
+            '[%(asctime)s] - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         console_handler.setFormatter(console_formatter)
@@ -59,9 +59,9 @@ class LoggerConfig:
             encoding='utf-8'
         )
         file_handler.setLevel(level)
-        # 修改文件日志格式：行号[日期时间] - 名称 - 级别 - 消息
+        # 修改文件日志格式：[日期时间] - 名称 - 级别 - 消息
         file_formatter = logging.Formatter(
-            '%(lineno)d[%(asctime)s] - %(name)s - %(levelname)s - %(message)s',
+            '[%(asctime)s] - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         file_handler.setFormatter(file_formatter)
@@ -121,7 +121,7 @@ def get_logger(name: Optional[str] = None, level: int = logging.INFO):
         console_handler.setLevel(level)
         # 修改为新的日志格式
         formatter = logging.Formatter(
-            '%(lineno)d[%(asctime)s] - %(name)s - %(levelname)s - %(message)s',
+            '[%(asctime)s] - %(name)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         console_handler.setFormatter(formatter)
