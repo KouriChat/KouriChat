@@ -188,21 +188,21 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
         # 图像识别API配置
         config_groups["图像识别API配置"].update(
             {
+                "MOONSHOT_BASE_URL": {
+                    "value": config.media.image_recognition.base_url or "https://api.ciallo.ac.cn/v1",
+                    "description": "图像识别API提供商",
+                },
                 "MOONSHOT_API_KEY": {
                     "value": config.media.image_recognition.api_key,
-                    "description": "Moonshot API密钥（用于图片和表情包识别）\n API申请https://platform.moonshot.cn/console/api-keys （免费15元额度）",
-                },
-                "MOONSHOT_BASE_URL": {
-                    "value": config.media.image_recognition.base_url,
-                    "description": "Moonshot API基础URL",
-                },
-                "MOONSHOT_TEMPERATURE": {
-                    "value": config.media.image_recognition.temperature,
-                    "description": "Moonshot温度参数",
+                    "description": "请输入所选择API提供商对应的密钥",
                 },
                 "MOONSHOT_MODEL": {
                     "value": config.media.image_recognition.model,
-                    "description": "Moonshot AI模型",
+                    "description": "图像识别模型",
+                },
+                "MOONSHOT_TEMPERATURE": {
+                    "value": config.media.image_recognition.temperature or 0.35,
+                    "description": "图像识别温度参数",
                 }
             }
         )
@@ -2878,7 +2878,6 @@ def get_config():
             'embedding_model' in config_data['categories']['rag_settings']['settings']):
             embedding_value = config_data['categories']['rag_settings']['settings']['embedding_model'].get('value', '')
             config_data_response['RAG_EMBEDDING_MODEL'] = embedding_value
-            logger.info(f"从配置文件读取到的嵌入模型值: {embedding_value}")
             
         # 处理RAG_TOP_K
         if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
@@ -2887,8 +2886,18 @@ def get_config():
             top_k_value = config_data['categories']['rag_settings']['settings']['top_k'].get('value', 5)
             config_data_response['RAG_TOP_K'] = top_k_value
             
-        # 其他配置按需添加...
-        
+        # 特别处理MOONSHOT_TEMPERATURE
+        if ('categories' in config_data and 'media_settings' in config_data['categories'] and
+            'settings' in config_data['categories']['media_settings'] and
+            'image_recognition' in config_data['categories']['media_settings']['settings'] and
+            'temperature' in config_data['categories']['media_settings']['settings']['image_recognition']):
+            temp_value = config_data['categories']['media_settings']['settings']['image_recognition']['temperature'].get('value', 0.35)
+            config_data_response['MOONSHOT_TEMPERATURE'] = temp_value
+            logger.info(f"从config.yaml获取到的图像识别温度值: {temp_value}")
+        else:
+            config_data_response['MOONSHOT_TEMPERATURE'] = 0.35
+            logger.warning("在配置中找不到图像识别温度值，使用默认值0.35")
+            
         return jsonify({
             'status': 'success',
             'config': config_data_response

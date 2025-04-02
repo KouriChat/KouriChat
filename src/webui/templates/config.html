@@ -684,8 +684,8 @@
                                                 <i class="bi bi-server me-2"></i>API服务商
                                             </label>
                                             <select class="form-select" id="rag_api_provider_select" onchange="updateRagApiProvider(this.value)">
-                                                <option value="ciallo" data-url="https://api.ciallo.ac.cn/">KouriChat API (亚太备选)</option>
-                                                <option value="kourichat" data-url="https://api.kourichat.com">KouriChat API (全球优化)</option>
+                                                <option value="ciallo" data-url="https://api.ciallo.ac.cn/v1">KouriChat API (亚太备选)</option>
+                                                <option value="kourichat" data-url="https://api.kourichat.com/v1">KouriChat API (全球优化)</option>
                                                 <option value="siliconflow" data-url="https://api.siliconflow.cn/v1">硅基流动 API</option>
                                                 <!--option value="kouri" data-url="https://api.kourichat.com/v1">KouriChat API</option-->
                                                 <option value="custom">自定义 API</option>
@@ -1507,7 +1507,7 @@
                 TEMPERATURE: config.TEMPERATURE || 1.0,
                 MAX_TOKEN: config.MAX_TOKEN || 2000,
                 MOONSHOT_BASE_URL: config.MOONSHOT_BASE_URL || '',
-                MOONSHOT_TEMPERATURE: config.MOONSHOT_TEMPERATURE || 0.7,
+                MOONSHOT_TEMPERATURE: config.MOONSHOT_TEMPERATURE || 0.35,
                 IMAGE_MODEL: config.IMAGE_MODEL || '',
                 MAX_GROUPS: config.MAX_GROUPS || 30,
                 AVATAR_DIR: config.AVATAR_DIR || '',
