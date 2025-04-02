@@ -63,6 +63,7 @@ emoji_handler = None
 image_handler = None
 voice_handler = None
 memory_handler = None
+group_chat_memory = None  # 新增全局变量用于群聊记忆
 moonshot_ai = None
 message_handler = None
 listener_thread = None
@@ -70,7 +71,7 @@ chat_bot = None
 countdown_timer = None
 is_countdown_running = False
 countdown_end_time = None
-wait = 1  # 消息队列接受消息时间间隔
+wait = 0.5  # 消息队列接受消息时间间隔
 
 # 检查并初始化配置文件
 # config_path = os.path.join(root_dir, 'src', 'config', 'config.json')
@@ -1267,7 +1268,7 @@ def initialize_auto_tasks(message_handler):
 
 def main(debug_mode=True):
     global files_handler, emoji_handler, image_handler, \
-        voice_handler, memory_handler, moonshot_ai, \
+        voice_handler, memory_handler, group_chat_memory, moonshot_ai, \
         message_handler, listener_thread, chat_bot, wx, ROBOT_WX_NAME
     
     # 初始化listener_thread为None，避免引用错误
@@ -1404,6 +1405,45 @@ def main(debug_mode=True):
         memory_handler = None
         logger.warning("记忆系统已禁用")
     
+    # 初始化群聊记忆系统
+    try:
+        from src.handlers.memories.group_chat_memory import GroupChatMemory
+        
+        # 尝试从配置获取群聊列表
+        group_chats = []
+        try:
+            from src.config import rag_config
+            if hasattr(rag_config.config, 'group_chats'):
+                group_chats = rag_config.config.group_chats
+            elif hasattr(rag_config.config, 'behavior') and hasattr(rag_config.config.behavior, 'context') and hasattr(rag_config.config.behavior.context, 'group_ids'):
+                group_chats = rag_config.config.behavior.context.group_ids
+        except Exception as e:
+            logger.warning(f"无法从rag_config获取群聊列表: {str(e)}")
+            group_chats = []
+        
+        # 安全处理角色名称
+        safe_avatar_name = ""
+        if config.behavior.context.avatar_dir:
+            safe_avatar_name = re.sub(r"[^\w\-_\. ]", "_", config.behavior.context.avatar_dir)
+        else:
+            safe_avatar_name = "default_avatar"
+            
+        logger.info(f"初始化群聊记忆系统，角色名: {safe_avatar_name}, 群聊列表: {group_chats}")
+        
+        # 初始化群聊记忆系统
+        group_chat_memory = GroupChatMemory(
+            root_dir=root_dir,
+            avatar_name=safe_avatar_name,
+            group_chats=group_chats,
+            api_wrapper=(api_wrapper if memory_handler else None)
+        )
+        
+        logger.info("群聊记忆系统初始化成功")
+    except Exception as e:
+        logger.error(f"初始化群聊记忆系统失败: {str(e)}")
+        group_chat_memory = None
+        logger.warning("群聊记忆系统已禁用")
+    
     # 关键优化：注册上下文处理函数，将被移除的对话保存到记忆系统
     if memory_handler:
         try:
@@ -1449,6 +1489,7 @@ def main(debug_mode=True):
         emoji_handler=emoji_handler,
         voice_handler=voice_handler,
         memory_handler=memory_handler,
+        group_chat_memory=group_chat_memory,  # 传入群聊记忆系统
         is_debug=debug_mode
     )
 
