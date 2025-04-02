@@ -15,10 +15,7 @@ pyyaml
 watchdog
 
 openai>=1.0.0
-huggingface-hub==0.10.0
-sentence-transformers==2.2.2
 tiktoken
-faiss-cpu==1.7.4
 jieba
 
 pyautogui
