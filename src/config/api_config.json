@@ -1,9 +1,7 @@
 {
-    "real_server_base_url": "https://api.kourichat.com/",
-    "mock_server_base_url": "http://127.0.0.1:8000",
-    "model": "KouriChat V3",
-    "timeout": 600,
+    "real_server_base_url": "https://api.siliconflow.cn/",
     "api_key": "",
+    "model": "deepseek-ai/DeepSeek-V3",
     "messages": [],
     "image_config": {
         "generate_size": "512x512"
