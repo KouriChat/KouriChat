@@ -48,9 +48,9 @@ try:
     # LLM配置默认值
     llm.api_key = os.getenv("DEEPSEEK_API_KEY", "")
     llm.base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.siliconflow.cn/v1/")
-    llm.model = os.getenv("MODEL", "deepseek-chat")
-    llm.max_tokens = int(os.getenv("MAX_TOKEN", "2048"))
-    llm.temperature = float(os.getenv("TEMPERATURE", "0.7"))
+    llm.model = os.getenv("MODEL", "deepseek-ai/DeepSeek-V3")
+    llm.max_tokens = int(os.getenv("MAX_TOKEN", "1000"))
+    llm.temperature = float(os.getenv("TEMPERATURE", "1.2"))
     
     # RAG配置默认值
     rag.api_key = os.getenv("OPENAI_API_KEY", "")
@@ -69,7 +69,7 @@ try:
     
     # 行为配置默认值
     behavior.context = SimpleNamespace()
-    behavior.context.max_groups = 30
+    behavior.context.max_groups = 10
     behavior.context.avatar_dir = "MONO"
     
     # 添加auto_message配置
@@ -89,9 +89,9 @@ try:
     # 媒体配置默认值
     media.image_recognition = SimpleNamespace()
     media.image_recognition.api_key = ""
-    media.image_recognition.base_url = "https://api.moonshot.cn/v1"
-    media.image_recognition.temperature = 0.7
-    media.image_recognition.model = "moonshot-v1-8k-vision-preview"
+    media.image_recognition.base_url = "https://api.ciallo.ac.cn/v1"
+    media.image_recognition.temperature = 0.35
+    media.image_recognition.model = "koala"
     
     media.image_generation = SimpleNamespace()
     media.image_generation.model = "deepseek-ai/Janus-Pro-7B"
@@ -252,10 +252,10 @@ except Exception as e:
     # 设置默认值
     # LLM配置默认值
     llm.api_key = os.getenv("DEEPSEEK_API_KEY", "")
-    llm.base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.siliconflow.cn/v1/")
+    llm.base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.ciallo.ac.cn/v1")
     llm.model = os.getenv("MODEL", "deepseek-chat")
-    llm.max_tokens = int(os.getenv("MAX_TOKEN", "2048"))
-    llm.temperature = float(os.getenv("TEMPERATURE", "0.7"))
+    llm.max_tokens = int(os.getenv("MAX_TOKEN", "1000"))
+    llm.temperature = float(os.getenv("TEMPERATURE", "1.0"))
     
     # RAG配置默认值
     rag.api_key = os.getenv("OPENAI_API_KEY", "")
@@ -274,12 +274,12 @@ except Exception as e:
     
     # 行为配置默认值
     behavior.context = SimpleNamespace()
-    behavior.context.max_groups = 30
+    behavior.context.max_groups = 10
     behavior.context.avatar_dir = "MONO"
     
     # 添加auto_message配置
     behavior.auto_message = SimpleNamespace()
-    behavior.auto_message.content = "请你模拟系统设置的角色，在微信上找对方聊天"
+    behavior.auto_message.content = "请你模拟系统设置的角色，在微信上结合上下文找对方聊天"
     behavior.auto_message.min_hours = 1
     behavior.auto_message.max_hours = 3
     
@@ -294,12 +294,12 @@ except Exception as e:
     # 媒体配置默认值
     media.image_recognition = SimpleNamespace()
     media.image_recognition.api_key = ""
-    media.image_recognition.base_url = "https://api.moonshot.cn/v1"
-    media.image_recognition.temperature = 0.7
-    media.image_recognition.model = "moonshot-v1-8k-vision-preview"
+    media.image_recognition.base_url = "https://api.ciallo.ac.cn/v1"
+    media.image_recognition.temperature = 0.35
+    media.image_recognition.model = "koala"
     
     media.image_generation = SimpleNamespace()
-    media.image_generation.model = "deepseek-ai/Janus-Pro-7B"
+    media.image_generation.model = "kourichat-imagegen"
     media.image_generation.temp_dir = "data/images/temp"
     
     media.text_to_speech = SimpleNamespace()
