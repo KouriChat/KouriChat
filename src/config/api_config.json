@@ -1,7 +1,7 @@
 {
-    "real_server_base_url": "https://api.siliconflow.cn/",
+    "real_server_base_url": "https://api.ciallo.ac.cn",
     "api_key": "",
-    "model": "deepseek-ai/DeepSeek-V3",
+    "model": "deepseek-chat",
     "messages": [],
     "image_config": {
         "generate_size": "512x512"

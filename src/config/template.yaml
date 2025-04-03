@@ -17,23 +17,19 @@ categories:
         description: DeepSeek API密钥
         is_secret: true
       base_url:
-        value: "https://api.siliconflow.cn/v1"
+        value: "https://api.ciallo.ac.cn/v1"
         type: string
         description: DeepSeek API基础URL
       model:
-        value: "deepseek-ai/DeepSeek-V3"
+        value: "deepseek-chat"
         type: string
         description: 使用的AI模型名称
-        options:
-          - "deepseek-ai/DeepSeek-V3"
-          - "Pro/deepseek-ai/DeepSeek-V3"
-          - "Pro/deepseek-ai/DeepSeek-R1"
       max_tokens:
         value: 1000
         type: number
         description: 回复最大token数量
       temperature:
-        value: 1.2
+        value: 1.0
         type: number
         description: AI回复的温度值
         min: 0.5
@@ -55,12 +51,12 @@ categories:
          type: string
          description: 嵌入API密钥（硅基流动）
          is_secret: true
-      bbase_url:
+      base_url:
          value: ''
          type: string
          description: 嵌入API基础URL（留空使用LLM模块配置）
       
-      eembedding_model:
+      embedding_model:
          value: BAAI/bge-m3
          type: string
          description: 嵌入模型名称
@@ -135,7 +131,7 @@ categories:
           description: 图像识别 AI 模型
       image_generation:
         model:
-          value: "deepseek-ai/Janus-Pro-7B"
+          value: "kourichat-imagegen"
           type: string
           description: 图像生成模型
         temp_dir:
@@ -157,7 +153,7 @@ categories:
     settings:
       auto_message:
         content:
-          value: "请你模拟系统设置的角色，在微信上找对方聊天"
+          value: "请你模拟系统设置的角色，在微信上结合上下文找对方聊天"
           type: string
           description: 自动消息内容
         countdown:
