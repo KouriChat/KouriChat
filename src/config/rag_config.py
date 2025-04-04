@@ -91,7 +91,7 @@ try:
     media.image_recognition.api_key = ""
     media.image_recognition.base_url = "https://api.ciallo.ac.cn/v1"
     media.image_recognition.temperature = 0.35
-    media.image_recognition.model = "koala"
+    media.image_recognition.model = "kourichat-vision"
     
     media.image_generation = SimpleNamespace()
     media.image_generation.model = "deepseek-ai/Janus-Pro-7B"
@@ -296,7 +296,7 @@ except Exception as e:
     media.image_recognition.api_key = ""
     media.image_recognition.base_url = "https://api.ciallo.ac.cn/v1"
     media.image_recognition.temperature = 0.35
-    media.image_recognition.model = "koala"
+    media.image_recognition.model = "kourichat-vision"
     
     media.image_generation = SimpleNamespace()
     media.image_generation.model = "kourichat-imagegen"
