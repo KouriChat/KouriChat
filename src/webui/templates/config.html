@@ -421,6 +421,14 @@
                 <div class="config-section h-100">
                     <h4 class="mb-4">
                         <i class="bi bi-gear-fill me-2"></i>基础配置
+                        <div class="float-end">
+                            <button type="button" class="btn btn-sm btn-outline-primary me-2" id="exportConfigBtn">
+                                <i class="bi bi-download me-1"></i>导出配置
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-success" id="importConfigBtn">
+                                <i class="bi bi-upload me-1"></i>导入配置
+                            </button>
+                        </div>
                     </h4>
                     <form id="configForm">
                         {% for group_name, configs in config_groups.items() %}
@@ -487,8 +495,7 @@
                                 <h2 class="accordion-header">
                                     <button class="accordion-button collapsed" type="button" 
                                             data-bs-toggle="collapse" 
-                                            data-bs-target="#schedule-settings"
-                                            style="color: rgb(0, 0, 0); ">
+                                            data-bs-target="#schedule-settings">
                                         定时任务配置
                                     </button>
                                 </h2>
@@ -1591,6 +1598,130 @@
             
             // 发送保存请求
             navigator.sendBeacon('/save', data);
+        });
+
+        // 导出配置按钮事件监听
+        document.getElementById('exportConfigBtn').addEventListener('click', function() {
+            // 收集所有配置数据
+            const mainForm = document.getElementById('configForm');
+            const otherForm = document.getElementById('otherConfigForm');
+            const config = {};
+            
+            // 获取所有表单数据
+            const formData = new FormData(mainForm);
+            for (let [key, value] of formData.entries()) {
+                processFormValue(config, key, value);
+            }
+            
+            if (otherForm) {
+                const otherFormData = new FormData(otherForm);
+                for (let [key, value] of otherFormData.entries()) {
+                    processFormValue(config, key, value);
+                }
+            }
+
+            // 特别处理任务数据
+            const tasksInput = document.getElementById('TASKS');
+            if (tasksInput) {
+                try {
+                    const tasksValue = tasksInput.value;
+                    if (tasksValue) {
+                        config['TASKS'] = JSON.parse(tasksValue);
+                    }
+                } catch (e) {
+                    config['TASKS'] = [];
+                }
+            }
+
+            // 创建JSON文件并下载
+            const dataStr = JSON.stringify(config, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const now = new Date();
+            const dateStr = now.toISOString().slice(0, 10);
+            const filename = `KouriChat_配置_${dateStr}.json`;
+            
+            const downloadLink = document.createElement('a');
+            downloadLink.href = URL.createObjectURL(dataBlob);
+            downloadLink.download = filename;
+            
+            // 模拟点击下载
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            
+            // 显示成功通知
+            showSaveNotification('配置已成功导出', 'success');
+        });
+
+        // 导入配置按钮事件监听
+        document.getElementById('importConfigBtn').addEventListener('click', function() {
+            // 创建文件输入元素
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = 'application/json';
+            fileInput.style.display = 'none';
+            
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files.length === 0) return;
+                
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                
+                reader.onload = function(event) {
+                    try {
+                        const config = JSON.parse(event.target.result);
+                        
+                        // 填充表单数据
+                        for (const [key, value] of Object.entries(config)) {
+                            if (key === 'TASKS') {
+                                // 特殊处理任务数据
+                                const tasksInput = document.getElementById('TASKS');
+                                if (tasksInput) {
+                                    tasksInput.value = JSON.stringify(value);
+                                    // 刷新任务列表显示
+                                    if (typeof refreshTaskList === 'function') {
+                                        refreshTaskList();
+                                    }
+                                }
+                                continue;
+                            }
+                            
+                            // 处理普通输入字段
+                            const input = document.querySelector(`[name="${key}"]`);
+                            if (input) {
+                                if (input.type === 'checkbox') {
+                                    input.checked = Boolean(value);
+                                } else {
+                                    input.value = value;
+                                }
+                                
+                                // 特别处理滑块
+                                if (key === 'TEMPERATURE') {
+                                    const slider = document.getElementById(`${key}_slider`);
+                                    if (slider) {
+                                        slider.value = value;
+                                        // 触发change事件以更新显示
+                                        const event = new Event('input');
+                                        slider.dispatchEvent(event);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        showSaveNotification('配置已成功导入', 'success');
+                    } catch (error) {
+                        console.error('导入配置失败:', error);
+                        showSaveNotification('导入配置失败: ' + error.message, 'danger');
+                    }
+                };
+                
+                reader.readAsText(file);
+            });
+            
+            document.body.appendChild(fileInput);
+            fileInput.click();
+            document.body.removeChild(fileInput);
         });
     </script>
 </body>
