@@ -1,0 +1,6 @@
+# Set the default behavior, in case people don't have core.autocrlf set
+* text=auto
+
+# Explicitly declare files that should have CRLF line endings on checkout
+*.bat text eol=crlf
+*.cmd text eol=crlf

@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KouriChat - 角色设定</title>
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/static/mom.ico">
+    <script src="/static/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/dark-mode.js"></script>
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #4f46e5;
+            --background-color: #f0f4f8;  
+            --text-color: #1e293b;
+            --card-bg: rgba(255, 255, 255, 0.494);
+            --card-border: rgba(255, 255, 255, 0.5);
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        [data-bs-theme="dark"] {
+            --background-color: #1a1f2e;  /* 深色背景 */
+            --text-color: #f8fafc;        /* 浅色文字 */
+            --card-bg: rgba(30, 41, 59, 0.612); /* 深色卡片背景 */
+            --card-border: rgba(255, 255, 255, 0.1);
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            background: var(--background-color);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+            background-repeat: no-repeat;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+
+        .container {
+            margin: auto;
+        }
+
+        .glass-panel {
+            background: var(--card-bg);
+            border-radius: 1rem;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--card-shadow);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-label {
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .form-control {
+            background: var(--card-bg);
+            color: var(--text-color);
+            border-color: var(--card-border);
+            transition: all 0.3s ease;
+            min-height: 100px;
+            resize: vertical;
+            overflow-y: hidden;
+        }
+
+        .form-control:focus {
+            background: var(--card-bg);
+            color: var(--text-color);
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+        }
+
+        .form-control::placeholder {
+            color: var(--text-color);
+            opacity: 0.65;
+        }
+
+        /* 暗色模式下的按钮样式 */
+        [data-bs-theme="dark"] .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        [data-bs-theme="dark"] .btn-primary:hover {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+
+        /* 保存按钮样式 */
+        .btn-save {
+            width: 100%; /* 占据100%宽度 */
+            padding: 0.75rem; /* 按钮内边距 */
+            margin-top: 1rem; /* 按钮上边距 */
+            background-color: var(--primary-color); /* 背景颜色 */
+            color: white; /* 字体颜色 */
+            border: none; /* 无边框 */
+            border-radius: 0.5rem; /* 圆角 */
+            transition: background-color 0.3s ease; /* 背景颜色过渡 */
+        }
+
+        .btn-save:hover {
+            background-color: var(--secondary-color); /* 悬停时的背景颜色 */
+        }
+        
+        /* 人设选择器样式 */
+        .avatar-selector {
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: var(--card-bg);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            border: 1px solid var(--card-border);
+            flex-wrap: wrap; /* 允许在小屏幕上换行 */
+        }
+        
+        .avatar-selector select {
+            flex-grow: 1;
+            min-width: 200px; /* 确保下拉框有足够宽度 */
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            height: 42px;
+        }
+        
+        .avatar-selector button {
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+        
+        .avatar-selector select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+            outline: none;
+        }
+        
+        .avatar-selector label {
+            font-weight: 500;
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            font-size: 1rem;
+        }
+        
+        .avatar-selector label i {
+            margin-right: 0.5rem;
+            font-size: 1.2rem;
+        }
+        
+        /* 添加加载动画 */
+        .loading {
+            position: relative;
+        }
+        
+        .loading::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(2px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            border-radius: 1rem;
+        }
+        
+        .loading::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary-color);
+            animation: spin 1s linear infinite;
+            z-index: 1001;
+        }
+        
+        @keyframes spin {
+            to {
+                transform: translate(-50%, -50%) rotate(360deg);
+            }
+        }
+
+        /* 添加深色模式下的模态框样式 */
+        [data-bs-theme="dark"] .modal-content {
+            background-color: #1a1f2e;
+            color: #f8fafc;
+        }
+        
+        [data-bs-theme="dark"] .modal-header,
+        [data-bs-theme="dark"] .modal-footer {
+            border-color: #2d3748;
+        }
+        
+        [data-bs-theme="dark"] pre {
+            background-color: #2d3748;
+            color: #e2e8f0;
+            border: 1px solid #4a5568;
+        }
+        
+        /* 确保深色模式下的按钮有足够的对比度 */
+        [data-bs-theme="dark"] .btn-outline-secondary {
+            color: #e2e8f0;
+            border-color: #4a5568;
+        }
+        
+        [data-bs-theme="dark"] .btn-outline-secondary:hover {
+            background-color: #4a5568;
+            color: #f8fafc;
+        }
+        
+        /* 确保深色模式下的表单元素有足够的对比度 */
+        [data-bs-theme="dark"] .form-control::placeholder {
+            color: #a0aec0;
+        }
+    </style>
+</head>
+<body>
+    {% include 'navbar.html' %}
+    
+    <div class="container py-4">
+        <div class="glass-panel mb-4">
+            <h2>角色设定</h2>
+            
+            <!-- 添加获取人设按钮 -->
+            <div class="d-flex justify-content-end mb-3">
+                <button type="button" class="btn btn-lg btn-info" id="getAvatarBtn" title="获取人设">
+                    <i class="bi bi-download me-2"></i>获取人设
+                </button>
+            </div>
+            
+            <!-- 添加人设选择器 -->
+            <div class="avatar-selector">
+                <label for="avatarSelector"><i class="bi bi-person-badge"></i>选择人设:</label>
+                <select id="avatarSelector" class="form-select">
+                    <!-- 这里的选项将通过JavaScript动态加载 -->
+                </select>
+                <button type="button" class="btn btn-outline-primary" id="newAvatarBtn" title="创建新人设">
+                    <i class="bi bi-plus-circle"></i> 新建人设
+                </button>
+                <button type="button" class="btn btn-outline-danger" id="deleteAvatarBtn" title="删除当前人设">
+                    <i class="bi bi-trash"></i> 删除人设
+                </button>
+            </div>
+            
+            <form id="avatarForm">
+                <div class="glass-panel mb-4">
+                    <label for="task" class="form-label">任务</label>
+                    <textarea class="form-control" id="task" name="task" rows="5" 
+                        placeholder="请输入任务描述" title="任务描述" aria-label="任务描述"></textarea>
+                </div>
+                <div class="glass-panel mb-4">
+                    <label for="role" class="form-label">角色</label>
+                    <textarea class="form-control" id="role" name="role" rows="5" 
+                        placeholder="请输入角色设定" title="角色设定" aria-label="角色设定"></textarea>
+                </div>
+                <div class="glass-panel mb-4">
+                    <label for="appearance" class="form-label">外表</label>
+                    <textarea class="form-control" id="appearance" name="appearance" rows="5" 
+                        placeholder="请输入外表描述" title="外表描述" aria-label="外表描述"></textarea>
+                </div>
+                <div class="glass-panel mb-4">
+                    <label for="experience" class="form-label">经历</label>
+                    <textarea class="form-control" id="experience" name="experience" rows="5" 
+                        placeholder="请输入经历描述" title="经历描述" aria-label="经历描述"></textarea>
+                </div>
+                <div class="glass-panel mb-4">
+                    <label for="personality" class="form-label">性格</label>
+                    <textarea class="form-control" id="personality" name="personality" rows="5" 
+                        placeholder="请输入性格描述" title="性格描述" aria-label="性格描述"></textarea>
+                </div>
+                <div class="glass-panel mb-4">
+                    <label for="classic_lines" class="form-label">经典台词</label>
+                    <textarea class="form-control" id="classic_lines" name="classic_lines" rows="5" 
+                        placeholder="请输入经典台词" title="经典台词" aria-label="经典台词"></textarea>
+                </div>
+                <div class="glass-panel mb-4">
+                    <label for="preferences" class="form-label">喜好</label>
+                    <textarea class="form-control" id="preferences" name="preferences" rows="5" 
+                        placeholder="请输入喜好描述" title="喜好描述" aria-label="喜好描述"></textarea>
+                </div>
+                <div class="glass-panel mb-4">
+                    <label for="notes" class="form-label">备注</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="5" 
+                        placeholder="请输入备注信息" title="备注信息" aria-label="备注信息"></textarea>
+                </div>
+                <button type="button" class="btn btn-save" id="saveButton" title="保存角色设定">
+                    <i class="bi bi-save me-2"></i>保存
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 新建人设模态框 -->
+    <div class="modal fade" id="newAvatarModal" tabindex="-1" aria-labelledby="newAvatarModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newAvatarModalLabel">新建人设</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="newAvatarName" class="form-label">人设名称</label>
+                        <input type="text" class="form-control" id="newAvatarName" placeholder="请输入人设名称（英文）" required>
+                        <small class="text-muted">请使用英文字母、数字和下划线，例如：ATRI、Mono_Chan</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="createAvatarBtn">创建</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加删除确认模态框 -->
+    <div class="modal fade" id="deleteAvatarModal" tabindex="-1" aria-labelledby="deleteAvatarModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteAvatarModalLabel">删除人设</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    确定要删除这个人设吗？此操作不可恢复。
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteBtn">删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 获取人设模态框 -->
+    <div class="modal fade" id="getAvatarModal" tabindex="-1" aria-labelledby="getAvatarModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="getAvatarModalLabel">获取人设</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>请选择获取人设的方式：</p>
+                    <div class="d-grid gap-2">
+                        <a href="https://avatars.kourichat.com/#/" class="btn btn-primary" target="_blank">
+                            前往官网下载
+                        </a>
+                        <a href="https://jq.qq.com/?_wv=1027&k=5F4Gz5K" class="btn btn-secondary" target="_blank">
+                            加入QQ群 715616260 下载
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 当前选中的人设目录
+            let currentAvatar = 'MONO';
+            let rawContent = ''; // 存储原始内容
+            
+            // 初始化背景
+            fetch('/get_background')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.path) {
+                        document.body.style.backgroundImage = `url('${data.path}')`;
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+            
+            // 获取可用的人设列表
+            function loadAvatarList() {
+                fetch('/get_available_avatars')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            const selector = document.getElementById('avatarSelector');
+                            selector.innerHTML = ''; // 清空现有选项
+                            
+                            // 添加人设选项
+                            data.avatars.forEach(avatar => {
+                                const option = document.createElement('option');
+                                // 从路径中提取人设名称
+                                const avatarName = avatar.split('/').pop();
+                                option.value = avatarName;
+                                option.textContent = avatarName;
+                                selector.appendChild(option);
+                            });
+                            
+                            // 设置默认选中项
+                            if (data.avatars.length > 0) {
+                                // 尝试从localStorage获取上次选择的人设
+                                const lastSelected = localStorage.getItem('lastSelectedAvatar');
+                                if (lastSelected && data.avatars.some(a => a.includes(lastSelected))) {
+                                    selector.value = lastSelected;
+                                    currentAvatar = lastSelected;
+                                } else {
+                                    // 默认选择第一个
+                                    const firstAvatar = data.avatars[0].split('/').pop();
+                                    selector.value = firstAvatar;
+                                    currentAvatar = firstAvatar;
+                                }
+                                
+                                // 加载选中人设的内容
+                                loadAvatarContent(currentAvatar);
+                            }
+                        } else {
+                            console.error('加载人设列表失败:', data.message);
+                            showToast('加载人设列表失败: ' + data.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('加载人设列表失败:', error);
+                        showToast('加载人设列表失败: ' + error, 'error');
+                    });
+            }
+            
+            // 加载指定人设的内容
+            function loadAvatarContent(avatarName) {
+                fetch(`/load_avatar_content?avatar=${avatarName}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // 保存原始内容
+                            rawContent = data.raw_content || '';
+                            
+                            // 更新所有文本框的内容
+                            const fields = ['task', 'role', 'appearance', 'experience', 
+                                          'personality', 'classic_lines', 'preferences', 'notes'];
+                            
+                            fields.forEach(field => {
+                                const element = document.getElementById(field);
+                                if (element) {
+                                    element.value = data.content[field] || '';
+                                    // 自动调整文本框高度以适应内容
+                                    element.style.height = 'auto';
+                                    element.style.height = (element.scrollHeight) + 'px';
+                                }
+                            });
+                            
+                            // 保存当前选择的人设到localStorage
+                            localStorage.setItem('lastSelectedAvatar', avatarName);
+                            currentAvatar = avatarName;
+                            
+                            // 显示加载成功提示
+                            showToast(`已加载 ${avatarName} 的角色设定`, 'success');
+                        } else {
+                            console.error('加载人设内容失败:', data.message);
+                            showToast('加载人设内容失败: ' + data.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('加载人设内容失败:', error);
+                        showToast('加载人设内容失败: ' + error, 'error');
+                    });
+            }
+            
+            // 修改查看原始MD内容的功能
+            function addViewRawButton() {
+                // 在人设选择器旁添加一个按钮
+                const selector = document.querySelector('.avatar-selector');
+                const viewRawBtn = document.createElement('button');
+                viewRawBtn.className = 'btn btn-outline-secondary';
+                viewRawBtn.innerHTML = '<i class="bi bi-code-slash"></i> 查看原始MD';
+                viewRawBtn.title = '查看原始Markdown内容';
+                viewRawBtn.addEventListener('click', function() {
+                    // 创建模态框
+                    const modalDiv = document.createElement('div');
+                    modalDiv.className = 'modal fade';
+                    modalDiv.id = 'rawContentModal';
+                    modalDiv.tabIndex = '-1';
+                    modalDiv.setAttribute('aria-labelledby', 'rawContentModalLabel');
+                    modalDiv.setAttribute('aria-hidden', 'true');
+                    
+                    // 检测当前是否为深色模式
+                    const isDarkMode = document.body.getAttribute('data-bs-theme') === 'dark';
+                    
+                    modalDiv.innerHTML = `
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content ${isDarkMode ? 'bg-dark text-light' : ''}">
+                                <div class="modal-header ${isDarkMode ? 'border-secondary' : ''}">
+                                    <h5 class="modal-title" id="rawContentModalLabel">原始Markdown内容</h5>
+                                    <button type="button" class="btn-close ${isDarkMode ? 'btn-close-white' : ''}" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-end mb-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="copyMdBtn">
+                                                <i class="bi bi-clipboard"></i> 复制
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" id="clearMdBtn">
+                                                <i class="bi bi-trash"></i> 清空
+                                            </button>
+                                        </div>
+                                        <textarea class="form-control ${isDarkMode ? 'bg-dark text-light' : ''}" 
+                                            id="rawMdContent" 
+                                            style="min-height: 400px; font-family: monospace;"
+                                        >${rawContent}</textarea>
+                                    </div>
+                                </div>
+                                <div class="modal-footer ${isDarkMode ? 'border-secondary' : ''}">
+                                    <button type="button" class="btn ${isDarkMode ? 'btn-outline-light' : 'btn-secondary'}" data-bs-dismiss="modal">取消</button>
+                                    <button type="button" class="btn btn-primary" id="saveMdBtn">保存修改</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.body.appendChild(modalDiv);
+                    
+                    // 显示模态框
+                    const modal = new bootstrap.Modal(modalDiv);
+                    modal.show();
+                    
+                    // 复制按钮功能
+                    document.getElementById('copyMdBtn').addEventListener('click', function() {
+                        const textarea = document.getElementById('rawMdContent');
+                        textarea.select();
+                        document.execCommand('copy');
+                        showToast('内容已复制到剪贴板', 'success');
+                    });
+                    
+                    // 清空按钮功能
+                    document.getElementById('clearMdBtn').addEventListener('click', function() {
+                        if(confirm('确定要清空所有内容吗？此操作不可恢复。')) {
+                            document.getElementById('rawMdContent').value = '';
+                            showToast('内容已清空', 'success');
+                        }
+                    });
+                    
+                    // 保存修改按钮功能
+                    document.getElementById('saveMdBtn').addEventListener('click', function() {
+                        const newContent = document.getElementById('rawMdContent').value;
+                        const avatarData = {
+                            avatar: currentAvatar,
+                            content: newContent
+                        };
+                        
+                        fetch('/save_avatar_raw', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(avatarData)
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                showToast('修改已保存', 'success');
+                                modal.hide();
+                                // 重新加载内容
+                                loadAvatarContent(currentAvatar);
+                            } else {
+                                showToast('保存失败: ' + data.message, 'error');
+                            }
+                        })
+                        .catch(error => {
+                            showToast('保存失败: ' + error, 'error');
+                        });
+                    });
+                    
+                    // 模态框关闭后移除DOM
+                    modalDiv.addEventListener('hidden.bs.modal', function() {
+                        document.body.removeChild(modalDiv);
+                    });
+                });
+                
+                selector.appendChild(viewRawBtn);
+            }
+            
+            // 监听人设选择器变化
+            document.getElementById('avatarSelector').addEventListener('change', function() {
+                const selectedAvatar = this.value;
+                if (selectedAvatar !== currentAvatar) {
+                    loadAvatarContent(selectedAvatar);
+                }
+            });
+            
+            // 保存按钮点击事件
+            document.getElementById('saveButton').addEventListener('click', function() {
+                const avatarData = {
+                    avatar: currentAvatar, // 添加当前人设名称
+                    task: document.getElementById('task').value,
+                    role: document.getElementById('role').value,
+                    appearance: document.getElementById('appearance').value,
+                    experience: document.getElementById('experience').value,
+                    personality: document.getElementById('personality').value,
+                    classic_lines: document.getElementById('classic_lines').value,
+                    preferences: document.getElementById('preferences').value,
+                    notes: document.getElementById('notes').value
+                };
+
+                console.log('准备发送的数据:', avatarData);  // 调试信息
+
+                fetch('/save_avatar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(avatarData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('角色设定已成功保存', 'success');
+                        // 重新加载内容以获取最新的原始MD
+                        loadAvatarContent(currentAvatar);
+                    } else {
+                        showToast('保存失败: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    showToast('保存失败: ' + error, 'error');
+                });
+            });
+
+            // 为所有文本框添加自动调整高度的功能
+            document.querySelectorAll('textarea.form-control').forEach(textarea => {
+                textarea.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = this.scrollHeight + 'px';
+                });
+            });
+            
+            // 显示提示消息
+            function showToast(message, type = 'success') {
+                const toast = document.createElement('div');
+                toast.className = 'toast-container position-fixed top-0 start-50 translate-middle-x p-3';
+                toast.innerHTML = `
+                    <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                        <div class="d-flex">
+                            <div class="toast-body">
+                                <i class="bi bi-${type === 'success' ? 'check-circle' : 'x-circle'} me-2"></i>${message}
+                            </div>
+                            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(toast);
+                const toastEl = toast.querySelector('.toast');
+                const bsToast = new bootstrap.Toast(toastEl, {
+                    delay: 3000
+                });
+                bsToast.show();
+                
+                // 自动移除 toast
+                toastEl.addEventListener('hidden.bs.toast', function () {
+                    toast.remove();
+                });
+            }
+            
+            // 加载人设列表
+            loadAvatarList();
+            
+            // 添加查看原始MD内容的按钮
+            addViewRawButton();
+
+            // 新建人设按钮点击事件
+            document.getElementById('newAvatarBtn').addEventListener('click', function() {
+                const modal = new bootstrap.Modal(document.getElementById('newAvatarModal'));
+                modal.show();
+            });
+
+            // 创建人设按钮点击事件
+            document.getElementById('createAvatarBtn').addEventListener('click', function() {
+                const avatarName = document.getElementById('newAvatarName').value.trim();
+                
+                if (!avatarName) {
+                    showToast('请输入人设名称', 'error');
+                    return;
+                }
+
+                if (!/^[a-zA-Z0-9_]+$/.test(avatarName)) {
+                    showToast('人设名称只能包含英文字母、数字和下划线', 'error');
+                    return;
+                }
+
+                fetch('/create_avatar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ avatar_name: avatarName })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('人设创建成功', 'success');
+                        // 关闭模态框
+                        bootstrap.Modal.getInstance(document.getElementById('newAvatarModal')).hide();
+                        // 重新加载人设列表
+                        loadAvatarList();
+                        // 清空输入框
+                        document.getElementById('newAvatarName').value = '';
+                    } else {
+                        showToast('创建失败: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    showToast('创建失败: ' + error, 'error');
+                });
+            });
+
+            // 删除人设按钮点击事件
+            document.getElementById('deleteAvatarBtn').addEventListener('click', function() {
+                const modal = new bootstrap.Modal(document.getElementById('deleteAvatarModal'));
+                modal.show();
+            });
+            
+            // 确认删除按钮点击事件
+            document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+                const avatarName = document.getElementById('avatarSelector').value;
+                
+                fetch('/delete_avatar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ avatar_name: avatarName })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('人设已删除', 'success');
+                        // 关闭模态框
+                        bootstrap.Modal.getInstance(document.getElementById('deleteAvatarModal')).hide();
+                        // 重新加载人设列表
+                        loadAvatarList();
+                    } else {
+                        showToast('删除失败: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    showToast('删除失败: ' + error, 'error');
+                });
+            });
+
+            // 获取人设按钮点击事件
+            document.getElementById('getAvatarBtn').addEventListener('click', function() {
+                const modal = new bootstrap.Modal(document.getElementById('getAvatarModal'));
+                modal.show();
+            });
+        });
+    </script>
+</body>
+</html>
+</body>
+</html>
