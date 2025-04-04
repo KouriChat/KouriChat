@@ -2202,6 +2202,7 @@ def save_quick_setup():
 
         # 更新API设置
         if "api_key" in new_config:
+            # 1. 更新LLM设置中的API密钥
             if "llm_settings" not in current_config["categories"]:
                 current_config["categories"]["llm_settings"] = {
                     "title": "大语言模型配置",
@@ -2211,6 +2212,58 @@ def save_quick_setup():
                 "value": new_config["api_key"],
                 "type": "string",
                 "description": "API密钥",
+                "is_secret": True
+            }
+
+            # 2. 更新图像识别配置中的API密钥
+            if "media_settings" not in current_config["categories"]:
+                current_config["categories"]["media_settings"] = {
+                    "title": "媒体处理配置",
+                    "settings": {}
+                }
+                
+            # 确保image_recognition嵌套结构存在
+            if "image_recognition" not in current_config["categories"]["media_settings"]["settings"]:
+                current_config["categories"]["media_settings"]["settings"]["image_recognition"] = {}
+                
+            # 设置图像识别API密钥（使用正确的嵌套结构）
+            current_config["categories"]["media_settings"]["settings"]["image_recognition"]["api_key"] = {
+                "value": new_config["api_key"],
+                "type": "string",
+                "description": "图像识别API密钥",
+                "is_secret": True
+            }
+            
+            # 设置图像识别其他默认值（如果不存在）
+            if "base_url" not in current_config["categories"]["media_settings"]["settings"]["image_recognition"]:
+                current_config["categories"]["media_settings"]["settings"]["image_recognition"]["base_url"] = {
+                    "value": "https://api.ciallo.ac.cn/v1",
+                    "type": "string",
+                    "description": "图像识别API基础URL"
+                }
+            if "temperature" not in current_config["categories"]["media_settings"]["settings"]["image_recognition"]:
+                current_config["categories"]["media_settings"]["settings"]["image_recognition"]["temperature"] = {
+                    "value": 0.35,
+                    "type": "number",
+                    "description": "图像识别温度参数"
+                }
+            if "model" not in current_config["categories"]["media_settings"]["settings"]["image_recognition"]:
+                current_config["categories"]["media_settings"]["settings"]["image_recognition"]["model"] = {
+                    "value": "kourichat-vision",
+                    "type": "string",
+                    "description": "图像识别模型"
+                }
+
+            # 3. 更新RAG记忆配置中的API密钥
+            if "rag_settings" not in current_config["categories"]:
+                current_config["categories"]["rag_settings"] = {
+                    "title": "RAG系统配置",
+                    "settings": {}
+                }
+            current_config["categories"]["rag_settings"]["settings"]["api_key"] = {
+                "value": new_config["api_key"],
+                "type": "string",
+                "description": "RAG嵌入API密钥",
                 "is_secret": True
             }
 

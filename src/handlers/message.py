@@ -34,6 +34,7 @@ class MessageHandler:
         self,
         root_dir,
         llm: LLMService,
+        wx: WeChat, # <<< 修改：添加 wx 参数并强制类型注解
         robot_name: str = None,
         prompt_content: str = None,
         image_handler = None,
@@ -52,6 +53,14 @@ class MessageHandler:
         self.message_cache = {}  # 用户消息缓存
         self.last_message_time = {}  # 用户最后发送消息的时间
         self.message_timer = {}  # 用户消息处理定时器
+        # 添加上一条消息回复时间记录，用于计算时间流速
+        self.last_reply_time = {}  # 用户名 -> 上次消息回复时间
+        # 添加时间流速配置
+        self.time_flow_config = {
+            "base_flow_rate": 1.0,  # 基础流速（正常速度）
+            "max_flow_rate": 4.0,   # 最大流速（最快5倍速）
+            "acceleration_factor": 1.05  # 达到最大流速所需时间是原始等待时间的倍数
+        }
         # 使用 DeepSeekAI 替换直接的 OpenAI 客户端
         self.deepseek = llm
         # 消息队列相关
@@ -60,8 +69,9 @@ class MessageHandler:
         self.chat_contexts = {}
         self.auto_task_message_queue: List[Dict[str, str]] = []
 
-        # 微信实例
-        self.wx = None
+        # <<< 修改：直接使用传入的 wx 实例 >>>
+        self.wx = wx
+        # <<< 结束修改 >>>
         self.is_debug = is_debug
         self.is_qq = is_qq
 
@@ -1355,7 +1365,7 @@ class MessageHandler:
                     for msg in time_based_messages
                     if (
                         current_time
-                        - datetime.strptime(msg["timestamp"], "%Y-%m-%d %H:%M")
+                        - datetime.strptime(msg["timestamp"], "%Y-%m-%d %H:%M:%S" if ":" in msg["timestamp"].split()[1] and len(msg["timestamp"].split()[1].split(":")) > 2 else "%Y-%m-%d %H:%M")
                     ).total_seconds()
                     <= 21600  # 6小时
                 ]
@@ -1646,21 +1656,82 @@ class MessageHandler:
 
     def _calculate_wait_time(self, username: str, msg_count: int) -> float:
         """计算消息等待时间"""
+        # 获取当前时间
+        current_time = time.time()
+        
+        # 基础等待时间计算（保持原来的逻辑）
         base_wait_time = 3.0
         typing_speed = self._estimate_typing_speed(username)
 
         if msg_count == 1:
-            wait_time = base_wait_time + 5.0
+            raw_wait_time = base_wait_time + 4.0
         else:
-            estimated_typing_time = min(4.0, typing_speed * 10)  # 假设用户输入10个字符
-            wait_time = base_wait_time + estimated_typing_time
-
+            estimated_typing_time = max(4.0, typing_speed * 15)  # 假设用户输入15个字符
+            raw_wait_time = base_wait_time + estimated_typing_time
+        
+        # 计算时间流速（时间流速仅在此处生效）
+        flow_rate = self._calculate_time_flow_rate(username, current_time, raw_wait_time)
+        
+        # 应用时间流速到等待时间 - 流速越大，等待时间越短
+        adjusted_wait_time = raw_wait_time / flow_rate
+        
         # 简化日志，只在debug级别显示详细计算过程
         logger.debug(
-            f"消息等待时间计算: 基础={base_wait_time}秒, 打字速度={typing_speed:.2f}秒/字, 结果={wait_time:.1f}秒"
+            f"消息等待时间计算: 基础={base_wait_time}秒, 打字速度={typing_speed:.2f}秒/字, "
+            f"时间流速={flow_rate:.2f}x, 原始等待={raw_wait_time:.1f}秒, 调整后={adjusted_wait_time:.1f}秒"
         )
 
-        return wait_time
+        return adjusted_wait_time
+    
+    def _calculate_time_flow_rate(self, username: str, current_time: float, raw_wait_time: float) -> float:
+        """计算时间流速倍率
+        
+        根据上次回复消息的时间间隔和原始等待时间计算时间流速：
+        - 时间间隔越长，流速越快（等待时间越短）
+        - 新的缓存消息会重置时间流速为正常
+        - 达到最大流速所需时间根据原始等待时间动态调整
+        - 采用二次方(y=x²)增长曲线，开始较慢，后期增长迅速
+        
+        Args:
+            username: 用户名
+            current_time: 当前时间戳
+            raw_wait_time: 原始等待时间
+            
+        Returns:
+            时间流速倍率，1.0表示正常速度，>1.0表示加速
+        """
+        # 如果是新用户或没有上次回复记录，使用基础流速
+        if username not in self.last_reply_time:
+            return self.time_flow_config["base_flow_rate"]
+        
+        # 计算距离上次回复的时间间隔（秒）
+        elapsed_time = current_time - self.last_reply_time[username]
+        
+        # 根据原始等待时间动态计算达到最大流速所需的时间
+        # 等待时间越长，达到最大流速所需的时间也越长，但成比例关系
+        acceleration_time = raw_wait_time * self.time_flow_config["acceleration_factor"]
+        
+        # 计算流速倍率：二次方增长，受加速时间控制
+        # 归一化时间比例，范围限制在0-1之间
+        normalized_time = min(1.0, elapsed_time / acceleration_time)
+        
+        # 二次方增长：y = x²
+        growth_factor = normalized_time ** 2
+        
+        # 计算最终流速：基础流速 + (最大流速 - 基础流速) * 增长因子
+        flow_rate = self.time_flow_config["base_flow_rate"] + (
+            (self.time_flow_config["max_flow_rate"] - self.time_flow_config["base_flow_rate"]) * 
+            growth_factor
+        )
+        
+        # 添加更详细的调试日志
+        logger.debug(
+            f"时间流速计算: 用户={username}, 经过时间={elapsed_time:.1f}秒, "
+            f"加速时间={acceleration_time:.1f}秒, 归一化时间={normalized_time:.2f}, " 
+            f"增长因子={growth_factor:.3f}, 流速={flow_rate:.2f}x"
+        )
+        
+        return flow_rate
 
     def _process_cached_messages(self, username: str):
         """处理缓存的消息"""
@@ -1700,7 +1771,8 @@ class MessageHandler:
                 if cleaned_content:
                     raw_contents.append(cleaned_content)
 
-            # 使用 \ 作为句子分隔符合并消息
+            # 使用空格包围的'$'作为分隔符合并消息
+            # 系统在解析时会同时兼容'$'和'\'作为分隔符（在_filter_action_emotion方法中处理）
             content_text = " $ ".join(raw_contents)
 
             # 格式化最终消息
@@ -1723,6 +1795,9 @@ class MessageHandler:
                 last_message["is_group"],
                 any(msg.get("is_image_recognition", False) for msg in messages),
             )
+
+            # 记录回复时间，用于下次计算时间流速
+            self.last_reply_time[username] = time.time()
 
             # 清理缓存和定时器
             self.message_cache[username] = []
@@ -2037,7 +2112,7 @@ class MessageHandler:
         # 1. 先移除文本中的引号，避免引号包裹非动作文本
         text = text.replace('"', '').replace('"', '').replace('"', '')
         
-        # 2. 处理分隔符 - 确保分隔符在括号外面
+        # 2. 处理分隔符 - 先尝试$分隔符
         parts = text.split('$')
         
         # 3. 保护已经存在的括号内容
@@ -2101,26 +2176,39 @@ class MessageHandler:
             # 更新全局保护部分
             protected_parts.update(current_protected_parts)
         
-        # 4. 特殊处理：如果只有一个部分且没有$分隔符，尝试处理 \ 分隔符
-        if len(processed_parts) == 1:
-            part = processed_parts[0]["content"]
+        # 4. 检查是否有'\'分隔符
+        # 如果只有一个部分且没有'$'分隔符，或者有多个部分但每个部分都需要进一步处理
+        has_slash_parts = False
+        new_processed_parts = []
+        
+        for part_info in processed_parts:
+            part = part_info["content"]
+            part_protected = part_info["protected_parts"]
+            
+            # 检查是否包含反斜杠分隔符
             slash_parts = part.split('\\')
             if len(slash_parts) > 1:  # 确认有实际分隔
-                # 重新处理使用\分隔的部分
-                processed_parts = []
+                has_slash_parts = True
+                # 处理使用\分隔的每个子部分
                 for slash_idx, slash_part in enumerate(slash_parts):
                     slash_part = slash_part.strip()
                     if not slash_part:
                         continue
                     
-                    # 为每个部分创建新的保护项
-                    slash_protected_parts = {}
-                    processed_parts.append({
+                    # 为每个子部分创建新的保护项字典(与父部分共享)
+                    new_processed_parts.append({
                         "content": slash_part,
-                        "protected_parts": slash_protected_parts
+                        "protected_parts": part_protected  # 共享保护内容
                     })
+            else:
+                # 保持原始部分不变
+                new_processed_parts.append(part_info)
         
-        # 5. 重新组合文本，使用$作为分隔符
+        # 如果找到了\分隔符，则使用新处理的部分
+        if has_slash_parts:
+            processed_parts = new_processed_parts
+        
+        # 5. 重新组合文本，统一使用$作为分隔符
         result_parts = []
         for part_info in processed_parts:
             part = part_info["content"]
@@ -3405,18 +3493,18 @@ class MessageHandler:
             return 30
 
     def _calculate_time_decay_weight(
-        self, timestamp, current_time=None, time_format="%Y-%m-%d %H:%M"
+        self, timestamp, current_time=None, time_format=None
     ):
         """
-        计算基于时间衰减的权重
-
+        计算基于时间差的权重，较新的消息权重较高
+        
         Args:
-            timestamp: 消息时间戳字符串
-            current_time: 当前时间，如果为None则使用当前系统时间
-            time_format: 时间格式
-
+            timestamp: 消息时间戳
+            current_time: 当前时间，默认为None表示使用当前系统时间
+            time_format: 时间戳格式，如果为None则自动检测
+            
         Returns:
-            float: 时间衰减权重，范围[0, 1]
+            float: 0到1之间的权重值
         """
         try:
             if not timestamp:
@@ -3426,10 +3514,46 @@ class MessageHandler:
             if current_time is None:
                 current_time = datetime.now()
             elif isinstance(current_time, str):
-                current_time = datetime.strptime(current_time, time_format)
+                # 自动检测current_time的格式
+                if ":" in current_time:
+                    parts = current_time.split(":")
+                    if len(parts) > 2 or (len(parts) == 2 and "." in parts[-1]):
+                        current_time_format = "%Y-%m-%d %H:%M:%S"
+                    else:
+                        current_time_format = "%Y-%m-%d %H:%M"
+                    current_time = datetime.strptime(current_time, current_time_format)
+                else:
+                    current_time = datetime.now()  # 格式不符时使用当前时间
+
+            # 自动检测时间戳格式
+            if time_format is None:
+                if ":" in timestamp:
+                    time_parts = timestamp.split(":")
+                    if len(time_parts) > 2 or (len(time_parts) == 2 and "." in time_parts[-1]):
+                        time_format = "%Y-%m-%d %H:%M:%S"
+                    else:
+                        time_format = "%Y-%m-%d %H:%M"
+                
+                logger.debug(f"自动检测到时间戳格式: {time_format}, 时间戳: {timestamp}")
 
             # 将时间戳转换为datetime对象
-            msg_time = datetime.strptime(timestamp, time_format)
+            try:
+                msg_time = datetime.strptime(timestamp, time_format)
+            except ValueError as e:
+                # 如果格式不匹配，尝试其他常见格式
+                if "unconverted data remains" in str(e) and time_format == "%Y-%m-%d %H:%M":
+                    # 尝试带秒的格式
+                    try:
+                        msg_time = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                        logger.debug(f"时间戳格式自动调整为: %Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        # 如果仍失败，记录错误并返回默认值
+                        logger.error(f"无法解析时间戳 {timestamp}: {str(e)}")
+                        return 0.5
+                else:
+                    # 其他错误
+                    logger.error(f"解析时间戳出错: {str(e)}")
+                    return 0.5
 
             # 计算时间差（秒）
             time_diff_seconds = (current_time - msg_time).total_seconds()
@@ -4000,3 +4124,117 @@ class MessageHandler:
             )
         except Exception as e:
             logger.error(f"记忆对话失败: {str(e)}")
+
+    # 在适当位置添加process_voice_message方法
+    def process_voice_message(
+        self,
+        voice_content: str,
+        chat_id: str,
+        is_self_message: bool = False,
+        sender_name: str = None,
+        username: str = None,
+        is_group: bool = False
+    ):
+        """
+        处理语音消息，识别语音内容
+        
+        Args:
+            voice_content: 语音消息内容，通常是"[语音]x秒,未播放"格式
+            chat_id: 聊天ID
+            is_self_message: 是否是自己发送的消息
+            sender_name: 发送者名称
+            username: 用户名
+            is_group: 是否是群聊
+            
+        Returns:
+            str: 处理结果，或None表示不需要回复
+        """
+        try:
+            # 如果是自己发送的语音，跳过处理
+            if is_self_message:
+                logger.info(f"检测到自己发送的语音消息，跳过识别: {voice_content}")
+                return None
+                
+            # 设置状态为正在回复
+            self.set_replying_status(True)
+            
+            try:
+                # 检查语音处理器是否可用
+                if not hasattr(self, "voice_handler") or not self.voice_handler:
+                    logger.warning("语音处理器不可用，无法识别语音")
+                    return None
+                    
+                # 识别语音内容
+                logger.info(f"开始识别语音消息: {voice_content}, 聊天ID: {chat_id}")
+                
+                # 先尝试使用现有的moonshot_ai服务进行识别
+                api_client = None
+                if hasattr(self, "image_recognition_service") and self.image_recognition_service:
+                    # 使用图像识别服务关联的API客户端
+                    api_client = self.image_recognition_service.api_client
+                    logger.info("使用图像识别服务的API客户端进行语音识别")
+                    
+                # 调用语音处理器进行识别
+                recognized_text = self.voice_handler.recognize_voice_message(
+                    voice_content, chat_id, api_client
+                )
+                
+                if recognized_text:
+                    logger.info(f"语音识别结果: {recognized_text}")
+                    
+                    # 获取当前时间
+                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # 构造完整内容
+                    group_info = "在群聊里" if is_group else "私聊"
+                    time_aware_content = f"(此时时间为{current_time}) ta{group_info}对你说：{recognized_text}"
+                    
+                    # 保存到群聊记忆
+                    if is_group and hasattr(self, "group_chat_memory"):
+                        # 判断是否@机器人
+                        is_at = "@" in voice_content and self.robot_name in voice_content
+                        # 添加到群聊记忆
+                        self.group_chat_memory.add_message(
+                            chat_id, sender_name or username, recognized_text, is_at
+                        )
+                        logger.info(f"语音识别结果已保存到群聊记忆: {chat_id}")
+                        
+                        # 如果是@机器人的消息，进行处理并回复
+                        if is_at:
+                            logger.info(f"检测到@机器人的语音消息，将进行处理")
+                            return self.handle_user_message(
+                                content=recognized_text,
+                                chat_id=chat_id,
+                                sender_name=sender_name or username,
+                                username=username,
+                                is_group=True,
+                                is_image_recognition=False,
+                                is_self_message=False,
+                                is_at=True
+                            )
+                        return None  # 不需要回复
+                        
+                    # 处理私聊消息
+                    else:
+                        logger.info(f"语音识别结果将作为私聊消息处理: {recognized_text}")
+                        return self.handle_user_message(
+                            content=recognized_text,
+                            chat_id=chat_id,
+                            sender_name=sender_name or username,
+                            username=username,
+                            is_group=False,
+                            is_image_recognition=False,
+                            is_self_message=False,
+                            is_at=False
+                        )
+                else:
+                    logger.warning(f"语音识别失败，未能获取识别结果")
+                    return None
+                    
+            finally:
+                # 重置回复状态
+                self.set_replying_status(False)
+                
+        except Exception as e:
+            logger.error(f"处理语音消息失败: {str(e)}", exc_info=True)
+            return "抱歉，处理语音消息时出现错误"

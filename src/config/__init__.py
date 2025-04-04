@@ -287,6 +287,7 @@ class SettingReader:
             
             # 图像识别
             img_recog = media_data.get('image_recognition', {})
+            
             img_recognition = ImageRecognitionSettings(
                 api_key=img_recog.get('api_key', {}).get('value', ''),
                 base_url=img_recog.get('base_url', {}).get('value', ''),

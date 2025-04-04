@@ -34,3 +34,7 @@ tqdm>=4.65.0
 tiktoken
 
 pillow>=9.4.0
+
+pyperclip
+SpeechRecognition
+opencv-python

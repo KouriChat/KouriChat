@@ -271,17 +271,84 @@ class MemoryProcessor:
         """
         try:
             # 确保目录存在
-            os.makedirs(os.path.dirname(self.memory_path), exist_ok=True)
+            memory_dir = os.path.dirname(self.memory_path)
+            os.makedirs(memory_dir, exist_ok=True)
             
-            # 保存数据
-            with open(self.memory_path, "w", encoding="utf-8") as f:
+            # 使用临时文件进行安全写入
+            import tempfile
+            import shutil
+            
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(mode='w', 
+                                            encoding='utf-8', 
+                                            suffix='.json', 
+                                            prefix='memory_', 
+                                            dir=memory_dir, 
+                                            delete=False) as temp_file:
+                # 将数据写入临时文件
                 json.dump({
                     "memories": self.memory_data,
                     "embeddings": self.embedding_data,
-                }, f, ensure_ascii=False, indent=2)
+                }, temp_file, ensure_ascii=False, indent=2)
                 
-            logger.info(f"记忆数据已保存到 {self.memory_path}")
-            return True
+                # 确保数据刷新到磁盘
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+                
+                # 保存临时文件路径用于后续操作
+                temp_path = temp_file.name
+            
+            # 创建一个备份文件
+            if os.path.exists(self.memory_path):
+                backup_path = f"{self.memory_path}.bak"
+                try:
+                    shutil.copy2(self.memory_path, backup_path)
+                    logger.debug(f"已创建记忆文件备份: {backup_path}")
+                except Exception as backup_err:
+                    # 备份失败不阻止继续操作，但会记录日志
+                    logger.warning(f"创建记忆文件备份失败: {str(backup_err)}")
+            
+            # 使用原子操作替换旧文件
+            try:
+                # 在Windows上，可能需要先删除目标文件
+                if os.name == 'nt' and os.path.exists(self.memory_path):
+                    os.unlink(self.memory_path)
+                
+                # 原子重命名操作
+                shutil.move(temp_path, self.memory_path)
+                logger.info(f"记忆数据已安全保存到 {self.memory_path}")
+                
+                # 清理可能的旧备份文件
+                old_backups = [f for f in os.listdir(memory_dir) 
+                              if f.startswith(os.path.basename(self.memory_path) + ".bak")
+                              and os.path.isfile(os.path.join(memory_dir, f))]
+                
+                # 保留最近的5个备份
+                if len(old_backups) > 5:
+                    # 按修改时间排序
+                    old_backups.sort(key=lambda f: os.path.getmtime(os.path.join(memory_dir, f)))
+                    # 删除最旧的备份
+                    for old_bak in old_backups[:-5]:
+                        try:
+                            os.remove(os.path.join(memory_dir, old_bak))
+                            logger.debug(f"已删除旧备份文件: {old_bak}")
+                        except Exception as del_err:
+                            logger.warning(f"删除旧备份文件失败: {str(del_err)}")
+                
+                return True
+            except Exception as move_err:
+                logger.error(f"替换记忆文件失败: {str(move_err)}")
+                
+                # 尝试从备份恢复
+                backup_path = f"{self.memory_path}.bak"
+                if os.path.exists(backup_path):
+                    try:
+                        shutil.copy2(backup_path, self.memory_path)
+                        logger.info(f"已从备份恢复记忆文件")
+                    except Exception as restore_err:
+                        logger.error(f"从备份恢复失败: {str(restore_err)}")
+                
+                return False
         except Exception as e:
             logger.error(f"保存记忆数据失败: {str(e)}")
             return False
