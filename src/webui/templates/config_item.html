@@ -1074,9 +1074,9 @@
         customModelInput.style.display = 'none';
         
         if (providerId === 'kourichat' || providerId === 'ciallo') {
-            // KouriChat API 固定使用 koala
-            modelSelect.innerHTML = '<option value="koala">koala</option>';
-            modelInput.value = 'koala';
+            // KouriChat API 固定使用 kourichat-vision
+            modelSelect.innerHTML = '<option value="kourichat-vision">kourichat-vision</option>';
+            modelInput.value = 'kourichat-vision';
         } else if (providerId === 'moonshot') {
             // Moonshot 有多个选项
             modelSelect.innerHTML = `
@@ -1085,7 +1085,7 @@
             `;
             
             // 根据当前值设置选中项
-            if (modelInput.value && modelInput.value !== 'koala') {
+            if (modelInput.value && modelInput.value !== 'kourichat-vision') {
                 if (modelInput.value === 'moonshot-v1-8k-vision-preview') {
                     modelSelect.value = 'moonshot-v1-8k-vision-preview';
                 } else {
