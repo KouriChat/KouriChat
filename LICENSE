@@ -1,0 +1,114 @@
+================================================================================
+Modified Functional Source License, Version 1.1 (Non-Commercial for Recipients)
+修改后的功能源代码许可协议，版本 1.1（仅限受许可方非商业用途）
+================================================================================
+Copyright (c) 2025 DeepAnima
+--------------------------------------------------------------------------------
+NOTE: THIS LICENSE VERSION SHALL GOVERN ALL USES OF THE SOFTWARE, AND ANY PRIOR OR SUBSEQUENT LICENSE PROVISIONS ARE HEREBY SUPERSEDED.
+注意：本许可证版本为最终、有效的版本，适用于本软件的所有使用，任何先前的许可条款均以本版本为准。
+--------------------------------------------------------------------------------
+1. Definitions 定义
+--------------------------------------------------------------------------------
+1.1 Licensor (“We”, “Us”, “Our”)
+    DeepAnima, whose official website is https://deepanima.tech/ and whose registered address is
+    DeepAnima Network Technology Studio, Longhua District, Haikou City (Registration Code: 92460000MACWECG68N),
+    is the party offering the Software under these Terms and Conditions.
+    
+    许可方 DeepAnima，官方网址：https://deepanima.tech/，注册地址：海口市龙华区深境之灵网络科技工作室
+    （登记编码：92460000MACWECG68N）。本协议及其条款适用于许可方发布的全部软件。
+    
+1.2 The Software
+    “Software” means any and all versions, updates, modifications, and derivative works of the computer program(s) that are made available by the Licensor under this Agreement, including any accompanying documentation or data materials, regardless of the form or media in which such Software is provided.
+    
+    “软件”指许可方依照本协议发布的任何及所有版本、更新、修改以及基于该软件的衍生作品，包括所有随附的文档或数据材料，无论该软件以何种形式或媒介提供。
+
+    许可方 DeepAnima，官方网址：https://deepanima.tech/，注册地址：海口市龙华区深境之灵网络科技工作室
+    （登记编码：92460000MACWECG68N）。本协议及其条款适用于许可方发布的全部软件。
+
+1.2 The Software
+    “Software” means any and all versions, updates, modifications, and derivative works of the computer program(s)
+    that are made available by the Licensor under this Agreement, including any accompanying documentation or data materials,
+    regardless of the form or media in which such Software is provided.
+    “软件”指许可方依照本协议发布的任何及所有版本、更新、修改以及基于该软件的衍生作品，包括所有随附的文档
+    或数据材料，无论该软件以何种形式或媒介提供。
+--------------------------------------------------------------------------------
+2. License Grant 许可授权
+--------------------------------------------------------------------------------
+2.1 Subject to your full compliance with these Terms and Conditions, we hereby grant you a non-exclusive,
+    non-transferable, revocable license to use, copy, and modify the Software solely for non-commercial purposes.
+    This License expressly excludes any right to use, distribute, or develop the Software for any commercial purpose.
+    在您完全遵守本协议及其条款的前提下，许可方特此授予您非排他性、不可转让且可撤销的许可，
+    仅允许您将本软件用于非商业目的，包括复制、使用和修改本软件。本许可明确排除任何形式的商业使用、分发或基于本软件的商业开发。
+
+2.2 Notwithstanding the license granted herein, the Licensor (DeepAnima) retains the exclusive right
+    to use, distribute, and commercially develop the Software.
+    尽管本许可授予了上述权利，许可方 DeepAnima 保留对本软件进行商业使用、分发和开发的专有权利。
+--------------------------------------------------------------------------------
+3. Permitted Purpose (非商业用途限定)
+--------------------------------------------------------------------------------
+3.1 “Permitted Purpose” means any use that is strictly non-commercial. You may use, copy, modify, and, if applicable,
+    provide professional services incorporating the Software solely for non-commercial education or non-commercial research.
+    “非商业用途”指绝对不得用于盈利目的的使用。您仅可将本软件用于非商业教育或非商业研究，亦可为此目的复制、使用、修改，
+    及提供整合本软件的专业服务。
+
+3.2 Commercial Use Prohibited. You are expressly prohibited from, including without limitation:
+      (a) engaging in any form of commercial secondary development based on the Software;
+      (b) using the Software, or any derivative works thereof, for any activity that directly or indirectly generates commercial benefits;
+      (c) using the Software for any purpose that competes with, or is intended to compete with, the Licensor.
+      严禁商业用途。明确禁止包括但不限于下列行为：
+      (a) 基于本软件进行任何形式的商业性二次开发；
+      (b) 将本软件或其任何衍生作品用于任何直接或间接产生商业利益的活动；
+      (c) 将本软件用于任何与许可方构成竞争或旨在与许可方竞争的行为。
+--------------------------------------------------------------------------------
+4. Redistribution and Derivative Works 再分发与衍生作品
+--------------------------------------------------------------------------------
+4.1 Any redistribution, whether in original or modified form, must be done solely under the terms of this License and
+    must include a complete copy of, or a link to, these Terms and Conditions.
+    任何形式的再分发（无论是原始版本还是修改后的版本）均必须严格依照本许可条款进行，并且必须附带或链接提供本许可条款全文。
+
+4.2 You are not permitted to distribute, sell, or otherwise provide any copies, modifications, or derivative works of the
+    Software for any commercial purpose.
+    您不得以任何商业目的分发、销售或以其他方式提供本软件的任何副本、修改版本或衍生作品。
+--------------------------------------------------------------------------------
+5. Patents 专利
+--------------------------------------------------------------------------------
+5.1 If, in the course of your permitted, non-commercial use of the Software, you inadvertently infringe any patent rights
+    of ours, the license granted herein includes a limited patent license to the extent required for your non-commercial use.
+    However, should you initiate any patent litigation alleging that the Software infringes any patent, your rights under this License
+    will terminate immediately.
+    在您按本许可条款进行非商业使用过程中，如若不慎侵犯了许可方持有的任何专利权，则本许可所授予的使用权范围内，包括一项为实现非商业使用所必需的有限专利许可。
+    但若您对任何方提起专利诉讼，主张本软件构成专利侵权，则您根据本许可所享有的权利将立即终止。
+--------------------------------------------------------------------------------
+6. Disclaimer 免责声明
+--------------------------------------------------------------------------------
+6.1 THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL WE BE LIABLE FOR ANY DAMAGES WHATSOEVER
+    ARISING OUT OF THE USE OF OR INABILITY TO USE THE SOFTWARE.
+    本软件“按现状”提供，不作任何明示或暗示的保证，包括但不限于对适销性、特定用途适用性或不侵权的保证。
+    无论在任何情况下，许可方均不对因使用或无法使用本软件而导致的任何损失或损害承担责任。
+--------------------------------------------------------------------------------
+7. Trademarks 商标
+--------------------------------------------------------------------------------
+7.1 Except as expressly provided herein for the display of License Details and to identify the origin of the Software,
+    you have no rights to use our trademarks, trade names, service marks, or product names.
+    除非本许可中明确允许用于显示许可详情和标识软件来源，您无权使用许可方的任何商标、字号、服务标识或产品名称。
+--------------------------------------------------------------------------------
+8. No Grant of Future License 无未来许可授权
+--------------------------------------------------------------------------------
+8.1 There is no promise or transfer of any additional license (now or in the future) such as an Apache License under any
+    circumstances. All rights are reserved except as expressly granted herein.
+    本许可中不包括对任何额外许可（现有或未来）、例如 Apache 许可协议的任何承诺或转让。除非本许可中明确授予之外，
+    所有权利均予以保留。
+--------------------------------------------------------------------------------
+9. Final Interpretation  最终解释权
+--------------------------------------------------------------------------------
+9.1 DeepAnima shall have the exclusive right to the final interpretation of this License. In the event of any dispute or ambiguity
+    concerning the interpretation of any provision of this License, such interpretation shall be binding upon all parties.
+    深境之灵 DeepAnima 拥有本许可协议的最终解释权。对于本协议任何条款的解释，如发生争议或产生歧义，其解释均为最终且具有约束力。
+================================================================================
+Acceptance 接受
+================================================================================
+By using this Software in any fashion, you acknowledge that you have read, understood, and agree to be bound
+by the terms and conditions of this Modified Functional Source License, Version 1.1 (Non-Commercial for Recipients).
+
+通过以任何方式使用本软件，您即确认已阅读、理解并同意受本“修改后的功能源代码许可协议，版本 1.1（仅限受许可方非商业用途）”条款的约束。
