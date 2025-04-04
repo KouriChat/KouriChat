@@ -134,9 +134,9 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
         config_groups = {
             "基础配置": {},
             "图像识别API配置": {},
-            "图像生成配置": {},
+            # "图像生成配置": {},  # 注释掉图像生成配置
             "时间配置": {},
-            "语音配置": {},
+            # "语音配置": {},  # 注释掉语音配置
             "Prompt配置": {},
         }
 
@@ -194,6 +194,7 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
         )
 
         # 图像生成配置
+        '''
         config_groups["图像生成配置"].update(
             {
                 "IMAGE_MODEL": {
@@ -206,6 +207,7 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
                 },
             }
         )
+        '''
 
         # 时间配置
         config_groups["时间配置"].update(
@@ -234,6 +236,7 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
         )
 
         # 语音配置
+        '''
         config_groups["语音配置"].update(
             {
                 "TTS_API_URL": {
@@ -246,6 +249,7 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
                 },
             }
         )
+        '''
 
         # Prompt配置
         available_avatars = get_available_avatars()
@@ -2070,6 +2074,7 @@ def get_all_configs():
                         configs['图像识别API配置']['MOONSHOT_MODEL'] = {'value': img_recog['model'].get('value', '')}
                 
                 # 图像生成设置
+                '''
                 configs['图像生成配置'] = {}
                 if 'image_generation' in media_settings:
                     img_gen = media_settings['image_generation']
@@ -2077,8 +2082,10 @@ def get_all_configs():
                         configs['图像生成配置']['IMAGE_MODEL'] = {'value': img_gen['model'].get('value', '')}
                     if 'temp_dir' in img_gen:
                         configs['图像生成配置']['TEMP_IMAGE_DIR'] = {'value': img_gen['temp_dir'].get('value', '')}
+                '''
                 
                 # 语音设置
+                '''
                 configs['语音配置'] = {}
                 if 'text_to_speech' in media_settings:
                     tts = media_settings['text_to_speech']
@@ -2086,6 +2093,7 @@ def get_all_configs():
                         configs['语音配置']['TTS_API_URL'] = {'value': tts['tts_api_url'].get('value', '')}
                     if 'voice_dir' in tts:
                         configs['语音配置']['VOICE_DIR'] = {'value': tts['voice_dir'].get('value', '')}
+                '''
             
             # 行为设置
             if 'behavior_settings' in config_data['categories'] and 'settings' in config_data['categories']['behavior_settings']:
