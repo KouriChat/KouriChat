@@ -126,7 +126,7 @@ categories:
           min: 0
           max: 1.7
         model:
-          value: "koala"
+          value: "kourichat-vision"
           type: string
           description: 图像识别 AI 模型
       image_generation:
