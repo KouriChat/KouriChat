@@ -217,11 +217,10 @@ class GroupChatMemory:
                     # 添加新消息
                     memory_data["memories"][memory_key].append(message_data)
                     
-                    # 保存更新后的数据
-                    with open(memory_json_path, "w", encoding="utf-8") as f:
-                        json.dump(memory_data, f, ensure_ascii=False, indent=2)
+                    # 安全保存更新后的数据
+                    self._safe_save_json(memory_json_path, memory_data)
                     
-                    logger.info(f"已保存新消息到群聊 {group_id} 的memory.json文件")
+                    logger.info(f"已安全保存新消息到群聊 {group_id} 的memory.json文件")
                 except Exception as e:
                     logger.error(f"更新群聊 {group_id} 的memory.json文件失败: {str(e)}")
             
@@ -239,8 +238,10 @@ class GroupChatMemory:
                     loop
                 )
                 future.result()
+                logger.info(f"群聊消息已异步添加到RAG存储: {group_id}, 发送者: {sender_name}")
             else:
                 loop.run_until_complete(self.rag_managers[group_id].add_group_chat_message(group_id, message_data))
+                logger.info(f"群聊消息已同步添加到RAG存储: {group_id}, 发送者: {sender_name}")
                 
             return timestamp
             
@@ -390,11 +391,10 @@ class GroupChatMemory:
                             "is_at": False
                         })
                     
-                    # 保存更新后的数据
-                    with open(memory_json_path, "w", encoding="utf-8") as f:
-                        json.dump(memory_data, f, ensure_ascii=False, indent=2)
+                    # 安全保存更新后的数据
+                    self._safe_save_json(memory_json_path, memory_data)
                     
-                    logger.info(f"已更新群聊 {group_id} 的memory.json文件")
+                    logger.info(f"已安全更新群聊 {group_id} 的memory.json文件")
                 except Exception as e:
                     logger.error(f"更新群聊 {group_id} 的memory.json文件失败: {str(e)}")
             
@@ -683,4 +683,75 @@ class GroupChatMemory:
             
         except Exception as e:
             logger.error(f"根据内容查找消息失败: {str(e)}")
-            return None 
+            return None
+
+    def _safe_save_json(self, file_path: str, data: dict) -> bool:
+        """
+        安全地保存JSON数据到文件
+        
+        Args:
+            file_path: 文件路径
+            data: 要保存的数据
+            
+        Returns:
+            bool: 是否成功保存
+        """
+        try:
+            # 确保目录存在
+            file_dir = os.path.dirname(file_path)
+            os.makedirs(file_dir, exist_ok=True)
+            
+            import tempfile
+            import shutil
+            
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(mode='w', 
+                                           encoding='utf-8', 
+                                           suffix='.json', 
+                                           prefix='group_memory_', 
+                                           dir=file_dir, 
+                                           delete=False) as temp_file:
+                # 将数据写入临时文件
+                json.dump(data, temp_file, ensure_ascii=False, indent=2)
+                
+                # 确保数据刷新到磁盘
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+                
+                # 保存临时文件路径用于后续操作
+                temp_path = temp_file.name
+            
+            # 创建备份文件
+            if os.path.exists(file_path):
+                backup_path = f"{file_path}.bak"
+                try:
+                    shutil.copy2(file_path, backup_path)
+                except Exception as backup_err:
+                    logger.warning(f"创建群聊记忆备份失败: {str(backup_err)}")
+            
+            # 使用原子操作替换旧文件
+            try:
+                # 在Windows上需要先删除目标文件
+                if os.name == 'nt' and os.path.exists(file_path):
+                    os.unlink(file_path)
+                
+                # 原子重命名操作
+                shutil.move(temp_path, file_path)
+                
+                return True
+            except Exception as move_err:
+                logger.error(f"替换群聊记忆文件失败: {str(move_err)}")
+                
+                # 尝试从备份恢复
+                backup_path = f"{file_path}.bak"
+                if os.path.exists(backup_path):
+                    try:
+                        shutil.copy2(backup_path, file_path)
+                        logger.info(f"已从备份恢复群聊记忆文件")
+                    except Exception as restore_err:
+                        logger.error(f"从备份恢复群聊记忆失败: {str(restore_err)}")
+                
+                return False
+        except Exception as e:
+            logger.error(f"保存群聊记忆数据失败: {str(e)}")
+            return False 

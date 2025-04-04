@@ -878,6 +878,7 @@ class RagManager:
             if embedding:
                 document["embedding"] = embedding
                 self.storage.add_document(document)
+                logger.info(f"成功获取嵌入向量: 长度={len(embedding)}")
             
             return True
         except Exception as e:
