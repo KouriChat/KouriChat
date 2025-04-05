@@ -7,13 +7,14 @@ import os
 import logging
 import json
 from typing import List, Dict, Tuple, Any, Optional
+from modules.memory.diary import DiaryService  # 导入日记服务
 
 logger = logging.getLogger('main')
 
 class DebugCommandHandler:
     """调试命令处理器类，处理各种调试命令"""
     
-    def __init__(self, root_dir: str, memory_service=None, llm_service=None):
+    def __init__(self, root_dir: str, memory_service=None, llm_service=None, diary_service=None):
         """
         初始化调试命令处理器
         
@@ -21,12 +22,31 @@ class DebugCommandHandler:
             root_dir: 项目根目录
             memory_service: 记忆服务实例
             llm_service: LLM服务实例
+            diary_service: 日记服务实例
         """
         self.root_dir = root_dir
         self.memory_service = memory_service
         self.llm_service = llm_service
+        self.diary_service = diary_service
         self.avatars_dir = os.path.join(root_dir, "data", "avatars")
         self.DEBUG_PREFIX = "/"
+        
+        # 如果没有提供日记服务，则尝试初始化
+        if self.diary_service is None and llm_service:
+            from config import config
+            try:
+                self.diary_service = DiaryService(
+                    root_dir=root_dir,
+                    api_key=config.llm.api_key,
+                    base_url=config.llm.base_url,
+                    model=config.llm.model,
+                    max_token=config.llm.max_tokens,
+                    temperature=config.llm.temperature
+                )
+                logger.info("日记服务已初始化")
+            except Exception as e:
+                logger.error(f"初始化日记服务失败: {str(e)}")
+                self.diary_service = None
         
     def is_debug_command(self, message: str) -> bool:
         """
@@ -74,6 +94,10 @@ class DebugCommandHandler:
         # 清空当前角色的对话上下文
         elif cmd == "context":
             return True, self._clear_context(user_id)
+        
+        # 生成日记
+        elif cmd == "diary":
+            return True, self._generate_diary(current_avatar)
             
         # 退出调试模式
         elif cmd == "exit":
@@ -91,6 +115,7 @@ class DebugCommandHandler:
 - /reset: 重置当前角色的最近记忆
 - /clear: 清空当前角色的核心记忆
 - /context: 清空当前角色的对话上下文
+- /diary: 生成角色小日记
 - /exit: 退出调试模式"""
     
     def _show_memory(self, avatar_name: str) -> str:
@@ -258,4 +283,31 @@ class DebugCommandHandler:
                 
         except Exception as e:
             logger.error(f"清空对话上下文失败: {str(e)}")
-            return f"清空对话上下文时出错: {str(e)}" 
+            return f"清空对话上下文时出错: {str(e)}"
+    
+    def _generate_diary(self, avatar_name: str) -> str:
+        """
+        生成当前角色的日记
+        
+        Args:
+            avatar_name: 角色名
+            
+        Returns:
+            str: 生成的日记内容
+        """
+        if not self.diary_service:
+            return "错误: 日记服务未初始化"
+            
+        try:
+            # 生成日记
+            diary_content = self.diary_service.generate_diary(avatar_name)
+            
+            if not diary_content or diary_content.startswith("无法"):
+                return diary_content
+                
+            logger.info(f"已生成{avatar_name}小日记")
+            return diary_content
+            
+        except Exception as e:
+            logger.error(f"生成日记失败: {str(e)}")
+            return f"日记生成失败: {str(e)}" 
