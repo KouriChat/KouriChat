@@ -6,6 +6,7 @@ import time
 import os
 from src.config import config
 from wxauto import WeChat
+import wxauto # 添加直接导入wxauto模块
 import re
 from src.handlers.emoji import EmojiHandler
 from src.handlers.image import ImageHandler
@@ -25,6 +26,7 @@ import asyncio
 from difflib import SequenceMatcher
 import win32gui
 import pyautogui
+import win32con
 
 def _run_async(coro):
     """
@@ -671,17 +673,49 @@ class ChatBot:
                 emoji_path = os.path.join(emoji_dir, f"emoji_{username}_{timestamp}.png")
                 
                 try:
-                    # 使用win32gui直接获取微信窗口句柄，不再调用不存在的GetWeChatWindow方法
-                    hwnd = win32gui.FindWindow("WeChatMainWndForPC", None)
+                    # 查找聊天窗口
+                    def enum_windows_callback(hwnd, results):
+                        if win32gui.IsWindowVisible(hwnd):
+                            window_text = win32gui.GetWindowText(hwnd)
+                            if chatName in window_text:
+                                window_class = win32gui.GetClassName(hwnd)
+                                # 微信聊天窗口类名通常是 "ChatWnd" 或包含 "WeChat"
+                                if "ChatWnd" in window_class or "WeChat" in window_class:
+                                    results.append(hwnd)
+                        return True
+                    
+                    # 查找所有匹配窗口
+                    chat_windows = []
+                    win32gui.EnumWindows(enum_windows_callback, chat_windows)
+                    
+                    # 获取窗口句柄
+                    hwnd = None
+                    if chat_windows:
+                        # 使用找到的第一个聊天窗口
+                        hwnd = chat_windows[0]
+                        logger.info(f"找到聊天窗口句柄: {hwnd}")
+                    else:
+                        # 如果找不到聊天小窗口，使用主窗口
+                        hwnd = win32gui.FindWindow("WeChatMainWndForPC", None)
+                        logger.info(f"未找到聊天小窗口，使用主窗口: {hwnd}")
+                    
                     if hwnd:
-                        # 保存对话框的截图
-                        chat_rect = win32gui.GetWindowRect(hwnd)
-                        
-                        # 不再使用不存在的GetImageOfChatRoom方法，改用pyautogui实现截图
                         try:
-                            # 确保窗口处于前台
+                            # 如果窗口最小化，将其恢复
+                            if win32gui.IsIconic(hwnd):
+                                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                                time.sleep(0.2)
+                            
+                            # 将窗口置前
                             win32gui.SetForegroundWindow(hwnd)
                             time.sleep(0.2)
+                            
+                            # 确保窗口真的在前台
+                            win32gui.BringWindowToTop(hwnd)
+                            time.sleep(0.1)
+                            
+                            # 获取窗口位置
+                            chat_rect = win32gui.GetWindowRect(hwnd)
                             
                             # 截取对应区域的图像
                             left, top, right, bottom = chat_rect
