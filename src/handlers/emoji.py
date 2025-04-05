@@ -400,6 +400,15 @@ class EmojiHandler:
             # 统一处理：所有文本都经过情感分析和概率判断
             logger.info(f"统一处理表情分析: 用户={user_id}, 内容长度={len(text)}")
             emoji_path = self._get_emotion_emoji_impl(text, user_id)
+            
+            # 重要修复：当获取到emoji_path且提供了callback时，主动调用callback函数
+            if emoji_path and callback:
+                logger.info(f"获取到表情包路径，主动调用回调函数: {os.path.basename(emoji_path)}")
+                try:
+                    callback(emoji_path)
+                except Exception as callback_e:
+                    logger.error(f"调用表情回调函数失败: {str(callback_e)}", exc_info=True)
+            
             return emoji_path # 返回路径或 None
 
         except Exception as e:
