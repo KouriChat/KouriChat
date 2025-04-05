@@ -140,6 +140,7 @@ def clean_memory_content(key: str, value: str) -> Tuple[str, str]:
             r'\[提示\].*?\[/提示\]',
             r'\[系统指令\].*?(?:\[/系统指令\]|\n)',
             r'</think>.*?$',  # 思考过程标记
+            r'<think>.*?</think>',  # Gemini 2.5 Pro思考过程标记
             
             # 角色设定和规则
             r'character\.json的设定如下.*?(?=\n)',
@@ -208,6 +209,10 @@ def remove_special_instructions(text: str) -> str:
     try:
         # 移除Markdown代码块
         text = re.sub(r'```[a-zA-Z]*\n[\s\S]*?\n```', '', text)
+        
+        # 移除思考过程标记 (DeepSeek-r1和Gemini 2.5 Pro格式)
+        text = re.sub(r'</think>.*?$', '', text, flags=re.DOTALL)
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
         
         # 移除HTML标签
         text = re.sub(r'<[^>]*>', '', text)

@@ -157,7 +157,7 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             {
                 "LISTEN_LIST": {
                     "value": config.user.listen_list,
-                    "description": "用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！)",
+                    "description": "用户列表(可以填写备注名，但是尽量别带特殊符号)",
                 },
                 "DEEPSEEK_BASE_URL": {
                     "value": config.llm.base_url,
