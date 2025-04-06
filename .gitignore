@@ -212,3 +212,4 @@ debug_images
 temp/voice_recognition
 data/avatars/Lucy
 
+*.mdb

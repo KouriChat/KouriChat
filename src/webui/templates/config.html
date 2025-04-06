@@ -554,7 +554,6 @@
             }
         }
     </style>
-    <script defer src="http://umami.kourichat.com/script.js" data-website-id="319cc5bc-c057-4f6c-8bc4-4af5e110add1"></script>
     <script src="/static/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/dark-mode.js"></script>
 </head>
@@ -608,6 +607,15 @@
                     <h4 class="mb-4">
                         <i class="bi bi-sliders me-2"></i>高级配置
                     </h4>
+                    
+                    <!-- 添加保存通知区域 -->
+                    <div id="saveNotification" class="alert d-none mb-4">
+                        <div class="d-flex align-items-center">
+                            <div id="saveLoadingSpinner" class="spinner-border spinner-border-sm me-2 d-none"></div>
+                            <span id="saveNotificationMessage"></span>
+                        </div>
+                    </div>
+                    
                     <form id="otherConfigForm">
                         {% for group_name, configs in config_groups.items() %}
                             {% if group_name != '基础配置' and group_name != '定时任务配置' %}  {# 排除定时任务配置 #}
@@ -857,7 +865,8 @@
                     <div class="col-12">
                         <button type="button" 
                             class="btn btn-primary btn-lg w-100" 
-                            id="saveButton">
+                            id="saveButton"
+                            onclick="handleSaveButtonClick()">
                             <i class="bi bi-save me-2"></i>保存所有设置
                         </button>
                     </div>
@@ -1928,171 +1937,250 @@
         }
 
         // 定义全局变量来保存用户的当前选择状态
-        let currentState = null;
+        let currentState = {
+            ragApiProvider: '',
+            ragBaseUrl: '',
+            ragEmbeddingUrl: '',
+            ragRerankUrl: '',
+            ragEmbeddingModel: '',
+            ragEmbeddingModelSelect: '',
+            ragRerankerModel: '',
+            ragRerankerModelSelect: '',
+            ragIsRerank: false,
+            ragTopK: 5,
+            localModelEnabled: false,
+            localModelPath: '',
+            saveTime: 0
+        };
 
-        // 修改保存配置的函数，添加对不同API URL路径的处理
+        // 修改保存配置函数
         function saveConfig(globalConfig) {
-            // 记录当前选择的配置，用于保存后恢复
-            currentState = {
-                ragApiProvider: document.getElementById('rag_api_provider_select').value,
-                ragBaseUrl: document.getElementById('RAG_BASE_URL').value,
-                ragEmbeddingUrl: document.getElementById('RAG_EMBEDDING_URL')?.value || '', 
-                ragRerankUrl: document.getElementById('RAG_RERANK_URL')?.value || '',
-                ragEmbeddingModel: document.getElementById('RAG_EMBEDDING_MODEL').value,
-                ragEmbeddingModelSelect: document.getElementById('rag_embedding_model_select').value,
-                ragRerankerModel: document.getElementById('RAG_RERANKER_MODEL').value,
-                ragRerankerModelSelect: document.getElementById('rag_reranker_model_select')?.value || '',
-                ragIsRerank: document.getElementById('RAG_IS_RERANK').checked,
-                ragTopK: document.getElementById('RAG_TOP_K').value,
-                localModelEnabled: document.getElementById('LOCAL_MODEL_ENABLED').checked,
-                localModelPath: document.getElementById('LOCAL_EMBEDDING_MODEL_PATH').value,
-                saveTime: new Date().getTime() // 添加保存时间戳
-            };
-            
-            console.log("保存前状态:", currentState);
-            console.log("保存前RAG_IS_RERANK状态:", globalConfig['RAG_IS_RERANK']);
-            
-            // 确保角色设定值被正确处理
-            const avatarDirSelect = document.getElementById('AVATAR_DIR');
-            if (avatarDirSelect && avatarDirSelect.value) {
-                globalConfig['AVATAR_DIR'] = avatarDirSelect.value;
-                console.log('保存角色设定:', globalConfig['AVATAR_DIR']);
-            }
-            
-            // 确保隐藏字段的值被包含在配置中
-            const embeddingUrl = document.getElementById('RAG_EMBEDDING_URL').value;
-            if (embeddingUrl) {
-                globalConfig['RAG_EMBEDDING_URL'] = embeddingUrl;
-            }
-            
-            const rerankUrl = document.getElementById('RAG_RERANK_URL').value;
-            if (rerankUrl) {
-                globalConfig['RAG_RERANK_URL'] = rerankUrl;
-            }
-            
-            // 特别处理监听用户列表
-            const listenList = document.getElementById('LISTEN_LIST');
-            if (listenList) {
-                // 获取隐藏input中的值
-                const listenListValue = listenList.value;
-                // 如果有值，确保它被包含在配置中
-                if (listenListValue) {
-                    globalConfig['LISTEN_LIST'] = listenListValue;
-                    console.log("保存监听用户列表:", listenListValue);
-                } else {
-                    // 如果隐藏input为空，但页面上有用户，则从页面收集用户列表
-                    const userListElement = document.getElementById('selected_users_LISTEN_LIST');
-                    if (userListElement) {
-                        const users = [];
-                        const userElements = userListElement.querySelectorAll('.list-group-item');
-                        userElements.forEach(element => {
-                            // 去除按钮文本，只获取用户名
-                            const userName = element.textContent.trim();
-                            if (userName) users.push(userName);
-                        });
-                        if (users.length > 0) {
-                            globalConfig['LISTEN_LIST'] = users.join(',');
-                            console.log("从页面元素收集监听用户列表:", globalConfig['LISTEN_LIST']);
-                        }
+            try {
+                // 记录当前选择的配置，用于保存后恢复
+                const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
+                if (isRerankCheckbox) {
+                    currentState = {
+                        ragApiProvider: document.getElementById('rag_api_provider_select')?.value || '',
+                        ragBaseUrl: document.getElementById('RAG_BASE_URL')?.value || '',
+                        ragEmbeddingUrl: document.getElementById('RAG_EMBEDDING_URL')?.value || '',
+                        ragRerankUrl: document.getElementById('RAG_RERANK_URL')?.value || '',
+                        ragEmbeddingModel: document.getElementById('RAG_EMBEDDING_MODEL')?.value || '',
+                        ragEmbeddingModelSelect: document.getElementById('rag_embedding_model_select')?.value || '',
+                        ragRerankerModel: document.getElementById('RAG_RERANKER_MODEL')?.value || '',
+                        ragRerankerModelSelect: document.getElementById('rag_reranker_model_select')?.value || '',
+                        ragIsRerank: isRerankCheckbox.checked,
+                        ragTopK: document.getElementById('RAG_TOP_K')?.value || 5,
+                        localModelEnabled: document.getElementById('LOCAL_MODEL_ENABLED')?.checked || false,
+                        localModelPath: document.getElementById('LOCAL_EMBEDDING_MODEL_PATH')?.value || '',
+                        saveTime: new Date().getTime()
+                    };
+                }
+                
+                console.log("保存前状态:", currentState);
+                
+                // 添加防抖标记
+                if (saveConfig.isSaving) {
+                    console.log('保存操作正在进行中，请等待...');
+                    showSaveNotification('保存操作正在进行中，请等待...', 'warning');
+                    return;
+                }
+                saveConfig.isSaving = true;
+                
+                // 确保RAG_IS_RERANK值被正确设置
+                if (isRerankCheckbox) {
+                    globalConfig['RAG_IS_RERANK'] = isRerankCheckbox.checked;
+                    console.log("发送保存请求前的RAG_IS_RERANK值:", globalConfig['RAG_IS_RERANK']);
+                }
+                
+                // 保存到localStorage，确保页面刷新后也能正确读取
+                try {
+                    // 保存RAG配置到localStorage
+                    const ragConfig = {
+                        baseUrl: document.getElementById('RAG_BASE_URL').value,
+                        embeddingModel: document.getElementById('RAG_EMBEDDING_MODEL').value,
+                        rerankerModel: document.getElementById('RAG_RERANKER_MODEL').value,
+                        isRerank: document.getElementById('RAG_IS_RERANK').checked,
+                        topK: parseInt(document.getElementById('RAG_TOP_K').value, 10),
+                        savedTime: new Date().getTime()
+                    };
+                    localStorage.setItem('ragConfig', JSON.stringify(ragConfig));
+                    console.log("已保存当前RAG配置到localStorage:", ragConfig);
+                } catch (e) {
+                    console.error("保存RAG配置到localStorage失败:", e);
+                }
+                
+                // 保存配置
+                const formData = new FormData();
+                
+                // 处理表单数据
+                for (let key in globalConfig) {
+                    if (key === 'TASKS') {
+                        formData.append(key, JSON.stringify(globalConfig[key]));
+                    } else if (key === 'LISTEN_LIST') {
+                        formData.append(key, globalConfig[key]);
+                    } else {
+                        formData.append(key, globalConfig[key]);
                     }
                 }
-            }
-            
-            // 重排序值可能是布尔值或字符串，确保以正确的布尔值发送
-            globalConfig['RAG_IS_RERANK'] = document.getElementById('RAG_IS_RERANK').checked;
-            console.log("发送保存请求前的RAG_IS_RERANK值:", globalConfig['RAG_IS_RERANK']);
-            
-            // 保存到localStorage，确保页面刷新后也能正确读取
-            try {
-                // 保存RAG配置到localStorage
-                const ragConfig = {
-                    baseUrl: document.getElementById('RAG_BASE_URL').value,
-                    embeddingModel: document.getElementById('RAG_EMBEDDING_MODEL').value,
-                    rerankerModel: document.getElementById('RAG_RERANKER_MODEL').value,
-                    isRerank: document.getElementById('RAG_IS_RERANK').checked,
-                    topK: parseInt(document.getElementById('RAG_TOP_K').value, 10),
-                    savedTime: new Date().getTime()
-                };
-                localStorage.setItem('ragConfig', JSON.stringify(ragConfig));
-                console.log("已保存当前RAG配置到localStorage:", ragConfig);
-            } catch (e) {
-                console.error("保存RAG配置到localStorage失败:", e);
-            }
-            
-            // 保存配置
-            const formData = new FormData();
-            
-            // 处理表单数据
-            for (let key in globalConfig) {
-                if (key === 'TASKS') {
-                    formData.append(key, JSON.stringify(globalConfig[key]));
-                } else if (key === 'LISTEN_LIST') {
-                    formData.append(key, globalConfig[key]);
-                } else {
-                    formData.append(key, globalConfig[key]);
-                }
-            }
-            
-            // 发送保存请求
-            fetch('/save', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    // 保存配置到cookie
-                    saveConfigToCookie(globalConfig);
-                    
-                    // 显示成功消息
-                    showSaveNotification(data.message || '配置已成功保存');
-                    
-                    // 延迟一段时间后刷新UI
-                    setTimeout(() => {
-                        // 直接强制恢复用户设置的重排序开关状态
+                
+                // 发送保存请求
+                fetch('/save', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 保存配置到cookie
+                        saveConfigToCookie(globalConfig);
+                        
+                        // 显示成功消息
+                        showSaveNotification(data.message || '配置已成功保存', 'success');
+                        
+                        // 直接更新UI状态
                         const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
                         if (isRerankCheckbox) {
                             isRerankCheckbox.checked = currentState.ragIsRerank;
                             toggleRerankModelSection(currentState.ragIsRerank);
                         }
                         
-                        // 保存成功后，直接加载最新配置
-                        try {
-                            fetch('/get_config')
-                                .then(response => response.json())
-                                .then(configData => {
-                                    if (configData.status === 'success') {
-                                        console.log("保存成功，获取到最新配置:", configData.config);
-                                        
-                                        // 使用获取到的配置进行更新，特别关注监听用户列表
-                                        if (configData.config && configData.config.LISTEN_LIST !== undefined) {
-                                            // 更新监听用户列表显示
-                                            updateListenUserList(configData.config.LISTEN_LIST);
-                                        }
-                                        
-                                        // 更新历史配置列表
-                                        updateHistoryConfigList();
-                                    } else {
-                                        console.error("获取最新配置失败:", configData.message);
-                                    }
-                                })
-                                .catch(error => {
-                                    console.error("获取最新配置出错:", error);
-                                });
-                        } catch (e) {
-                            console.error("刷新配置时出错:", e);
-                        }
-                    }, 500);
-                } else {
+                        // 更新其他UI元素
+                        updateUIAfterSave(globalConfig);
+                        
+                        // 清除防抖标记
+                        saveConfig.isSaving = false;
+                        
+                        // 更新历史配置列表
+                        updateHistoryConfigList();
+                    } else {
+                        // 显示错误消息
+                        showSaveNotification(data.message || '保存配置失败', 'error');
+                        // 清除防抖标记
+                        saveConfig.isSaving = false;
+                    }
+                })
+                .catch(error => {
                     // 显示错误消息
-                    showSaveNotification(data.message || '保存配置失败', 'error');
+                    console.error("保存配置时出错:", error);
+                    showSaveNotification('保存失败：' + error, 'error');
+                    // 清除防抖标记
+                    saveConfig.isSaving = false;
+                });
+            } catch (e) {
+                console.error("准备保存数据时出错:", e);
+                showSaveNotification('准备保存数据时出错：' + e, 'error');
+                // 清除防抖标记
+                saveConfig.isSaving = false;
+            }
+        }
+
+        // 添加新函数：更新保存后的UI状态
+        function updateUIAfterSave(config) {
+            // 更新RAG相关UI
+            const ragConfig = {
+                baseUrl: config['RAG_BASE_URL'],
+                embeddingModel: config['RAG_EMBEDDING_MODEL'],
+                rerankerModel: config['RAG_RERANKER_MODEL'],
+                isRerank: config['RAG_IS_RERANK'],
+                topK: config['RAG_TOP_K']
+            };
+            
+            // 更新嵌入模型选择框
+            const embeddingSelect = document.getElementById('rag_embedding_model_select');
+            if (embeddingSelect) {
+                let found = false;
+                for (let i = 0; i < embeddingSelect.options.length; i++) {
+                    if (embeddingSelect.options[i].value === ragConfig.embeddingModel) {
+                        embeddingSelect.value = ragConfig.embeddingModel;
+                        found = true;
+                        break;
+                    }
                 }
-            })
-            .catch(error => {
-                // 显示错误消息
-                console.error("保存配置时出错:", error);
-                showSaveNotification('保存失败：' + error, 'error');
-            });
+                if (!found && ragConfig.embeddingModel) {
+                    embeddingSelect.value = 'custom';
+                    const customEmbeddingInput = document.getElementById('rag_customEmbeddingInput');
+                    if (customEmbeddingInput) {
+                        customEmbeddingInput.style.display = 'block';
+                        const customEmbeddingField = document.getElementById('rag_custom_embedding');
+                        if (customEmbeddingField) {
+                            customEmbeddingField.value = ragConfig.embeddingModel;
+                        }
+                    }
+                }
+            }
+            
+            // 更新重排序模型选择框
+            const rerankerSelect = document.getElementById('rag_reranker_model_select');
+            if (rerankerSelect) {
+                let found = false;
+                for (let i = 0; i < rerankerSelect.options.length; i++) {
+                    if (rerankerSelect.options[i].value === ragConfig.rerankerModel) {
+                        rerankerSelect.value = ragConfig.rerankerModel;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && ragConfig.rerankerModel) {
+                    rerankerSelect.value = 'custom';
+                    const customRerankerInput = document.getElementById('rag_customRerankerInput');
+                    if (customRerankerInput) {
+                        customRerankerInput.style.display = 'block';
+                        const customRerankerField = document.getElementById('rag_custom_reranker');
+                        if (customRerankerField) {
+                            customRerankerField.value = ragConfig.rerankerModel;
+                        }
+                    }
+                }
+            }
+            
+            // 更新TOP_K值
+            if (ragConfig.topK) {
+                updateRagTopK(ragConfig.topK);
+            }
+            
+            // 更新监听用户列表
+            if (config['LISTEN_LIST']) {
+                updateListenUserList(config['LISTEN_LIST']);
+            }
+            
+            // 更新任务列表
+            if (config['TASKS']) {
+                updateTaskList();
+            }
+            
+            // 更新历史配置列表
+            updateHistoryConfigList();
+            
+            // 更新其他配置项
+            for (const [key, value] of Object.entries(config)) {
+                const element = document.getElementById(key);
+                if (element) {
+                    if (element.type === 'checkbox') {
+                        element.checked = value === true || value === 'true';
+                    } else {
+                        element.value = value;
+                    }
+                }
+            }
+            
+            // 确保重排序开关状态正确
+            const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
+            if (isRerankCheckbox) {
+                const isRerank = config['RAG_IS_RERANK'] === true || config['RAG_IS_RERANK'] === 'true';
+                isRerankCheckbox.checked = isRerank;
+                toggleRerankModelSection(isRerank);
+            }
+            
+            // 确保本地模型设置状态正确
+            const localModelEnabled = document.getElementById('LOCAL_MODEL_ENABLED');
+            if (localModelEnabled) {
+                const isEnabled = config['LOCAL_MODEL_ENABLED'] === true || config['LOCAL_MODEL_ENABLED'] === 'true';
+                localModelEnabled.checked = isEnabled;
+                toggleLocalModelSection(isEnabled);
+            }
+            
+            // 同步嵌入模型选择框与隐藏字段
+            synchronizeEmbeddingModelSelection();
         }
         
         // 添加一个新函数来更新监听用户列表显示
@@ -2853,64 +2941,29 @@
         // 更新嵌入模型选项
         function updateEmbeddingModelOptions(provider) {
             const embeddingSelect = document.getElementById('rag_embedding_model_select');
-            const currentValue = document.getElementById('RAG_EMBEDDING_MODEL').value; // 保存当前值
+            const currentValue = document.getElementById('RAG_EMBEDDING_MODEL').value;
             console.log("更新模型选项前，当前值:", currentValue, "提供商:", provider);
             
             embeddingSelect.innerHTML = ''; // 清空现有选项
             
             let options = [];
             
-            if (provider === 'kouri') {
-                options = [
-                    { value: 'text-embedding-3-large', text: 'text-embedding-3-large（推荐）' },
-                    { value: 'text-embedding-ada-002', text: 'text-embedding-ada-002 (兼容模式)' },
-                    { value: 'text-embedding-v1', text: 'text-embedding-v1' },
-                    { value: 'BAAI/bge-m3', text: 'BAAI/bge-m3' }
-                ];
-                console.log("加载KouriChat嵌入模型选项");
-            } else if (provider === 'kourichat') {
-                options = [
-                    { value: 'bge-m3', text: 'bge-m3' },
-                    { value: 'text-embedding-3-large', text: 'text-embedding-3-large（推荐）' },
-                    { value: 'text-embedding-ada-002', text: 'text-embedding-ada-002' },
-                    { value: 'text-embedding-v1', text: 'text-embedding-v1' }
-                ];
-                console.log("加载KouriChat嵌入模型选项");
-            } else if (provider === 'ciallo') {
-                options = [
-                    { value: 'bge-m3', text: 'bge-m3' },
-                    { value: 'text-embedding-3-large', text: 'text-embedding-3-large（推荐）' },
-                    { value: 'text-embedding-ada-002', text: 'text-embedding-ada-002' },
-                    { value: 'text-embedding-v1', text: 'text-embedding-v1' }
-                ];
-                console.log("加载KouriChat嵌入模型选项");
-            } else if (provider === 'siliconflow') {
+            // 默认选项，适用于大多数提供商
+            const defaultOptions = [
+                { value: 'text-embedding-3-large', text: 'text-embedding-3-large（推荐）' },
+                { value: 'text-embedding-ada-002', text: 'text-embedding-ada-002' },
+                { value: 'text-embedding-v1', text: 'text-embedding-v1' }
+            ];
+            
+            if (provider === 'siliconflow') {
                 options = [
                     { value: 'BAAI/bge-m3', text: 'BAAI/bge-m3' },
                     { value: 'BAAI/bge-large-zh-v1.5', text: 'BAAI/bge-large-zh-v1.5' },
                     { value: 'BAAI/bge-large-en-v1.5', text: 'BAAI/bge-large-en-v1.5' },
                     { value: 'Pro/BAAI/bge-m3', text: 'Pro/BAAI/bge-m3' }
                 ];
-                console.log("加载硅基流动嵌入模型选项");
-                
-                // 对于硅基流动，检查当前模型是否在列表中
-                let foundInSiliconflow = false;
-                if (currentValue) {
-                    for (const option of options) {
-                        if (option.value === currentValue) {
-                            foundInSiliconflow = true;
-                            break;
-                        }
-                    }
-                }
-                
-                if (!foundInSiliconflow && provider === 'siliconflow') {
-                    // 如果当前嵌入模型不在硅基流动的选项中，重置为推荐模型
-                    console.log("当前嵌入模型不在硅基流动选项中，重置为推荐模型");
-                    document.getElementById('RAG_EMBEDDING_MODEL').value = 'BAAI/bge-m3';
-                }
             } else {
-                console.log("未知的提供商类型:", provider);
+                options = defaultOptions;
             }
             
             // 添加自定义选项
@@ -2926,15 +2979,12 @@
             
             console.log("已添加", options.length, "个选项到嵌入模型下拉框");
             
-            // 获取更新后的当前值（可能已在上面的代码中更改）
-            const updatedCurrentValue = document.getElementById('RAG_EMBEDDING_MODEL').value;
-            
-            // 更新后，恢复之前选择的值或使用默认值
-            if (updatedCurrentValue) {
+            // 设置当前选中的值
+            if (currentValue) {
                 let found = false;
                 for (let i = 0; i < embeddingSelect.options.length; i++) {
-                    if (embeddingSelect.options[i].value === updatedCurrentValue) {
-                        embeddingSelect.value = updatedCurrentValue;
+                    if (embeddingSelect.options[i].value === currentValue) {
+                        embeddingSelect.value = currentValue;
                         found = true;
                         break;
                     }
@@ -2943,18 +2993,18 @@
                 if (!found) {
                     embeddingSelect.value = 'custom';
                     const customEmbeddingInput = document.getElementById('rag_customEmbeddingInput');
-                    customEmbeddingInput.style.display = 'block';
-                    const customEmbeddingField = document.getElementById('rag_custom_embedding');
-                    customEmbeddingField.value = updatedCurrentValue;
+                    if (customEmbeddingInput) {
+                        customEmbeddingInput.style.display = 'block';
+                        const customEmbeddingField = document.getElementById('rag_custom_embedding');
+                        if (customEmbeddingField) {
+                            customEmbeddingField.value = currentValue;
+                        }
+                    }
                 }
-                
-                console.log("更新模型选项后，设置选择框值为:", embeddingSelect.value);
             } else {
                 // 如果没有当前值，选择第一个选项
                 embeddingSelect.selectedIndex = 0;
-                // 并将选中的值同步到隐藏字段
                 document.getElementById('RAG_EMBEDDING_MODEL').value = embeddingSelect.value;
-                console.log("没有当前值，设置为第一个选项:", embeddingSelect.value);
             }
         }
         
@@ -3254,6 +3304,13 @@
         function initRagSettings() {
             console.log("开始初始化RAG设置");
             
+            // 获取重排序开关元素
+            const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
+            if (!isRerankCheckbox) {
+                console.error("找不到RAG_IS_RERANK元素");
+                return;
+            }
+            
             // 首先尝试直接从localStorage获取用户保存的RAG配置状态
             let savedRerankState = false;
             let savedRagConfig = null;
@@ -3264,31 +3321,14 @@
                     if (savedRagConfig && typeof savedRagConfig.isRerank !== 'undefined') {
                         savedRerankState = Boolean(savedRagConfig.isRerank);
                         console.log(`从localStorage读取到的重排序状态: ${savedRerankState}`);
-                    }
-                    
-                    // 同时获取保存的top_k值
-                    if (savedRagConfig && savedRagConfig.topK) {
-                        // 确保更新滑动块和显示值
-                        updateRagTopK(savedRagConfig.topK);
-                        console.log(`从localStorage读取到的TOP_K值: ${savedRagConfig.topK}`);
+                        
+                        // 立即应用重排序状态
+                        isRerankCheckbox.checked = savedRerankState;
+                        toggleRerankModelSection(savedRerankState);
                     }
                 }
             } catch (e) {
                 console.error("读取localStorage中RAG配置失败:", e);
-            }
-            
-            // 获取当前TOP_K值，同步到滑动块和显示
-            try {
-                const topKValue = document.getElementById('RAG_TOP_K').value;
-                if (topKValue) {
-                    const numValue = parseInt(topKValue, 10);
-                    if (!isNaN(numValue)) {
-                        updateRagTopK(numValue);
-                        console.log(`从隐藏字段同步TOP_K值: ${numValue}`);
-                    }
-                }
-            } catch (e) {
-                console.error("同步TOP_K值失败:", e);
             }
             
             // API提供者
@@ -3300,7 +3340,6 @@
             // 处理可能的对象格式URL
             baseUrl = getApiUrlValue(baseUrl);
             
-            let found = false;
             let selectedProvider = 'ciallo'; // 默认使用亚太备选
             
             // 提取基本URL（如果有/embeddings或/rerank后缀，将其移除）
@@ -3319,40 +3358,38 @@
                 }
             }
             
-            // 查找匹配的API提供商
-            for (let i = 0; i < apiProviderSelect.options.length; i++) {
-                const option = apiProviderSelect.options[i];
-                const optionUrl = option.dataset.url;
-                
-                // 移除选项URL的尾部斜杠(如果有)
-                let cleanOptionUrl = optionUrl;
-                if (cleanOptionUrl && cleanOptionUrl.endsWith('/')) {
-                    cleanOptionUrl = cleanOptionUrl.slice(0, -1);
-                }
-                
-                if (cleanOptionUrl === cleanBaseUrl) {
-                    apiProviderSelect.value = option.value;
-                    selectedProvider = option.value;
-                    found = true;
-                    console.log("找到匹配的API提供商:", option.value);
-                    break;
-                }
-            }
-            
             // 检测是否为硅基流动的URL
             if (cleanBaseUrl && cleanBaseUrl.includes('siliconflow')) {
                 apiProviderSelect.value = 'siliconflow';
                 selectedProvider = 'siliconflow';
-                found = true;
-                console.log("检测到硅基流动URL，强制设置为硅基流动提供商");
-            }
-            
-            // 如果没有匹配的预定义提供商，设置为自定义
-            if (!found && cleanBaseUrl) {
-                apiProviderSelect.value = 'custom';
-                selectedProvider = 'custom';
-                customApiInput.style.display = 'block';
-                customUrlInput.value = cleanBaseUrl;
+            } else {
+                // 查找匹配的API提供商
+                let found = false;
+                for (let i = 0; i < apiProviderSelect.options.length; i++) {
+                    const option = apiProviderSelect.options[i];
+                    const optionUrl = option.dataset.url;
+                    
+                    // 移除选项URL的尾部斜杠(如果有)
+                    let cleanOptionUrl = optionUrl;
+                    if (cleanOptionUrl && cleanOptionUrl.endsWith('/')) {
+                        cleanOptionUrl = cleanOptionUrl.slice(0, -1);
+                    }
+                    
+                    if (cleanOptionUrl === cleanBaseUrl) {
+                        apiProviderSelect.value = option.value;
+                        selectedProvider = option.value;
+                        found = true;
+                        break;
+                    }
+                }
+                
+                // 如果没有匹配的预定义提供商，设置为自定义
+                if (!found && cleanBaseUrl) {
+                    apiProviderSelect.value = 'custom';
+                    selectedProvider = 'custom';
+                    customApiInput.style.display = 'block';
+                    customUrlInput.value = cleanBaseUrl;
+                }
             }
             
             // 更新基础URL值（不含后缀）
@@ -3361,156 +3398,73 @@
             // 更新嵌入和重排序URL
             updateApiUrls(cleanBaseUrl);
             
-            // 记住当前嵌入模型的值，确保在后续处理中不会丢失
-            const currentEmbeddingModel = document.getElementById('RAG_EMBEDDING_MODEL').value;
-            
-            // --- BEGIN REVISED MODIFICATION ---
-            // Determine initial embedding model (localStorage > hidden field)
-            let initialEmbeddingModel = '';
-            if (savedRagConfig && savedRagConfig.embeddingModel) {
-                initialEmbeddingModel = savedRagConfig.embeddingModel;
-                console.log(`从localStorage读取到的嵌入模型值: ${initialEmbeddingModel}`);
-            } else {
-                 initialEmbeddingModel = document.getElementById('RAG_EMBEDDING_MODEL').value;
-                 console.log(`从隐藏字段读取到的嵌入模型值: ${initialEmbeddingModel}`);
-            }
-
-            // *** Immediately update the hidden field with the determined initial value ***
-            // Ensure hidden field has the correct starting value BEFORE updating dropdown options
-            if (initialEmbeddingModel) {
-                 document.getElementById('RAG_EMBEDDING_MODEL').value = initialEmbeddingModel;
-                 console.log(`初始化时，强制设置隐藏字段 RAG_EMBEDDING_MODEL 为: ${initialEmbeddingModel}`);
-            }
-            // --- END REVISED MODIFICATION ---
-
-            console.log("初始化前状态 - 嵌入模型 (来自 initialEmbeddingModel):", initialEmbeddingModel, "API提供商:", selectedProvider);
-
-            // Regenerate embeddingOptions based on selectedProvider
-            let embeddingOptions = [];
-            // ... (generate options as before, e.g., based on selectedProvider) ...
-            // Example for ciallo:
-             if (selectedProvider === 'ciallo') {
-                embeddingOptions = [
-                    { value: 'bge-m3', text: 'bge-m3' },
+            // 初始化嵌入模型选项
+            const embeddingSelect = document.getElementById('rag_embedding_model_select');
+            if (embeddingSelect) {
+                // 清空现有选项
+                embeddingSelect.innerHTML = '';
+                
+                // 添加默认选项
+                const defaultOptions = [
                     { value: 'text-embedding-3-large', text: 'text-embedding-3-large（推荐）' },
                     { value: 'text-embedding-ada-002', text: 'text-embedding-ada-002' },
                     { value: 'text-embedding-v1', text: 'text-embedding-v1' }
                 ];
-            } // ... other providers ...
-            else if (selectedProvider === 'siliconflow') {
-                 embeddingOptions = [
+                
+                // 如果是硅基流动，使用特定选项
+                const options = selectedProvider === 'siliconflow' ? [
                     { value: 'BAAI/bge-m3', text: 'BAAI/bge-m3' },
                     { value: 'BAAI/bge-large-zh-v1.5', text: 'BAAI/bge-large-zh-v1.5' },
                     { value: 'BAAI/bge-large-en-v1.5', text: 'BAAI/bge-large-en-v1.5' },
                     { value: 'Pro/BAAI/bge-m3', text: 'Pro/BAAI/bge-m3' }
-                 ];
-            } else { // Default or custom
-                 embeddingOptions = [ { value: 'bge-m3', text: 'bge-m3' } ]; // Default placeholder
-            }
-
-            embeddingOptions.push({ value: 'custom', text: '自定义模型' });
-
-            // Populate the dropdown
-            const embeddingSelect = document.getElementById('rag_embedding_model_select');
-            const customEmbeddingInput = document.getElementById('rag_customEmbeddingInput');
-            const customEmbeddingField = document.getElementById('rag_custom_embedding');
-            embeddingSelect.innerHTML = '';
-            embeddingOptions.forEach(option => {
-                const optElement = document.createElement('option');
-                optElement.value = option.value;
-                optElement.textContent = option.text;
-                embeddingSelect.appendChild(optElement);
-            });
-
-            // Now, set the dropdown selection based on initialEmbeddingModel
-            if (initialEmbeddingModel) {
-                let modelInOptions = false;
-                for (const option of embeddingOptions) {
-                    if (option.value === initialEmbeddingModel) {
-                        modelInOptions = true;
-                        break;
+                ] : defaultOptions;
+                
+                // 添加选项到下拉框
+                options.forEach(option => {
+                    const optElement = document.createElement('option');
+                    optElement.value = option.value;
+                    optElement.textContent = option.text;
+                    embeddingSelect.appendChild(optElement);
+                });
+                
+                // 添加自定义选项
+                const customOption = document.createElement('option');
+                customOption.value = 'custom';
+                customOption.textContent = '自定义模型';
+                embeddingSelect.appendChild(customOption);
+                
+                // 设置当前值
+                const currentValue = document.getElementById('RAG_EMBEDDING_MODEL').value;
+                if (currentValue) {
+                    let found = false;
+                    for (let i = 0; i < embeddingSelect.options.length; i++) {
+                        if (embeddingSelect.options[i].value === currentValue) {
+                            embeddingSelect.value = currentValue;
+                            found = true;
+                            break;
+                        }
                     }
-                }
-
-                if (modelInOptions) {
-                    embeddingSelect.value = initialEmbeddingModel;
-                    customEmbeddingInput.style.display = 'none';
-                    console.log("模型在选项列表中，设置选择框值为:", initialEmbeddingModel);
-                } else {
-                    // Handle siliconflow mismatch or set as custom
-                    if (selectedProvider === 'siliconflow') {
-                        embeddingSelect.value = 'BAAI/bge-m3';
-                        // Hidden field already updated earlier, but ensure consistency
-                        document.getElementById('RAG_EMBEDDING_MODEL').value = 'BAAI/bge-m3';
-                        customEmbeddingInput.style.display = 'none';
-                        console.log("硅基流动提供商，模型不匹配，重置为: BAAI/bge-m3");
-                    } else {
+                    
+                    if (!found) {
                         embeddingSelect.value = 'custom';
-                        customEmbeddingInput.style.display = 'block';
-                        customEmbeddingField.value = initialEmbeddingModel;
-                        // Hidden field was already set, just ensure custom field matches
-                        console.log("设置为自定义模型:", initialEmbeddingModel);
+                        const customEmbeddingInput = document.getElementById('rag_customEmbeddingInput');
+                        if (customEmbeddingInput) {
+                            customEmbeddingInput.style.display = 'block';
+                            const customEmbeddingField = document.getElementById('rag_custom_embedding');
+                            if (customEmbeddingField) {
+                                customEmbeddingField.value = currentValue;
+                            }
+                        }
                     }
+                } else {
+                    // 如果没有当前值，选择第一个选项
+                    embeddingSelect.selectedIndex = 0;
+                    document.getElementById('RAG_EMBEDDING_MODEL').value = embeddingSelect.value;
                 }
-            } else {
-                // Handle case with no initial value (should be less common now)
-                embeddingSelect.selectedIndex = 0;
-                // Update hidden field ONLY if it was truly empty initially
-                if (!document.getElementById('RAG_EMBEDDING_MODEL').value) {
-                   document.getElementById('RAG_EMBEDDING_MODEL').value = embeddingSelect.value;
-                }
-                console.log("没有有效初始模型值，选择第一个选项:", embeddingSelect.value);
             }
-
-            // ... (rest of initRagSettings, e.g., handling reranker, local model, etc.)
-
-            // Remove the final synchronization block previously added, as it's no longer needed here.
-            // // 最后，确保嵌入模型选择框与隐藏字段同步  <- REMOVE THIS BLOCK
-            // synchronizeEmbeddingModelSelection();          <- REMOVE THIS BLOCK
-
+            
             // 更新重排序模型选项
             updateRerankerModelOptions(selectedProvider);
-            
-            // 重排序开关 - 特别处理
-            const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
-            // 1. 首先获取当前实际值(从checkbox元素)
-            let currentIsRerank = isRerankCheckbox ? isRerankCheckbox.checked : false;
-
-            // 2. 如果从localStorage中读取到了用户保存的值，优先使用它
-            if (savedRerankState !== undefined && savedRagConfig) {
-                currentIsRerank = savedRerankState;
-                if (isRerankCheckbox) {
-                    console.log(`使用从localStorage读取的重排序状态: ${savedRerankState}`);
-                    isRerankCheckbox.checked = savedRerankState;
-                }
-            }
-
-            // 3. 确保UI显示与当前值一致
-            console.log(`初始化重排序开关状态: ${currentIsRerank}`);
-            toggleRerankModelSection(currentIsRerank);
-            
-            // 处理本地模型设置
-            const localModelEnabled = document.getElementById('LOCAL_MODEL_ENABLED').checked;
-            toggleLocalModelSection(localModelEnabled);
-            
-            // 保存当前配置到localStorage，以便页面刷新后能恢复状态
-            try {
-                const ragConfig = {
-                    baseUrl: cleanBaseUrl,
-                    embeddingModel: document.getElementById('RAG_EMBEDDING_MODEL').value,
-                    rerankerModel: document.getElementById('RAG_RERANKER_MODEL').value,
-                    isRerank: isRerankCheckbox ? isRerankCheckbox.checked : false,
-                    topK: parseInt(document.getElementById('RAG_TOP_K').value, 10),
-                    savedTime: new Date().getTime()
-                };
-                localStorage.setItem('ragConfig', JSON.stringify(ragConfig));
-                console.log("已保存RAG配置到localStorage:", ragConfig);
-            } catch (e) {
-                console.error("保存RAG配置到localStorage失败:", e);
-            }
-            
-            // 最后，确保嵌入模型选择框与隐藏字段同步
-            synchronizeEmbeddingModelSelection();
             
             console.log("RAG设置初始化完成");
         }
@@ -3561,30 +3515,41 @@
         // 切换重排序模型部分显示
         function toggleRerankModelSection(enabled) {
             const rerankerModelContainer = document.getElementById('reranker_model_container');
+            const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
+            
+            if (!rerankerModelContainer || !isRerankCheckbox) {
+                console.error("找不到必要的DOM元素");
+                return;
+            }
             
             // 确保enabled是布尔值
-            if (typeof enabled === 'string') {
-                enabled = enabled.toLowerCase() === 'true';
-            }
-            enabled = Boolean(enabled);
+            enabled = (typeof enabled === 'string') ? enabled.toLowerCase() === 'true' : Boolean(enabled);
             
             console.log("切换重排序模型部分显示状态:", enabled, typeof enabled);
             
-            if (enabled) {
-                rerankerModelContainer.style.display = 'block';
-            } else {
-                rerankerModelContainer.style.display = 'none';
-            }
+            // 更新UI显示
+            rerankerModelContainer.style.display = enabled ? 'block' : 'none';
             
             // 同步重排序开关状态
-            const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
-            if (isRerankCheckbox && isRerankCheckbox.checked !== enabled) {
+            if (isRerankCheckbox.checked !== enabled) {
                 console.log(`同步重排序开关从${isRerankCheckbox.checked}到${enabled}`);
                 isRerankCheckbox.checked = enabled;
                 
                 // 触发change事件，确保其他依赖于这个值的逻辑被更新
                 const event = new Event('change', { bubbles: true });
                 isRerankCheckbox.dispatchEvent(event);
+                
+                // 保存到localStorage
+                try {
+                    const savedConfig = localStorage.getItem('ragConfig');
+                    let ragConfig = savedConfig ? JSON.parse(savedConfig) : {};
+                    ragConfig.isRerank = enabled;
+                    ragConfig.savedTime = new Date().getTime();
+                    localStorage.setItem('ragConfig', JSON.stringify(ragConfig));
+                    console.log("已更新localStorage中的重排序状态");
+                } catch (e) {
+                    console.error("更新localStorage中的重排序状态失败:", e);
+                }
             }
         }
 
@@ -3641,9 +3606,23 @@
                 if (data.status === 'success') {
                     showNotification('成功', '配置已成功保存', 'success');
                     
-                    // 在成功保存后重新加载配置
+                    // 在成功保存后直接更新UI状态，而不是重新加载配置
                     setTimeout(() => {
-                        loadCurrentConfig();
+                        // 创建配置对象并使用updateUIAfterSave更新UI
+                        const formData = new FormData(document.getElementById('configForm'));
+                        const globalConfig = {};
+                        for (const [key, value] of formData.entries()) {
+                            if (key === 'TASKS') {
+                                try {
+                                    globalConfig[key] = JSON.parse(value);
+                                } catch (e) {
+                                    globalConfig[key] = value;
+                                }
+                            } else {
+                                globalConfig[key] = value;
+                            }
+                        }
+                        updateUIAfterSave(globalConfig);
                     }, 500);
                 } else {
                     showNotification('错误', data.message || '保存配置失败', 'danger');
@@ -3968,9 +3947,10 @@
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'success' && data.config) {
-                            // 特别更新监听用户列表
+                            // 特别更新监听用户列表，但不更新整个页面
                             if (data.config.LISTEN_LIST) {
                                 console.log("自动刷新: 更新监听用户列表", data.config.LISTEN_LIST);
+                                // 只更新列表，不更新其他配置项
                                 updateListenUserList(data.config.LISTEN_LIST);
                             }
                         }
@@ -3983,7 +3963,8 @@
             // 页面加载后立即刷新一次
             refreshConfigData();
             
-            // 然后每15秒自动刷新一次
+            // 然后每15秒自动刷新一次，但只刷新监听用户列表
+            // 设置较长的时间间隔，减少服务器负担
             setInterval(refreshConfigData, 15000);
         };
 
@@ -4104,6 +4085,249 @@
                 }
             }, 1000);
         });
+
+        // 修改保存配置函数
+        function saveConfig() {
+            // 获取所有配置项
+            const inputs = document.querySelectorAll('input, select, textarea');
+            const globalConfig = {};
+            
+            // 添加防抖标记
+            if (saveConfig.isSaving) {
+                console.log('保存操作正在进行中，请等待...');
+                showSaveNotification('保存操作正在进行中，请等待...', 'warning');
+                return;
+            }
+            saveConfig.isSaving = true;
+            
+            // 显示保存中的提示
+            showSaveNotification('正在保存配置...', 'info', true);
+            
+            try {
+                inputs.forEach(input => {
+                    if (input.id) {
+                        // 检查是否是密码字段且为空
+                        if (input.type === 'password' && !input.value) {
+                            console.log('跳过空密码字段:', input.id);
+                            return;
+                        }
+                        
+                        // 检查是否是复选框
+                        if (input.type === 'checkbox') {
+                            globalConfig[input.id] = input.checked;
+                            
+                            // 特别记录RAG_IS_RERANK的状态
+                            if (input.id === 'RAG_IS_RERANK') {
+                                currentState.ragIsRerank = input.checked;
+                                console.log("记录重排序选项的状态:", currentState.ragIsRerank);
+                            }
+                        } else {
+                            globalConfig[input.id] = input.value;
+                        }
+                    }
+                });
+                
+                // 特别处理TASKS字段
+                const tasksInput = document.getElementById('TASKS');
+                if (tasksInput) {
+                    try {
+                        globalConfig['TASKS'] = JSON.parse(tasksInput.value);
+                    } catch (e) {
+                        console.error('解析任务配置失败:', e);
+                        globalConfig['TASKS'] = [];
+                    }
+                }
+                
+                // 重排序值可能是布尔值或字符串，确保以正确的布尔值发送
+                globalConfig['RAG_IS_RERANK'] = document.getElementById('RAG_IS_RERANK').checked;
+                console.log("发送保存请求前的RAG_IS_RERANK值:", globalConfig['RAG_IS_RERANK']);
+                
+                // 保存到localStorage，确保页面刷新后也能正确读取
+                try {
+                    // 保存RAG配置到localStorage
+                    const ragConfig = {
+                        baseUrl: document.getElementById('RAG_BASE_URL').value,
+                        embeddingModel: document.getElementById('RAG_EMBEDDING_MODEL').value,
+                        rerankerModel: document.getElementById('RAG_RERANKER_MODEL').value,
+                        isRerank: document.getElementById('RAG_IS_RERANK').checked,
+                        topK: parseInt(document.getElementById('RAG_TOP_K').value, 10),
+                        savedTime: new Date().getTime()
+                    };
+                    localStorage.setItem('ragConfig', JSON.stringify(ragConfig));
+                    console.log("已保存当前RAG配置到localStorage:", ragConfig);
+                } catch (e) {
+                    console.error("保存RAG配置到localStorage失败:", e);
+                }
+                
+                // 保存配置
+                const formData = new FormData();
+                
+                // 处理表单数据
+                for (let key in globalConfig) {
+                    if (key === 'TASKS') {
+                        formData.append(key, JSON.stringify(globalConfig[key]));
+                    } else if (key === 'LISTEN_LIST') {
+                        formData.append(key, globalConfig[key]);
+                    } else {
+                        formData.append(key, globalConfig[key]);
+                    }
+                }
+                
+                // 在表单中添加调试信息
+                formData.append('_debug_info', JSON.stringify({
+                    timestamp: new Date().toISOString(),
+                    browser: navigator.userAgent
+                }));
+                
+                // 发送保存请求
+                fetch('/save', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 保存配置到cookie
+                        saveConfigToCookie(globalConfig);
+                        
+                        // 显示成功消息
+                        showSaveNotification(data.message || '配置已成功保存', 'success');
+                        
+                        // 清除防抖标记
+                        saveConfig.isSaving = false;
+                        
+                        // 延迟一段时间后刷新UI
+                        setTimeout(() => {
+                            // 直接强制恢复用户设置的重排序开关状态
+                            const isRerankCheckbox = document.getElementById('RAG_IS_RERANK');
+                            if (isRerankCheckbox) {
+                                isRerankCheckbox.checked = currentState.ragIsRerank;
+                                toggleRerankModelSection(currentState.ragIsRerank);
+                            }
+                            
+                            // 保存成功后，更新UI状态而不是刷新页面
+                            updateUIAfterSave(globalConfig);
+                        }, 1000);
+                    } else {
+                        // 显示错误消息
+                        showSaveNotification(data.message || '保存配置失败', 'error');
+                        // 清除防抖标记
+                        saveConfig.isSaving = false;
+                    }
+                })
+                .catch(error => {
+                    // 显示错误消息
+                    console.error("保存配置时出错:", error);
+                    showSaveNotification('保存失败：' + error, 'error');
+                    // 清除防抖标记
+                    saveConfig.isSaving = false;
+                });
+            } catch (e) {
+                console.error("准备保存数据时出错:", e);
+                showSaveNotification('准备保存数据时出错：' + e, 'error');
+                // 清除防抖标记
+                saveConfig.isSaving = false;
+            }
+        }
+
+        // 添加一个新的保存通知函数，支持加载状态
+        function showSaveNotification(message, type = 'info', isLoading = false) {
+            const notificationContainer = document.getElementById('saveNotification');
+            const notificationMessage = document.getElementById('saveNotificationMessage');
+            const loadingSpinner = document.getElementById('saveLoadingSpinner');
+            
+            // 设置消息文本
+            notificationMessage.textContent = message;
+            
+            // 根据类型设置样式
+            notificationContainer.className = 'alert';
+            switch (type) {
+                case 'success':
+                    notificationContainer.classList.add('alert-success');
+                    break;
+                case 'error':
+                    notificationContainer.classList.add('alert-danger');
+                    break;
+                case 'warning':
+                    notificationContainer.classList.add('alert-warning');
+                    break;
+                default:
+                    notificationContainer.classList.add('alert-info');
+            }
+            
+            // 控制加载动画
+            if (isLoading) {
+                loadingSpinner.classList.remove('d-none');
+            } else {
+                loadingSpinner.classList.add('d-none');
+            }
+            
+            // 显示通知
+            notificationContainer.classList.remove('d-none');
+            
+            // 如果不是加载状态，设置自动隐藏
+            if (!isLoading) {
+                setTimeout(() => {
+                    notificationContainer.classList.add('d-none');
+                }, 3000);
+            }
+        }
+
+        // 添加保存按钮点击处理函数
+        function handleSaveButtonClick() {
+            console.log("保存按钮被点击");
+            // 直接使用内置的saveConfig函数（无参数版本）
+            saveConfig();
+        }
+
+        // 这个函数检查页面上是否存在重复的代码
+        function checkForDuplicateFunctions() {
+            // 获取所有命名函数声明
+            const functionMatches = document.body.innerHTML.match(/function\s+(\w+)/g);
+            if (!functionMatches) return;
+
+            // 统计函数名出现次数
+            const functionCounts = {};
+            functionMatches.forEach(func => {
+                const funcName = func.split(' ')[1];
+                functionCounts[funcName] = (functionCounts[funcName] || 0) + 1;
+            });
+
+            // 输出重复的函数
+            for (const [name, count] of Object.entries(functionCounts)) {
+                if (count > 1) {
+                    console.warn(`检测到重复函数: ${name} (${count}次)`);
+                }
+            }
+        }
+
+        // 移除已经被更新的saveConfig函数，避免重复
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedOriginalSaveConfig = saveConfig; // 保存函数引用
+            
+            // 检查是否有重复的函数
+            checkForDuplicateFunctions();
+            
+            // 其他初始化代码...
+        });
+
+        // 更新所有配置项的函数
+        function updateAllConfigs(configs) {
+            // 代码内容...
+        }
+
+        // 修改了重排序状态后的回调功能
+        function onRerankSwitchChange(checkbox) {
+            const isChecked = checkbox.checked;
+            console.log("重排序开关状态变化:", isChecked);
+            
+            // 更新UI显示
+            toggleRerankModelSection(isChecked);
+        }
+
+        // 注意：这里去掉了重复的saveConfig函数，使用上面定义的saveConfig函数
+
+        // 展示保存通知
     </script>
 </body>
 </html>
