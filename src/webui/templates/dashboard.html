@@ -30,9 +30,6 @@
     <meta name="revisit-after" content="7 days">
     <meta name="theme-color" content="#6366f1">
 
-    <!-- Umami -->
-    <script defer src="http://umami.kourichat.com/script.js" data-website-id="319cc5bc-c057-4f6c-8bc4-4af5e110add1"></script>
-
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="/static/mom.ico">
     
@@ -2148,7 +2145,12 @@
         
         // 初始化 WebSocket 连接
         function initWebSocket() {
-            ws = new WebSocket(`ws://${window.location.host}/ws/logs`);
+            // 使用动态 WebSocket URL，基于当前页面的主机和协议
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            const wsUrl = `${protocol}//${host}/ws/logs`;
+            
+            ws = new WebSocket(wsUrl);
             
             ws.onmessage = function(event) {
                 const logData = JSON.parse(event.data);

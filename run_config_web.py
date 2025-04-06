@@ -119,6 +119,16 @@ app.secret_key = secrets.token_hex(16)
 app.register_blueprint(avatar_manager)
 app.register_blueprint(avatar_bp)
 
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger('main')
 
 def get_available_avatars() -> List[str]:
     """获取可用的人设目录列表"""
@@ -139,11 +149,23 @@ def get_available_avatars() -> List[str]:
     return avatars
 
 
+# 添加配置缓存
+_config_cache = {}
+_config_cache_time = 0
+_cache_ttl = 5  # 缓存有效期（秒）
+
 def parse_config_groups() -> Dict[str, Dict[str, Any]]:
     """解析配置文件，将配置项按组分类"""
-    from src.config.rag_config import config
-
+    global _config_cache, _config_cache_time
+    
+    # 检查缓存是否有效
+    current_time = time.time()
+    if _config_cache and current_time - _config_cache_time < _cache_ttl:
+        return _config_cache
+        
     try:
+        from src.config.rag_config import config
+        
         # 基础配置组
         config_groups = {
             "基础配置": {},
@@ -465,6 +487,17 @@ def save_config():
 def update_config_value(config_data, key, value):
     """更新配置值到正确的位置"""
     try:
+        logger.debug(f"更新配置: {key} = {value}")
+        
+        # 针对布尔值的配置项，确保值的类型正确
+        bool_keys = ['RAG_IS_RERANK', 'AUTO_DOWNLOAD_LOCAL_MODEL', 'AUTO_ADAPT_SILICONFLOW']
+        if key in bool_keys:
+            if isinstance(value, str):
+                value = value.lower() == 'true'
+            else:
+                value = bool(value)
+            logger.debug(f"布尔值配置项 {key} 转换后的值: {value}, 类型: {type(value)}")
+        
         # 配置项映射表
         mapping = {
             'LISTEN_LIST': ['categories', 'user_settings', 'settings', 'listen_list', 'value'],
@@ -529,6 +562,9 @@ def update_config_value(config_data, key, value):
             
             # 设置最终值
             target[path[-1]] = value
+            logger.debug(f"配置更新成功: {key} = {value}")
+        else:
+            logger.warning(f"未找到配置项的映射: {key}")
             
     except Exception as e:
         logger.error(f"更新配置值时出错: {str(e)}")
@@ -594,22 +630,31 @@ def get_background():
 @app.before_request
 def load_config():
     """每次请求前加载配置"""
+    # 添加缓存机制
+    if not hasattr(g, 'config_last_modified'):
+        g.config_last_modified = 0
+    
     try:
         config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
-        with open(config_path, 'r', encoding='utf-8') as f:
-            g.config_data = yaml.safe_load(f)
-            
-        # 尝试重新加载内存中的配置，确保使用最新配置
-        try:
-            from src.config import config as settings
-            if hasattr(settings, 'reload_from_file'):
-                settings.reload_from_file()
-        except Exception as e:
-            logger.warning(f"重新加载内存中配置失败: {str(e)}")
-            
+        current_mtime = os.path.getmtime(config_path)
+        
+        # 只有当配置文件被修改时才重新加载
+        if current_mtime > g.config_last_modified:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                g.config_data = yaml.safe_load(f)
+                g.config_last_modified = current_mtime
+                
+            # 尝试重新加载内存中的配置
+            try:
+                from src.config import config as settings
+                if hasattr(settings, 'reload_from_file'):
+                    settings.reload_from_file()
+            except Exception as e:
+                logger.warning(f"重新加载内存中配置失败: {str(e)}")
     except Exception as e:
         logger.error(f"加载配置失败: {str(e)}")
-        g.config_data = {}
+        if not hasattr(g, 'config_data'):
+            g.config_data = {}
 
 
 @app.route('/dashboard')
@@ -636,65 +681,113 @@ def dashboard():
     return render_template('dashboard.html')
 
 
+# 添加系统信息缓存
+_system_info_cache = {}
+_system_info_last_update = 0
+_system_info_ttl = 2  # 系统信息缓存有效期（秒）
+
 @app.route('/system_info')
 def system_info():
     """获取系统信息"""
+    global _system_info_cache, _system_info_last_update
+    
+    current_time = time.time()
+    # 如果缓存有效，直接返回缓存的数据
+    if _system_info_cache and current_time - _system_info_last_update < _system_info_ttl:
+        return jsonify(_system_info_cache)
+        
     try:
         # 创建静态变量存储上次的值
         if not hasattr(system_info, 'last_bytes'):
             system_info.last_bytes = {
                 'sent': 0,
                 'recv': 0,
-                'time': time.time()
+                'time': current_time
             }
 
-        cpu_percent = psutil.cpu_percent()
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
-        net = psutil.net_io_counters()
-
-        # 计算网络速度
-        current_time = time.time()
-        time_delta = current_time - system_info.last_bytes['time']
-
-        # 计算每秒的字节数
-        upload_speed = (net.bytes_sent - system_info.last_bytes['sent']) / time_delta
-        download_speed = (net.bytes_recv - system_info.last_bytes['recv']) / time_delta
-
-        # 更新上次的值
-        system_info.last_bytes = {
-            'sent': net.bytes_sent,
-            'recv': net.bytes_recv,
-            'time': current_time
-        }
-
-        # 转换为 KB/s
-        upload_speed = upload_speed / 1024
-        download_speed = download_speed / 1024
-
-        return jsonify({
-            'cpu': cpu_percent,
-            'memory': {
+        # 获取系统信息，添加错误处理
+        try:
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+        except:
+            cpu_percent = 0
+            
+        try:
+            memory = psutil.virtual_memory()
+            memory_info = {
                 'total': round(memory.total / (1024 ** 3), 2),
                 'used': round(memory.used / (1024 ** 3), 2),
                 'percent': memory.percent
-            },
-            'disk': {
+            }
+        except:
+            memory_info = {
+                'total': 0,
+                'used': 0,
+                'percent': 0
+            }
+            
+        try:
+            disk = psutil.disk_usage('/')
+            disk_info = {
                 'total': round(disk.total / (1024 ** 3), 2),
                 'used': round(disk.used / (1024 ** 3), 2),
                 'percent': disk.percent
-            },
-            'network': {
-                'upload': round(upload_speed, 2),
-                'download': round(download_speed, 2)
             }
-        })
+        except:
+            disk_info = {
+                'total': 0,
+                'used': 0,
+                'percent': 0
+            }
+            
+        try:
+            net = psutil.net_io_counters()
+            time_delta = current_time - system_info.last_bytes['time']
+            
+            # 计算网络速度
+            if time_delta > 0:
+                upload_speed = (net.bytes_sent - system_info.last_bytes['sent']) / time_delta
+                download_speed = (net.bytes_recv - system_info.last_bytes['recv']) / time_delta
+            else:
+                upload_speed = 0
+                download_speed = 0
+                
+            # 更新上次的值
+            system_info.last_bytes = {
+                'sent': net.bytes_sent,
+                'recv': net.bytes_recv,
+                'time': current_time
+            }
+            
+            # 转换为 KB/s
+            network_info = {
+                'upload': round(upload_speed / 1024, 2),
+                'download': round(download_speed / 1024, 2)
+            }
+        except:
+            network_info = {
+                'upload': 0,
+                'download': 0
+            }
+
+        # 更新缓存
+        _system_info_cache = {
+            'cpu': cpu_percent,
+            'memory': memory_info,
+            'disk': disk_info,
+            'network': network_info
+        }
+        _system_info_last_update = current_time
+        
+        return jsonify(_system_info_cache)
     except Exception as e:
         logger.error(f"获取系统信息失败: {str(e)}")
+        # 返回一个安全的默认值
         return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
+            'cpu': 0,
+            'memory': {'total': 0, 'used': 0, 'percent': 0},
+            'disk': {'total': 0, 'used': 0, 'percent': 0},
+            'network': {'upload': 0, 'download': 0}
+        })
 
 
 @app.route('/check_update')
@@ -2856,6 +2949,74 @@ def get_config():
         # 提取所需的配置值
         config_data_response = {}
         
+        # 基础配置 - LLM设置
+        if 'categories' in config_data and 'llm_settings' in config_data['categories'] and 'settings' in config_data['categories']['llm_settings']:
+            llm_settings = config_data['categories']['llm_settings']['settings']
+            # API密钥
+            if 'api_key' in llm_settings:
+                config_data_response['DEEPSEEK_API_KEY'] = llm_settings['api_key'].get('value', '')
+            # API地址
+            if 'base_url' in llm_settings:
+                config_data_response['DEEPSEEK_BASE_URL'] = llm_settings['base_url'].get('value', '')
+            # 模型
+            if 'model' in llm_settings:
+                config_data_response['MODEL'] = llm_settings['model'].get('value', '')
+            # 最大token
+            if 'max_tokens' in llm_settings:
+                config_data_response['MAX_TOKEN'] = llm_settings['max_tokens'].get('value', 2000)
+            # 温度
+            if 'temperature' in llm_settings:
+                config_data_response['TEMPERATURE'] = llm_settings['temperature'].get('value', 0.7)
+        
+        # 图像识别配置
+        if 'categories' in config_data and 'media_settings' in config_data['categories'] and 'settings' in config_data['categories']['media_settings']:
+            media_settings = config_data['categories']['media_settings']['settings']
+            if 'image_recognition' in media_settings:
+                img_settings = media_settings['image_recognition']
+                # API密钥
+                if 'api_key' in img_settings:
+                    config_data_response['MOONSHOT_API_KEY'] = img_settings['api_key'].get('value', '')
+                # API地址
+                if 'base_url' in img_settings:
+                    config_data_response['MOONSHOT_BASE_URL'] = img_settings['base_url'].get('value', '')
+                # 模型
+                if 'model' in img_settings:
+                    config_data_response['MOONSHOT_MODEL'] = img_settings['model'].get('value', '')
+                # 温度
+                if 'temperature' in img_settings:
+                    config_data_response['MOONSHOT_TEMPERATURE'] = img_settings['temperature'].get('value', 0.35)
+
+        # 行为配置
+        if 'categories' in config_data and 'behavior_settings' in config_data['categories'] and 'settings' in config_data['categories']['behavior_settings']:
+            behavior_settings = config_data['categories']['behavior_settings']['settings']
+            # 自动消息
+            if 'auto_message' in behavior_settings:
+                auto_msg = behavior_settings['auto_message']
+                if 'content' in auto_msg:
+                    config_data_response['AUTO_MESSAGE'] = auto_msg['content'].get('value', '')
+                if 'countdown' in auto_msg:
+                    countdown = auto_msg['countdown']
+                    if 'min_hours' in countdown:
+                        config_data_response['MIN_COUNTDOWN_HOURS'] = countdown['min_hours'].get('value', 1)
+                    if 'max_hours' in countdown:
+                        config_data_response['MAX_COUNTDOWN_HOURS'] = countdown['max_hours'].get('value', 6)
+            
+            # 安静时间
+            if 'quiet_time' in behavior_settings:
+                quiet_time = behavior_settings['quiet_time']
+                if 'start' in quiet_time:
+                    config_data_response['QUIET_TIME_START'] = quiet_time['start'].get('value', '22:00')
+                if 'end' in quiet_time:
+                    config_data_response['QUIET_TIME_END'] = quiet_time['end'].get('value', '08:00')
+            
+            # 上下文设置
+            if 'context' in behavior_settings:
+                context = behavior_settings['context']
+                if 'max_groups' in context:
+                    config_data_response['MAX_GROUPS'] = context['max_groups'].get('value', 30)
+                if 'avatar_dir' in context:
+                    config_data_response['AVATAR_DIR'] = context['avatar_dir'].get('value', '')
+        
         # 特别处理LISTEN_LIST
         if ('categories' in config_data and 'user_settings' in config_data['categories'] and
             'settings' in config_data['categories']['user_settings'] and
@@ -2870,42 +3031,60 @@ def get_config():
             config_data_response['LISTEN_LIST'] = []
             logger.warning("在配置中找不到监听用户列表")
         
-        # 处理RAG_IS_RERANK
+        # 处理RAG设置
         if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
-            'settings' in config_data['categories']['rag_settings'] and
-            'is_rerank' in config_data['categories']['rag_settings']['settings']):
-            rerank_value = config_data['categories']['rag_settings']['settings']['is_rerank'].get('value', False)
-            # 确保是布尔值
-            if isinstance(rerank_value, str):
-                config_data_response['RAG_IS_RERANK'] = rerank_value.lower() == 'true'
+            'settings' in config_data['categories']['rag_settings']):
+            
+            rag_settings = config_data['categories']['rag_settings']['settings']
+            
+            # API密钥
+            if 'api_key' in rag_settings:
+                config_data_response['RAG_API_KEY'] = rag_settings['api_key'].get('value', '')
+            
+            # API地址
+            if 'base_url' in rag_settings:
+                config_data_response['RAG_BASE_URL'] = rag_settings['base_url'].get('value', '')
+            
+            # 嵌入模型
+            if 'embedding_model' in rag_settings:
+                config_data_response['RAG_EMBEDDING_MODEL'] = rag_settings['embedding_model'].get('value', 'text-embedding-3-large')
+            
+            # 是否启用重排序
+            if 'is_rerank' in rag_settings:
+                rerank_value = rag_settings['is_rerank'].get('value', False)
+                # 确保是布尔值
+                if isinstance(rerank_value, str):
+                    config_data_response['RAG_IS_RERANK'] = rerank_value.lower() == 'true'
+                else:
+                    config_data_response['RAG_IS_RERANK'] = bool(rerank_value)
             else:
-                config_data_response['RAG_IS_RERANK'] = bool(rerank_value)
-        
-        # 处理RAG_EMBEDDING_MODEL
-        if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
-            'settings' in config_data['categories']['rag_settings'] and
-            'embedding_model' in config_data['categories']['rag_settings']['settings']):
-            embedding_value = config_data['categories']['rag_settings']['settings']['embedding_model'].get('value', '')
-            config_data_response['RAG_EMBEDDING_MODEL'] = embedding_value
+                config_data_response['RAG_IS_RERANK'] = False
             
-        # 处理RAG_TOP_K
-        if ('categories' in config_data and 'rag_settings' in config_data['categories'] and
-            'settings' in config_data['categories']['rag_settings'] and
-            'top_k' in config_data['categories']['rag_settings']['settings']):
-            top_k_value = config_data['categories']['rag_settings']['settings']['top_k'].get('value', 5)
-            config_data_response['RAG_TOP_K'] = top_k_value
+            # 重排序模型
+            if 'reranker_model' in rag_settings:
+                config_data_response['RAG_RERANKER_MODEL'] = rag_settings['reranker_model'].get('value', '')
             
-        # 特别处理MOONSHOT_TEMPERATURE
-        if ('categories' in config_data and 'media_settings' in config_data['categories'] and
-            'settings' in config_data['categories']['media_settings'] and
-            'image_recognition' in config_data['categories']['media_settings']['settings'] and
-            'temperature' in config_data['categories']['media_settings']['settings']['image_recognition']):
-            temp_value = config_data['categories']['media_settings']['settings']['image_recognition']['temperature'].get('value', 0.35)
-            config_data_response['MOONSHOT_TEMPERATURE'] = temp_value
-            logger.info(f"从config.yaml获取到的图像识别温度值: {temp_value}")
-        else:
-            config_data_response['MOONSHOT_TEMPERATURE'] = 0.35
-            logger.warning("在配置中找不到图像识别温度值，使用默认值0.35")
+            # TOP K
+            if 'top_k' in rag_settings:
+                config_data_response['RAG_TOP_K'] = rag_settings['top_k'].get('value', 5)
+            
+            # 自动下载本地模型
+            if 'auto_download_local_model' in rag_settings:
+                auto_download = rag_settings['auto_download_local_model'].get('value', False)
+                if isinstance(auto_download, str):
+                    config_data_response['AUTO_DOWNLOAD_LOCAL_MODEL'] = auto_download.lower() == 'true'
+                else:
+                    config_data_response['AUTO_DOWNLOAD_LOCAL_MODEL'] = bool(auto_download)
+            
+            # 自动适配硅基流动
+            if 'auto_adapt_siliconflow' in rag_settings:
+                auto_adapt = rag_settings['auto_adapt_siliconflow'].get('value', True)
+                if isinstance(auto_adapt, str):
+                    config_data_response['AUTO_ADAPT_SILICONFLOW'] = auto_adapt.lower() == 'true'
+                else:
+                    config_data_response['AUTO_ADAPT_SILICONFLOW'] = bool(auto_adapt)
+            
+        logger.debug(f"返回的配置数据: {config_data_response}")
             
         return jsonify({
             'status': 'success',
