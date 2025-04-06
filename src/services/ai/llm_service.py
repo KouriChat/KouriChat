@@ -99,9 +99,32 @@ class LLMService:
             logger.error(f"Response sanitization failed: {str(e)}")
             return "响应处理异常，请重新尝试"
 
+    def _filter_thinking_content(self, content: str) -> str:
+        """
+        过滤思考内容，支持不同模型的返回格式
+        1. R1格式: 思考过程...\n\n\n最终回复
+        2. Gemini格式: <think>思考过程</think>\n\n最终回复
+        """
+        try:
+            # 过滤 Gemini 格式 (<think>思考过程</think>)
+            filtered_content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
+            
+            # 过滤 R1 格式 (思考过程...\n\n\n最终回复)
+            # 查找三个连续换行符
+            triple_newline_match = re.search(r'\n\n\n', filtered_content)
+            if triple_newline_match:
+                # 只保留三个连续换行符后面的内容（最终回复）
+                filtered_content = filtered_content[triple_newline_match.end():]
+            
+            return filtered_content.strip()
+        except Exception as e:
+            logger.error(f"过滤思考内容失败: {str(e)}")
+            return content  # 如果处理失败，返回原始内容
+
     def _validate_response(self, response: dict) -> bool:
         """
-        API响应校验（超宽松版）
+        放宽检验
+        API响应校验
         只要能获取到有效的回复内容就返回True
         """
         try:
@@ -226,13 +249,22 @@ class LLMService:
                     # 检查响应中是否包含 message 字段
                     if response_data and "message" in response_data:
                         raw_content = response_data["message"]["content"]
+                        
+                        # 处理 R1 特殊格式，可能包含 reasoning_content 字段
+                        if isinstance(response_data["message"], dict) and "reasoning_content" in response_data["message"]:
+                            logger.debug("检测到 R1 格式响应，将分离思考内容")
+                            # 只使用 content 字段内容，忽略 reasoning_content
+                            raw_content = response_data["message"]["content"]
+                            
                         logger.debug("Ollama API响应内容: %s", raw_content)
                     else:
                         raise ValueError("错误的API响应结构")
                         
                     clean_content = self._sanitize_response(raw_content)
-                    self._manage_context(user_id, clean_content, "assistant")
-                    return clean_content
+                    # 过滤思考内容
+                    filtered_content = self._filter_thinking_content(clean_content)
+                    self._manage_context(user_id, filtered_content, "assistant")
+                    return filtered_content
                     
                 except Exception as e:
                     logger.error(f"Ollama API请求失败: {str(e)}")
@@ -260,10 +292,12 @@ class LLMService:
                 raw_content = response.choices[0].message.content
                 # 清理响应内容
                 clean_content = self._sanitize_response(raw_content)
+                # 过滤思考内容
+                filtered_content = self._filter_thinking_content(clean_content)
                 # 管理上下文
-                self._manage_context(user_id, clean_content, "assistant")
-                # 返回清理后的内容
-                return clean_content or ""
+                self._manage_context(user_id, filtered_content, "assistant")
+                # 返回过滤后的内容
+                return filtered_content or ""
 
         except Exception as e:
             error_message = f"Error: {str(e)}"
@@ -313,8 +347,13 @@ class LLMService:
             
             if not self._validate_response(response.model_dump()):
                 raise ValueError("Invalid API response structure")
+            
+            raw_content = response.choices[0].message.content    
+            # 清理和过滤响应内容
+            clean_content = self._sanitize_response(raw_content)
+            filtered_content = self._filter_thinking_content(clean_content)
                 
-            return response.choices[0].message.content or ""
+            return filtered_content or ""
             
         except Exception as e:
             logger.error(f"Chat completion failed: {str(e)}")
