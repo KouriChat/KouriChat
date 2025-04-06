@@ -42,7 +42,7 @@
                     "description": "回复最大token数量"
                 },
                 "temperature": {
-                    "value": 1.5,
+                    "value": 1.1,
                     "type": "number",
                     "description": "AI回复的温度值",
                     "min": 0.0,
