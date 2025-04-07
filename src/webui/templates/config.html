@@ -407,7 +407,6 @@
             }
         }
     </style>
-    <script defer src="http://umami.kourichat.com/script.js" data-website-id="319cc5bc-c057-4f6c-8bc4-4af5e110add1"></script>
     <script src="/static/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/dark-mode.js"></script>
     
@@ -687,6 +686,34 @@
     </div>
     
     <script>
+    // 初始化模型选择框 - 直接显示当前模型，不依赖API调用
+    function initializeModelSelect() {
+        const modelSelect = document.getElementById('model_select');
+        const currentModel = document.getElementById('MODEL').value;
+        
+        // 确保选择框始终包含自定义选项
+        if (!modelSelect.querySelector('option[value="custom"]')) {
+            modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
+        }
+        
+        // 如果有当前值，且不是已知的预定义模型，显示为自定义模型
+        if (currentModel) {
+            // 检查当前值是否在选择框中已存在
+            const existingOption = Array.from(modelSelect.options).find(opt => opt.value === currentModel);
+            
+            if (!existingOption) {
+                // 如果不存在，设置为自定义模型
+                modelSelect.value = 'custom';
+                const customModelInput = document.getElementById('customModelInput');
+                customModelInput.style.display = 'block';
+                customModelInput.querySelector('input').value = currentModel;
+            } else {
+                // 如果存在，选中它
+                modelSelect.value = currentModel;
+            }
+        }
+    }
+    
     // 更新模型选择框
     async function updateModelSelect(providerId) {
         const modelSelect = document.getElementById('model_select');
@@ -694,31 +721,43 @@
 
         if (providerId === 'custom') {
             modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
+            modelSelect.value = 'custom';
+            document.getElementById('customModelInput').style.display = 'block';
             return;
         }
 
         if (!providerId) return;
 
-        // 如果是 Ollama，尝试获取本地模型列表
-        if (providerId === 'ollama') {
-            try {
-                const response = await fetch('http://localhost:11434/api/tags');
-                if (response.ok) {
-                    const data = await response.json();
-                    const ollamaModels = data.models || [];
-                    ollamaModels.forEach(model => {
-                        modelSelect.innerHTML += `
-                            <option value="${model.name}" 
-                                data-type="chat"
-                                data-context-length="16000"
-                                >${model.name}</option>`;
-                    });
+        // 添加自定义选项
+        modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
+
+        // 保存当前选中的模型，以便后面恢复
+        const currentModel = document.getElementById('MODEL').value;
+        
+        try {
+            // 如果是 Ollama，尝试获取本地模型列表
+            if (providerId === 'ollama') {
+                try {
+                    const response = await fetch('http://localhost:11434/api/tags');
+                    if (response.ok) {
+                        const data = await response.json();
+                        const ollamaModels = data.models || [];
+                        ollamaModels.forEach(model => {
+                            modelSelect.innerHTML += `
+                                <option value="${model.name}" 
+                                    data-type="chat"
+                                    data-context-length="16000"
+                                    >${model.name}</option>`;
+                        });
+                    }
+                } catch (error) {
+                    console.error('获取Ollama模型列表失败:', error);
+                    // 获取失败不会影响页面显示当前模型
                 }
-            } catch (error) {
-                console.error('获取Ollama模型列表失败:', error);
-                // 如果获取失败，使用配置文件中的默认模型
-                const defaultModels = modelConfigs.models[providerId] || [];
-                defaultModels.forEach(model => {
+            } else if (modelConfigs && modelConfigs.models) {
+                // 其他提供商使用配置文件中的模型列表
+                const providerModels = modelConfigs.models[providerId] || [];
+                providerModels.forEach(model => {
                     if (model.status === 'active') {
                         modelSelect.innerHTML += `
                             <option value="${model.id}" 
@@ -728,35 +767,25 @@
                     }
                 });
             }
-        } else {
-            // 其他提供商使用配置文件中的模型列表
-            const providerModels = modelConfigs.models[providerId] || [];
-            providerModels.forEach(model => {
-                if (model.status === 'active') {
-                    modelSelect.innerHTML += `
-                        <option value="${model.id}" 
-                            data-type="${model.type}"
-                            data-context-length="${model.context_length}"
-                            >${model.name}</option>`;
-                }
-            });
+        } catch (error) {
+            console.error('更新模型选择框失败:', error);
+            // 错误处理：即使出错，也能显示当前模型
         }
 
-        // 添加自定义选项
-        modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
-
-        // 设置当前选中的模型
-        const currentModel = document.getElementById('MODEL').value;
-        const allModels = providerId === 'ollama' ? 
-            (modelSelect.querySelectorAll('option') || []) : 
-            (modelConfigs.models[providerId] || []);
-        
-        if (Array.from(allModels).some(m => m.value === currentModel || m.id === currentModel)) {
-            modelSelect.value = currentModel;
-        } else if (currentModel) {
-            modelSelect.value = 'custom';
-            document.getElementById('customModelInput').style.display = 'block';
-            document.getElementById('customModelInput').querySelector('input').value = currentModel;
+        // 无论是否成功获取模型列表，都尝试设置当前值
+        if (currentModel) {
+            // 首先检查当前模型是否在列表中
+            const modelExists = Array.from(modelSelect.options).some(opt => opt.value === currentModel);
+            
+            if (modelExists) {
+                modelSelect.value = currentModel;
+            } else {
+                // 如果不在列表中，显示为自定义模型
+                modelSelect.value = 'custom';
+                const customModelInput = document.getElementById('customModelInput');
+                customModelInput.style.display = 'block';
+                customModelInput.querySelector('input').value = currentModel;
+            }
         }
     }
 
@@ -784,7 +813,12 @@
     }
 
     // 页面加载时获取配置
-    document.addEventListener('DOMContentLoaded', fetchModelConfigs);
+    document.addEventListener('DOMContentLoaded', function() {
+        // 首先初始化模型选择框，确保当前模型值能正确显示
+        initializeModelSelect();
+        // 然后获取更多模型配置数据（如果可用）
+        fetchModelConfigs();
+    });
     </script>
 {% elif key == 'TEMPERATURE' %}
     <style>
@@ -1058,6 +1092,9 @@
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- 删除公告设置部分 -->
+                        
                     </form>
                 </div>
             </div>
@@ -1502,6 +1539,30 @@
 
         // 保存配置的函数
         function saveConfig(config) {
+            // 在发送前进行最终数据格式检查
+            for (const key in config) {
+                // 确保列表类型的数据是数组而非字符串
+                if (key === 'LISTEN_LIST' && typeof config[key] === 'string') {
+                    config[key] = config[key].split(',')
+                        .map(item => item.trim())
+                        .filter(item => item);
+                }
+                // 确保数字类型的数据是数字而非字符串
+                else if (['MAX_TOKEN', 'TEMPERATURE', 'MOONSHOT_TEMPERATURE', 
+                          'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS', 'MAX_GROUPS'].includes(key)) {
+                    const numValue = parseFloat(config[key]);
+                    if (!isNaN(numValue)) {
+                        config[key] = numValue;
+                        // 对于整数类型配置，转为整数
+                        if (['MAX_TOKEN', 'MAX_GROUPS'].includes(key)) {
+                            config[key] = Math.round(numValue);
+                        }
+                    }
+                }
+            }
+            
+            console.log("发送配置数据:", config);
+            
             // 发送保存请求
             fetch('/save', {
                 method: 'POST',
@@ -1524,25 +1585,32 @@
         }
 
         function processFormValue(config, key, value) {
+            // 处理列表类型
             if (key === 'LISTEN_LIST') {
-                config[key] = value.split(',').map(item => item.trim()).filter(item => item);
-            } else if (key === 'TEMPERATURE') {
-                // 特殊处理温度参数
-                const tempValue = parseFloat(value);
-                if (!isNaN(tempValue)) {
-                    config[key] = tempValue;
-                }
-            } else if (key === 'TASKS') {
+                // 直接保存为字符串，在最终提交前再转换为数组
+                config[key] = value;
+            } 
+            // 处理温度参数等数字类型
+            else if (['TEMPERATURE', 'MAX_TOKEN', 'MOONSHOT_TEMPERATURE', 
+                     'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS', 'MAX_GROUPS'].includes(key)) {
+                // 先保存为字符串，最终提交前统一处理
+                config[key] = value;
+            }
+            // 处理任务配置
+            else if (key === 'TASKS') {
                 try {
                     config[key] = JSON.parse(value);
                 } catch (e) {
+                    console.error("解析任务数据失败:", e);
                     config[key] = [];
                 }
-            } else if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
+            } 
+            // 处理布尔值
+            else if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
                 config[key] = value.toLowerCase() === 'true';
-            } else if (!isNaN(value) && value !== '') {
-                config[key] = Number(value);
-            } else {
+            } 
+            // 其他类型直接保存
+            else {
                 config[key] = value;
             }
         }
@@ -2242,6 +2310,266 @@
             document.body.appendChild(fileInput);
             fileInput.click();
             document.body.removeChild(fileInput);
+        });
+
+        // 添加任务相关函数
+        function loadTasks() {
+            fetch('/get_tasks')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 更新隐藏的input字段
+                        document.getElementById('TASKS').value = JSON.stringify(data.tasks);
+                        
+                        // 更新任务列表显示
+                        updateTaskListUI(data.tasks);
+                        
+                        // 更新发送对象下拉选项
+                        updateTaskChatIdOptions();
+                    } else {
+                        showToast('加载任务失败: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    showToast('加载任务失败: ' + error, 'error');
+                });
+        }
+
+        function updateTaskListUI(tasks) {
+            const container = document.getElementById('taskListContainer');
+            
+            if (tasks && tasks.length > 0) {
+                // 清空现有内容
+                container.innerHTML = '';
+                
+                // 添加每个任务
+                tasks.forEach(task => {
+                    const taskItem = document.createElement('div');
+                    taskItem.className = 'list-group-item';
+                    
+                    let scheduleInfo = '';
+                    if (task.schedule_type === 'cron') {
+                        scheduleInfo = `<span class="badge bg-primary me-1">Cron</span> ${task.schedule_time}`;
+                    } else {
+                        scheduleInfo = `<span class="badge bg-success me-1">间隔</span> ${task.schedule_time}`;
+                    }
+                    
+                    taskItem.innerHTML = `
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">${task.task_id}</h5>
+                            <small>
+                                ${scheduleInfo}
+                                <span class="badge ${task.is_active ? 'bg-success' : 'bg-secondary'} ms-2">
+                                    ${task.is_active ? '启用' : '禁用'}
+                                </span>
+                            </small>
+                        </div>
+                        <p class="mb-1">发送给: ${task.chat_id}</p>
+                        <p class="mb-1">内容: ${task.content}</p>
+                        <div class="d-flex justify-content-end mt-2">
+                            <button class="btn btn-sm btn-outline-primary me-2" onclick="editTask('${task.task_id}')">
+                                <i class="bi bi-pencil"></i> 编辑
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="confirmDeleteTask('${task.task_id}')">
+                                <i class="bi bi-trash"></i> 删除
+                            </button>
+                        </div>
+                    `;
+                    
+                    container.appendChild(taskItem);
+                });
+            } else {
+                // 显示无任务提示
+                container.innerHTML = `
+                    <div class="text-center text-muted p-4">
+                        <i class="bi bi-inbox fs-2"></i>
+                        <p class="mt-2">暂无定时任务</p>
+                    </div>
+                `;
+            }
+        }
+
+        function saveTask() {
+            // 获取表单数据
+            const taskId = document.getElementById('taskId').value.trim();
+            const chatId = document.getElementById('taskChatId').value.trim();
+            const content = document.getElementById('taskContent').value.trim();
+            const scheduleType = document.getElementById('scheduleType').value;
+            let scheduleTime = '';
+            
+            // 根据任务类型获取调度时间
+            if (scheduleType === 'cron') {
+                scheduleTime = document.getElementById('cronExpression').value.trim();
+            } else {
+                const intervalValue = document.getElementById('intervalValue').value.trim();
+                const intervalUnit = document.getElementById('intervalUnit').value;
+                scheduleTime = `${intervalValue}${intervalUnit}`;
+            }
+            
+            // 验证表单
+            if (!taskId || !chatId || !content || !scheduleTime) {
+                showToast('请填写所有必要字段', 'error');
+                return;
+            }
+            
+            // 创建任务对象
+            const task = {
+                task_id: taskId,
+                chat_id: chatId,
+                content: content,
+                schedule_type: scheduleType,
+                schedule_time: scheduleTime,
+                is_active: true
+            };
+            
+            // 发送保存请求
+            fetch('/save_task', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(task)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // 隐藏模态框
+                    bootstrap.Modal.getInstance(document.getElementById('addTaskModal')).hide();
+                    
+                    // 重新加载任务列表
+                    loadTasks();
+                    
+                    // 显示成功提示
+                    showToast(data.message, 'success');
+                    
+                    // 重置表单
+                    document.getElementById('taskForm').reset();
+                } else {
+                    showToast(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                showToast('保存任务失败: ' + error, 'error');
+            });
+        }
+
+        function confirmDeleteTask(taskId) {
+            if (confirm(`确定要删除任务 "${taskId}" 吗？`)) {
+                deleteTask(taskId);
+            }
+        }
+
+        function deleteTask(taskId) {
+            fetch('/delete_task', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({task_id: taskId})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // 重新加载任务列表
+                    loadTasks();
+                    
+                    // 显示成功提示
+                    showToast(data.message, 'success');
+                } else {
+                    showToast(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                showToast('删除任务失败: ' + error, 'error');
+            });
+        }
+
+        function editTask(taskId) {
+            // 获取当前任务数据
+            const tasksValue = document.getElementById('TASKS').value;
+            let tasks = [];
+            
+            try {
+                tasks = JSON.parse(tasksValue);
+            } catch (e) {
+                showToast('解析任务数据失败', 'error');
+                return;
+            }
+            
+            // 查找指定任务
+            const task = tasks.find(t => t.task_id === taskId);
+            if (!task) {
+                showToast('未找到指定任务', 'error');
+                return;
+            }
+            
+            // 填充表单
+            document.getElementById('taskId').value = task.task_id;
+            document.getElementById('taskId').readOnly = true; // 编辑模式下不允许修改ID
+            document.getElementById('taskChatId').value = task.chat_id;
+            document.getElementById('taskContent').value = task.content;
+            document.getElementById('scheduleType').value = task.schedule_type;
+            
+            // 根据任务类型设置调度时间
+            toggleScheduleInput(); // 先切换显示正确的输入框
+            
+            if (task.schedule_type === 'cron') {
+                document.getElementById('cronExpression').value = task.schedule_time;
+            } else {
+                // 解析间隔值和单位
+                const match = task.schedule_time.match(/(\d+)([smhd])/);
+                if (match) {
+                    document.getElementById('intervalValue').value = match[1];
+                    document.getElementById('intervalUnit').value = match[2];
+                }
+            }
+            
+            // 显示模态框
+            const modal = new bootstrap.Modal(document.getElementById('addTaskModal'));
+            modal.show();
+            
+            // 更新模态框标题
+            document.getElementById('addTaskModalLabel').innerHTML = 
+                '<i class="bi bi-pencil-square me-2"></i>编辑定时任务';
+            
+            // 更改保存按钮文本
+            const saveButton = document.querySelector('#addTaskModal .modal-footer .btn-primary');
+            saveButton.textContent = '保存修改';
+        }
+
+        // 初始化任务功能
+        document.addEventListener('DOMContentLoaded', function() {
+            // 加载任务列表
+            loadTasks();
+            
+            // 添加任务表单提交处理
+            document.getElementById('taskForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveTask();
+            });
+            
+            // 添加调度类型切换处理
+            document.getElementById('scheduleType').addEventListener('change', toggleScheduleInput);
+            
+            // 初始隐藏间隔输入组
+            document.getElementById('intervalInputGroup').style.display = 'none';
+            
+            // 添加模态框关闭事件处理
+            document.getElementById('addTaskModal').addEventListener('hidden.bs.modal', function() {
+                // 重置表单
+                document.getElementById('taskForm').reset();
+                document.getElementById('taskId').readOnly = false;
+                document.getElementById('addTaskModalLabel').innerHTML = 
+                    '<i class="bi bi-plus-circle me-2"></i>添加定时任务';
+                
+                // 重置保存按钮文本
+                const saveButton = document.querySelector('#addTaskModal .modal-footer .btn-primary');
+                saveButton.textContent = '保存';
+                
+                // 默认显示Cron输入组
+                document.getElementById('cronInputGroup').style.display = 'block';
+                document.getElementById('intervalInputGroup').style.display = 'none';
+            });
         });
     </script>
 </body>

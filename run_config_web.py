@@ -108,10 +108,15 @@ app.secret_key = secrets.token_hex(16)
 app.register_blueprint(avatar_manager)
 app.register_blueprint(avatar_bp)
 
+# 公告配置文件路径
+ANNOUNCEMENT_CONFIG_PATH = os.path.join(ROOT_DIR, 'src/config/announcement.json')
+
 def get_available_avatars() -> List[str]:
     """获取可用的人设目录列表"""
     avatar_base_dir = os.path.join(ROOT_DIR, "data/avatars")
     if not os.path.exists(avatar_base_dir):
+        os.makedirs(avatar_base_dir, exist_ok=True)
+        logger.info(f"创建人设目录: {avatar_base_dir}")
         return []
     
     # 获取所有包含 avatar.md 和 emojis 目录的有效人设目录
@@ -119,9 +124,36 @@ def get_available_avatars() -> List[str]:
     for item in os.listdir(avatar_base_dir):
         avatar_dir = os.path.join(avatar_base_dir, item)
         if os.path.isdir(avatar_dir):
-            if os.path.exists(os.path.join(avatar_dir, "avatar.md")) and \
-               os.path.exists(os.path.join(avatar_dir, "emojis")):
+            avatar_md_path = os.path.join(avatar_dir, "avatar.md")
+            emojis_dir = os.path.join(avatar_dir, "emojis")
+            
+            # 如果缺少必要文件，尝试创建
+            if not os.path.exists(emojis_dir):
+                os.makedirs(emojis_dir, exist_ok=True)
+                logger.info(f"为人设 {item} 创建表情包目录")
+                
+            if not os.path.exists(avatar_md_path):
+                with open(avatar_md_path, 'w', encoding='utf-8') as f:
+                    f.write("# 任务\n请在此处描述角色的任务和目标\n\n# 角色\n请在此处描述角色的基本信息\n\n# 外表\n请在此处描述角色的外表特征\n\n# 经历\n请在此处描述角色的经历和背景故事\n\n# 性格\n请在此处描述角色的性格特点\n\n# 经典台词\n请在此处列出角色的经典台词\n\n# 喜好\n请在此处描述角色的喜好\n\n# 备注\n其他需要补充的信息")
+                logger.info(f"为人设 {item} 创建模板avatar.md文件")
+            
+            # 检查文件和目录是否存在
+            if os.path.exists(avatar_md_path) and os.path.exists(emojis_dir):
                 avatars.append(f"data/avatars/{item}")
+            
+    # 如果没有人设，创建默认人设
+    if not avatars:
+        default_avatar = "MONO"
+        default_dir = os.path.join(avatar_base_dir, default_avatar)
+        os.makedirs(default_dir, exist_ok=True)
+        os.makedirs(os.path.join(default_dir, "emojis"), exist_ok=True)
+        
+        # 创建默认人设文件
+        with open(os.path.join(default_dir, "avatar.md"), 'w', encoding='utf-8') as f:
+            f.write("# 任务\n作为一个温柔体贴的虚拟助手，为用户提供陪伴和帮助\n\n# 角色\n名字: MONO\n身份: AI助手\n\n# 外表\n清新甜美的少女形象\n\n# 经历\n被创造出来陪伴用户\n\n# 性格\n温柔、体贴、善解人意\n\n# 经典台词\n\"我会一直陪着你的~\"\n\"今天过得怎么样呀？\"\n\"需要我做什么呢？\"\n\n# 喜好\n喜欢和用户聊天\n喜欢分享知识\n\n# 备注\n默认人设")
+        
+        avatars.append(f"data/avatars/{default_avatar}")
+        logger.info("创建了默认人设 MONO")
     
     return avatars
 
@@ -316,10 +348,11 @@ def save_config():
         with open(config_path, 'r', encoding='utf-8') as f:
             current_config = json.load(f)
         
-        # 确保 categories 和 schedule_settings 存在
+        # 确保 categories 存在
         if 'categories' not in current_config:
             current_config['categories'] = {}
             
+        # 确保 schedule_settings 存在且结构正确
         if 'schedule_settings' not in current_config['categories']:
             current_config['categories']['schedule_settings'] = {
                 "title": "定时任务配置",
@@ -330,20 +363,6 @@ def save_config():
                         "description": "定时任务列表"
                     }
                 }
-            }
-        elif 'settings' not in current_config['categories']['schedule_settings']:
-            current_config['categories']['schedule_settings']['settings'] = {
-                "tasks": {
-                    "value": [],
-                    "type": "array",
-                    "description": "定时任务列表"
-                }
-            }
-        elif 'tasks' not in current_config['categories']['schedule_settings']['settings']:
-            current_config['categories']['schedule_settings']['settings']['tasks'] = {
-                "value": [],
-                "type": "array",
-                "description": "定时任务列表"
             }
         
         # 更新配置
@@ -358,10 +377,9 @@ def save_config():
                     logger.error(f"处理定时任务配置失败: {str(e)}")
             # 处理其他配置项
             elif key in ['LISTEN_LIST', 'DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY', 'MAX_TOKEN', 'TEMPERATURE',
-                        'MOONSHOT_API_KEY', 'MOONSHOT_BASE_URL', 'MOONSHOT_TEMPERATURE', 'MOONSHOT_MODEL',
-                        'IMAGE_MODEL', 'TEMP_IMAGE_DIR', 'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
-                        'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR']:
-                # 这里可以添加更多的配置项映射
+                       'MOONSHOT_API_KEY', 'MOONSHOT_BASE_URL', 'MOONSHOT_TEMPERATURE', 'MOONSHOT_MODEL',
+                       'IMAGE_MODEL', 'TEMP_IMAGE_DIR', 'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
+                       'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR']:
                 update_config_value(current_config, key, value)
         
         # 保存配置
@@ -399,7 +417,7 @@ def save_config():
 def update_config_value(config_data, key, value):
     """更新配置值到正确的位置"""
     try:
-        # 配置项映射表
+        # 配置项映射表 - 修正路径以匹配实际配置结构
         mapping = {
             'LISTEN_LIST': ['categories', 'user_settings', 'settings', 'listen_list', 'value'],
             'DEEPSEEK_BASE_URL': ['categories', 'llm_settings', 'settings', 'base_url', 'value'],
@@ -428,13 +446,29 @@ def update_config_value(config_data, key, value):
             path = mapping[key]
             current = config_data
             
+            # 特殊处理 LISTEN_LIST，确保它始终是列表类型
+            if key == 'LISTEN_LIST' and isinstance(value, str):
+                value = value.split(',')
+                value = [item.strip() for item in value if item.strip()]
+            
             # 遍历路径直到倒数第二个元素
             for part in path[:-1]:
                 if part not in current:
                     current[part] = {}
                 current = current[part]
             
-            # 设置最终值
+            # 设置最终值，确保类型正确
+            if isinstance(value, str) and key in ['MAX_TOKEN', 'TEMPERATURE', 'MOONSHOT_TEMPERATURE', 
+                                               'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS', 'MAX_GROUPS']:
+                try:
+                    # 尝试转换为数字
+                    value = float(value)
+                    # 对于整数类型配置，转为整数
+                    if key in ['MAX_TOKEN', 'MAX_GROUPS']:
+                        value = int(value)
+                except ValueError:
+                    pass
+            
             current[path[-1]] = value
             logger.debug(f"已更新配置 {key}: {value}")
         else:
@@ -1993,27 +2027,180 @@ def load_avatar_content():
             'message': str(e)
         })
 
-@app.route('/get_tasks')
+@app.route('/get_tasks', methods=['GET'])
 def get_tasks():
-    """获取最新的任务数据"""
+    """获取定时任务列表"""
     try:
-        # 直接从配置文件读取任务数据
-        tasks = []
         config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
-            if 'categories' in config_data and 'schedule_settings' in config_data['categories']:
-                if 'settings' in config_data['categories']['schedule_settings'] and 'tasks' in config_data['categories']['schedule_settings']['settings']:
-                    tasks = config_data['categories']['schedule_settings']['settings']['tasks'].get('value', [])
         
-        logger.debug(f"获取到的任务数据: {tasks}")
+        tasks = []
+        if 'categories' in config_data and 'schedule_settings' in config_data['categories']:
+            if 'settings' in config_data['categories']['schedule_settings'] and 'tasks' in config_data['categories']['schedule_settings']['settings']:
+                tasks = config_data['categories']['schedule_settings']['settings']['tasks'].get('value', [])
         
         return jsonify({
             'status': 'success',
             'tasks': tasks
         })
     except Exception as e:
-        logger.error(f"获取任务数据失败: {str(e)}")
+        logger.error(f"获取任务失败: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
+
+@app.route('/save_task', methods=['POST'])
+def save_task():
+    """保存单个定时任务"""
+    try:
+        task_data = request.json
+        
+        # 验证必要字段
+        required_fields = ['task_id', 'chat_id', 'content', 'schedule_type', 'schedule_time']
+        for field in required_fields:
+            if field not in task_data:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'缺少必要字段: {field}'
+                })
+        
+        # 读取配置
+        config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+        
+        # 确保必要的配置结构存在
+        if 'categories' not in config_data:
+            config_data['categories'] = {}
+        
+        if 'schedule_settings' not in config_data['categories']:
+            config_data['categories']['schedule_settings'] = {
+                'title': '定时任务配置',
+                'settings': {
+                    'tasks': {
+                        'value': [],
+                        'type': 'array',
+                        'description': '定时任务列表'
+                    }
+                }
+            }
+        elif 'settings' not in config_data['categories']['schedule_settings']:
+            config_data['categories']['schedule_settings']['settings'] = {
+                'tasks': {
+                    'value': [],
+                    'type': 'array',
+                    'description': '定时任务列表'
+                }
+            }
+        elif 'tasks' not in config_data['categories']['schedule_settings']['settings']:
+            config_data['categories']['schedule_settings']['settings']['tasks'] = {
+                'value': [],
+                'type': 'array',
+                'description': '定时任务列表'
+            }
+        
+        # 获取当前任务列表
+        tasks = config_data['categories']['schedule_settings']['settings']['tasks']['value']
+        
+        # 检查是否存在相同ID的任务
+        task_index = None
+        for i, task in enumerate(tasks):
+            if task.get('task_id') == task_data['task_id']:
+                task_index = i
+                break
+        
+        # 更新或添加任务
+        if task_index is not None:
+            tasks[task_index] = task_data
+        else:
+            tasks.append(task_data)
+        
+        # 更新配置
+        config_data['categories']['schedule_settings']['settings']['tasks']['value'] = tasks
+        
+        # 保存配置
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=4)
+        
+        # 重新初始化定时任务
+        try:
+            from src.main import initialize_auto_tasks, message_handler
+            auto_tasker = initialize_auto_tasks(message_handler)
+            if auto_tasker:
+                logger.info("成功重新初始化定时任务")
+            else:
+                logger.warning("重新初始化定时任务返回空值")
+        except Exception as e:
+            logger.error(f"重新初始化定时任务失败: {str(e)}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': '任务已保存'
+        })
+    except Exception as e:
+        logger.error(f"保存任务失败: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        })
+
+@app.route('/delete_task', methods=['POST'])
+def delete_task():
+    """删除定时任务"""
+    try:
+        data = request.json
+        task_id = data.get('task_id')
+        
+        if not task_id:
+            return jsonify({
+                'status': 'error',
+                'message': '未提供任务ID'
+            })
+        
+        # 读取配置
+        config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+        
+        # 获取任务列表
+        if 'categories' in config_data and 'schedule_settings' in config_data['categories']:
+            if 'settings' in config_data['categories']['schedule_settings'] and 'tasks' in config_data['categories']['schedule_settings']['settings']:
+                tasks = config_data['categories']['schedule_settings']['settings']['tasks']['value']
+                
+                # 查找并删除任务
+                new_tasks = [task for task in tasks if task.get('task_id') != task_id]
+                
+                # 更新配置
+                config_data['categories']['schedule_settings']['settings']['tasks']['value'] = new_tasks
+                
+                # 保存配置
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_data, f, ensure_ascii=False, indent=4)
+                
+                # 重新初始化定时任务
+                try:
+                    from src.main import initialize_auto_tasks, message_handler
+                    auto_tasker = initialize_auto_tasks(message_handler)
+                    if auto_tasker:
+                        logger.info("成功重新初始化定时任务")
+                    else:
+                        logger.warning("重新初始化定时任务返回空值")
+                except Exception as e:
+                    logger.error(f"重新初始化定时任务失败: {str(e)}")
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': '任务已删除'
+                })
+        
+        return jsonify({
+            'status': 'error',
+            'message': '找不到任务配置'
+        })
+    except Exception as e:
+        logger.error(f"删除任务失败: {str(e)}")
         return jsonify({
             'status': 'error',
             'message': str(e)
@@ -2146,6 +2333,38 @@ def get_all_configs():
             'status': 'error',
             'message': str(e)
         })
+
+@app.route('/get_announcement')
+def get_announcement():
+    """获取公告配置信息"""
+    try:
+        # 检查公告配置文件是否存在
+        if not os.path.exists(ANNOUNCEMENT_CONFIG_PATH):
+            # 如果不存在，创建默认配置
+            default_announcement = {
+                "enabled": True,
+                "title": "系统公告",
+                "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。",
+                "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "version": "1.0.0",
+                "type": "info",
+                "show_once_per_day": True
+            }
+            
+            # 写入默认配置
+            with open(ANNOUNCEMENT_CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(default_announcement, f, ensure_ascii=False, indent=4)
+            
+            return jsonify(default_announcement)
+        
+        # 读取公告配置
+        with open(ANNOUNCEMENT_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            announcement_config = json.load(f)
+        
+        return jsonify(announcement_config)
+    except Exception as e:
+        logger.error(f"获取公告配置失败: {str(e)}")
+        return jsonify({"enabled": False, "title": "", "content": "", "type": "info"})
 
 if __name__ == '__main__':
     try:

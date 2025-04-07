@@ -509,7 +509,7 @@
                                     <h5 class="modal-title" id="rawContentModalLabel">原始Markdown内容</h5>
                                     <button type="button" class="btn-close ${isDarkMode ? 'btn-close-white' : ''}" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
-                                <div class="modal-body">
+                                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                                     <div class="mb-3">
                                         <div class="d-flex justify-content-end mb-2">
                                             <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="copyMdBtn">
@@ -521,7 +521,7 @@
                                         </div>
                                         <textarea class="form-control ${isDarkMode ? 'bg-dark text-light' : ''}" 
                                             id="rawMdContent" 
-                                            style="min-height: 400px; font-family: monospace;"
+                                            style="min-height: 400px; max-height: 60vh; font-family: monospace; overflow-y: auto;"
                                         >${rawContent}</textarea>
                                     </div>
                                 </div>
@@ -769,7 +769,5 @@
             });
         });
     </script>
-</body>
-</html>
 </body>
 </html>

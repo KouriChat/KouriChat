@@ -154,71 +154,91 @@ class Config:
                 
                 # 用户设置
                 user_data = categories['user_settings']['settings']
+                listen_list = user_data['listen_list'].get('value', [])
+                # 确保listen_list是列表类型
+                if not isinstance(listen_list, list):
+                    listen_list = [str(listen_list)] if listen_list else []
                 self.user = UserSettings(
-                    listen_list=user_data['listen_list']['value']
+                    listen_list=listen_list
                 )
                 
                 # LLM设置
                 llm_data = categories['llm_settings']['settings']
                 self.llm = LLMSettings(
-                    api_key=llm_data['api_key']['value'],
-                    base_url=llm_data['base_url']['value'],
-                    model=llm_data['model']['value'],
-                    max_tokens=llm_data['max_tokens']['value'],
-                    temperature=llm_data['temperature']['value']
+                    api_key=llm_data['api_key'].get('value', ''),
+                    base_url=llm_data['base_url'].get('value', 'https://api.siliconflow.cn/v1/'),
+                    model=llm_data['model'].get('value', 'Pro/deepseek-ai/DeepSeek-V3'),
+                    max_tokens=int(llm_data['max_tokens'].get('value', 2000)),
+                    temperature=float(llm_data['temperature'].get('value', 1.1))
                 )
                 
                 # 媒体设置
                 media_data = categories['media_settings']['settings']
+                image_recognition_data = media_data['image_recognition']
+                image_generation_data = media_data['image_generation']
+                text_to_speech_data = media_data['text_to_speech']
+                
                 self.media = MediaSettings(
                     image_recognition=ImageRecognitionSettings(
-                        api_key=media_data['image_recognition']['api_key']['value'],
-                        base_url=media_data['image_recognition']['base_url']['value'],
-                        temperature=media_data['image_recognition']['temperature']['value'],
-                        model=media_data['image_recognition']['model']['value']
+                        api_key=image_recognition_data['api_key'].get('value', ''),
+                        base_url=image_recognition_data['base_url'].get('value', 'https://api.moonshot.cn/v1'),
+                        temperature=float(image_recognition_data['temperature'].get('value', 0.7)),
+                        model=image_recognition_data['model'].get('value', 'moonshot-v1-8k-vision-preview')
                     ),
                     image_generation=ImageGenerationSettings(
-                        model=media_data['image_generation']['model']['value'],
-                        temp_dir=media_data['image_generation']['temp_dir']['value']
+                        model=image_generation_data['model'].get('value', 'deepseek-ai/Janus-Pro-7B'),
+                        temp_dir=image_generation_data['temp_dir'].get('value', 'data/images/temp')
                     ),
                     text_to_speech=TextToSpeechSettings(
-                        tts_api_url=media_data['text_to_speech']['tts_api_url']['value'],
-                        voice_dir=media_data['text_to_speech']['voice_dir']['value']
+                        tts_api_url=text_to_speech_data['tts_api_url'].get('value', 'http://127.0.0.1:5000/tts'),
+                        voice_dir=text_to_speech_data['voice_dir'].get('value', 'data/voices')
                     )
                 )
                 
                 # 行为设置
                 behavior_data = categories['behavior_settings']['settings']
+                auto_message_data = behavior_data['auto_message']
+                auto_message_countdown = auto_message_data.get('countdown', {})
+                quiet_time_data = behavior_data['quiet_time']
+                context_data = behavior_data['context']
                 
-                # 读取定时任务配置
+                # 确保目录路径规范化
+                avatar_dir = context_data['avatar_dir'].get('value', 'data/avatars/MONO')
+                if not avatar_dir.startswith('data/avatars/'):
+                    avatar_dir = f"data/avatars/{avatar_dir.split('/')[-1]}"
+                
+                # 定时任务配置
                 schedule_tasks = []
                 if 'schedule_settings' in categories:
                     schedule_data = categories['schedule_settings']
                     if 'settings' in schedule_data and 'tasks' in schedule_data['settings']:
-                        tasks_data = schedule_data['settings']['tasks']['value']
+                        tasks_data = schedule_data['settings']['tasks'].get('value', [])
                         for task in tasks_data:
-                            schedule_tasks.append(TaskSettings(
-                                task_id=task['task_id'],
-                                chat_id=task['chat_id'],
-                                content=task['content'],
-                                schedule_type=task['schedule_type'],
-                                schedule_time=task['schedule_time'],
-                                is_active=task.get('is_active', True)
-                            ))
+                            # 确保必要的字段存在
+                            if all(key in task for key in ['task_id', 'chat_id', 'content', 'schedule_type', 'schedule_time']):
+                                schedule_tasks.append(TaskSettings(
+                                    task_id=task['task_id'],
+                                    chat_id=task['chat_id'],
+                                    content=task['content'],
+                                    schedule_type=task['schedule_type'],
+                                    schedule_time=task['schedule_time'],
+                                    is_active=task.get('is_active', True)
+                                ))
                 
+                # 行为配置
                 self.behavior = BehaviorSettings(
                     auto_message=AutoMessageSettings(
-                        content=behavior_data['auto_message']['content']['value'],
-                        min_hours=behavior_data['auto_message']['countdown']['min_hours']['value'],
-                        max_hours=behavior_data['auto_message']['countdown']['max_hours']['value']
+                        content=auto_message_data['content'].get('value', '请你模拟系统设置的角色，在微信上找对方发消息想知道对方在做什么'),
+                        min_hours=float(auto_message_countdown.get('min_hours', {}).get('value', 1.0)),
+                        max_hours=float(auto_message_countdown.get('max_hours', {}).get('value', 3.0))
                     ),
                     quiet_time=QuietTimeSettings(
-                        start=behavior_data['quiet_time']['start']['value'],
-                        end=behavior_data['quiet_time']['end']['value']
+                        start=quiet_time_data['start'].get('value', '22:00'),
+                        end=quiet_time_data['end'].get('value', '08:00')
                     ),
                     context=ContextSettings(
-                        max_groups=behavior_data['context']['max_groups']['value'],
-                        avatar_dir=behavior_data['context']['avatar_dir']['value']
+                        max_groups=int(context_data['max_groups'].get('value', 15)),
+                        avatar_dir=avatar_dir
                     ),
                     schedule_settings=ScheduleSettings(
                         tasks=schedule_tasks
@@ -226,14 +246,61 @@ class Config:
                 )
                 
                 # 认证设置
-                auth_data = categories['auth_settings']['settings']
+                auth_data = categories.get('auth_settings', {}).get('settings', {})
                 self.auth = AuthSettings(
-                    admin_password=auth_data['admin_password']['value']
+                    admin_password=auth_data.get('admin_password', {}).get('value', '')
                 )
                 
+                logger.info("配置加载完成")
+                
         except Exception as e:
-            logger.error(f"加载配置文件失败: {str(e)}")
-            raise
+            logger.error(f"加载配置失败: {str(e)}")
+            # 使用默认值初始化配置
+            self.user = UserSettings(listen_list=[])
+            self.llm = LLMSettings(
+                api_key='',
+                base_url='https://api.siliconflow.cn/v1/',
+                model='Pro/deepseek-ai/DeepSeek-V3',
+                max_tokens=2000,
+                temperature=1.1
+            )
+            self.media = MediaSettings(
+                image_recognition=ImageRecognitionSettings(
+                    api_key='',
+                    base_url='https://api.moonshot.cn/v1',
+                    temperature=0.7,
+                    model='moonshot-v1-8k-vision-preview'
+                ),
+                image_generation=ImageGenerationSettings(
+                    model='deepseek-ai/Janus-Pro-7B',
+                    temp_dir='data/images/temp'
+                ),
+                text_to_speech=TextToSpeechSettings(
+                    tts_api_url='http://127.0.0.1:5000/tts',
+                    voice_dir='data/voices'
+                )
+            )
+            self.behavior = BehaviorSettings(
+                auto_message=AutoMessageSettings(
+                    content='请你模拟系统设置的角色，在微信上找对方发消息想知道对方在做什么',
+                    min_hours=1.0,
+                    max_hours=3.0
+                ),
+                quiet_time=QuietTimeSettings(
+                    start='22:00',
+                    end='08:00'
+                ),
+                context=ContextSettings(
+                    max_groups=15,
+                    avatar_dir='data/avatars/MONO'
+                ),
+                schedule_settings=ScheduleSettings(
+                    tasks=[]
+                )
+            )
+            self.auth = AuthSettings(
+                admin_password=''
+            )
 
     # 更新管理员密码
     def update_password(self, password: str) -> bool:
