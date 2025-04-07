@@ -924,6 +924,30 @@
         </div>
     </div>
 
+    <!-- 公告提示模态框 -->
+    <div class="modal fade" id="announcementModal" tabindex="-1" aria-labelledby="announcementModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="announcementModalLabel"></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="announcementContent"></p>
+                </div>
+                <div class="modal-footer justify-content-between">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="" id="dontShowToday">
+                        <label class="form-check-label" for="dontShowToday">
+                            今天不再显示
+                        </label>
+                    </div>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="announcementOkBtn">我知道了</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/bootstrap.bundle.min.js"></script>
     <script>
         // 添加 showToast 函数
@@ -1719,6 +1743,51 @@
             updateGitHubStats();
             // 每30分钟更新一次统计信息
             setInterval(updateGitHubStats, 1800000);
+        });
+
+        // 公告功能
+        document.addEventListener('DOMContentLoaded', function() {
+            // 检查是否存在本地存储的"今天不再显示"标志
+            const today = new Date().toISOString().split('T')[0];
+            const dontShowKey = `announcement_dont_show_${today}`;
+            
+            if (localStorage.getItem(dontShowKey) !== 'true') {
+                // 如果今天没有选择"不再显示"，则获取并显示公告
+                fetch('/get_announcement')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.enabled) {
+                            // 设置公告内容
+                            document.getElementById('announcementModalLabel').textContent = data.title;
+                            document.getElementById('announcementContent').textContent = data.content;
+                            
+                            // 根据公告类型设置样式
+                            const modalHeader = document.querySelector('#announcementModal .modal-header');
+                            if (data.type === 'info') {
+                                modalHeader.classList.add('bg-info', 'text-white');
+                            } else if (data.type === 'warning') {
+                                modalHeader.classList.add('bg-warning', 'text-dark');
+                            } else if (data.type === 'danger') {
+                                modalHeader.classList.add('bg-danger', 'text-white');
+                            } else if (data.type === 'success') {
+                                modalHeader.classList.add('bg-success', 'text-white');
+                            }
+                            
+                            // 显示模态框
+                            const announcementModal = new bootstrap.Modal(document.getElementById('announcementModal'));
+                            announcementModal.show();
+                        }
+                    })
+                    .catch(error => console.error('获取公告失败:', error));
+            }
+            
+            // 处理"我知道了"按钮点击事件
+            document.getElementById('announcementOkBtn').addEventListener('click', function() {
+                const dontShowToday = document.getElementById('dontShowToday').checked;
+                if (dontShowToday) {
+                    localStorage.setItem(dontShowKey, 'true');
+                }
+            });
         });
     </script>
 </body>

@@ -108,6 +108,9 @@ app.secret_key = secrets.token_hex(16)
 app.register_blueprint(avatar_manager)
 app.register_blueprint(avatar_bp)
 
+# 公告配置文件路径
+ANNOUNCEMENT_CONFIG_PATH = os.path.join(ROOT_DIR, 'src/config/announcement.json')
+
 def get_available_avatars() -> List[str]:
     """获取可用的人设目录列表"""
     avatar_base_dir = os.path.join(ROOT_DIR, "data/avatars")
@@ -2330,6 +2333,38 @@ def get_all_configs():
             'status': 'error',
             'message': str(e)
         })
+
+@app.route('/get_announcement')
+def get_announcement():
+    """获取公告配置信息"""
+    try:
+        # 检查公告配置文件是否存在
+        if not os.path.exists(ANNOUNCEMENT_CONFIG_PATH):
+            # 如果不存在，创建默认配置
+            default_announcement = {
+                "enabled": True,
+                "title": "系统公告",
+                "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。",
+                "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "version": "1.0.0",
+                "type": "info",
+                "show_once_per_day": True
+            }
+            
+            # 写入默认配置
+            with open(ANNOUNCEMENT_CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(default_announcement, f, ensure_ascii=False, indent=4)
+            
+            return jsonify(default_announcement)
+        
+        # 读取公告配置
+        with open(ANNOUNCEMENT_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            announcement_config = json.load(f)
+        
+        return jsonify(announcement_config)
+    except Exception as e:
+        logger.error(f"获取公告配置失败: {str(e)}")
+        return jsonify({"enabled": False, "title": "", "content": "", "type": "info"})
 
 if __name__ == '__main__':
     try:
