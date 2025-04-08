@@ -106,8 +106,13 @@ class LLMService:
         2. Gemini格式: <think>思考过程</think>\n\n最终回复
         """
         try:
-            # 过滤 Gemini 格式 (<think>思考过程</think>)
-            filtered_content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
+            # 使用分割替代正则表达式处理 Gemini 格式
+            if '<think>' in content and '</think>' in content:
+                parts = content.split('</think>')
+                # 只保留最后一个</think>后的内容
+                filtered_content = parts[-1].strip()
+            else:
+                filtered_content = content
             
             # 过滤 R1 格式 (思考过程...\n\n\n最终回复)
             # 查找三个连续换行符
