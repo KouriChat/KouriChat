@@ -303,27 +303,21 @@ class Updater:
                 shutil.rmtree(self.temp_dir)
                 logger.info(f"已清理临时更新目录: {self.temp_dir}")
                 
-            # 清理备份目录
+            # 清理备份目录 - 添加更多重试和强制删除逻辑
             backup_dir = os.path.join(self.root_dir, 'backup')
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir)
-                logger.info(f"已清理备份目录: {backup_dir}")
+            self._force_remove_directory(backup_dir, "备份目录")
                 
             # 清理解压后的仓库文件夹（处理多种可能的命名格式）
             possible_repo_dirs = [
                 os.path.join(self.root_dir, f"{self.REPO_NAME}-{self.REPO_BRANCH}"),
                 os.path.join(self.root_dir, f"{self.REPO_OWNER}-{self.REPO_NAME}-{self.REPO_BRANCH}"),
                 os.path.join(self.root_dir, f"{self.REPO_NAME}-Kourichat-Festival-Test"),  # 添加实际的文件夹名称
-                os.path.join(self.root_dir, f"{self.REPO_NAME}-Kourichat-Festival-Test-{self.REPO_BRANCH}")
+                os.path.join(self.root_dir, f"{self.REPO_NAME}-Kourichat-Festival-Test-{self.REPO_BRANCH}"),
+                os.path.join(self.root_dir, "KouriChat-Kourichat-Festival-Test")  # 确保此目录也被尝试删除
             ]
             
             for repo_dir in possible_repo_dirs:
-                if os.path.exists(repo_dir):
-                    try:
-                        shutil.rmtree(repo_dir)
-                        logger.info(f"已清理解压目录: {repo_dir}")
-                    except Exception as e:
-                        logger.error(f"清理目录失败 {repo_dir}: {str(e)}")
+                self._force_remove_directory(repo_dir, "解压目录")
                         
             # 清理其他可能的格式的解压文件夹
             for item in os.listdir(self.root_dir):
@@ -334,31 +328,98 @@ class Updater:
                         item.startswith(f"{self.REPO_OWNER}-{self.REPO_NAME}") or
                         "Kourichat-Festival-Test" in item):  # 添加实际的文件夹名称匹配
                         if item_path != self.root_dir:  # 确保不会删除项目根目录
-                            try:
-                                shutil.rmtree(item_path)
-                                logger.info(f"已清理额外的解压目录: {item}")
-                            except Exception as e:
-                                logger.error(f"清理目录失败 {item_path}: {str(e)}")
+                            self._force_remove_directory(item_path, f"额外的解压目录: {item}")
                         
         except Exception as e:
             logger.error(f"清理临时文件失败: {str(e)}")
-            # 尝试使用系统命令强制删除
-            try:
-                import subprocess
-                if os.name == 'nt':  # Windows
-                    for repo_dir in possible_repo_dirs:
-                        if os.path.exists(repo_dir):
-                            subprocess.run(['rd', '/s', '/q', repo_dir], shell=True)
-                    if os.path.exists(backup_dir):
-                        subprocess.run(['rd', '/s', '/q', backup_dir], shell=True)
-                else:  # Linux/Mac
-                    for repo_dir in possible_repo_dirs:
-                        if os.path.exists(repo_dir):
-                            subprocess.run(['rm', '-rf', repo_dir])
-                    if os.path.exists(backup_dir):
-                        subprocess.run(['rm', '-rf', backup_dir])
-            except Exception as e2:
-                logger.error(f"使用系统命令清理失败: {str(e2)}")
+            # 继续进行强制系统命令删除
+            self._system_force_remove(possible_repo_dirs, backup_dir)
+    
+    def _force_remove_directory(self, directory, dir_type="目录"):
+        """使用多种方法强制删除目录"""
+        if not os.path.exists(directory):
+            return
+            
+        # 尝试修改权限后删除
+        try:
+            for root, dirs, files in os.walk(directory, topdown=False):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.chmod(file_path, 0o777)
+                    except:
+                        pass
+                for dir in dirs:
+                    dir_path = os.path.join(root, dir)
+                    try:
+                        os.chmod(dir_path, 0o777)
+                    except:
+                        pass
+            
+            # 尝试常规删除
+            shutil.rmtree(directory)
+            logger.info(f"已清理{dir_type}: {directory}")
+            return
+        except Exception as e:
+            logger.warning(f"常规方法删除{dir_type}失败: {str(e)}")
+        
+        # 尝试使用系统命令删除
+        try:
+            import subprocess
+            if os.name == 'nt':  # Windows
+                subprocess.run(['rd', '/s', '/q', directory], shell=True, timeout=10)
+            else:  # Linux/Mac
+                subprocess.run(['rm', '-rf', directory], timeout=10)
+                
+            if not os.path.exists(directory):
+                logger.info(f"已使用系统命令清理{dir_type}: {directory}")
+            else:
+                logger.warning(f"系统命令无法完全清理{dir_type}: {directory}")
+        except Exception as e:
+            logger.error(f"使用系统命令清理{dir_type}失败: {str(e)}")
+    
+    def _system_force_remove(self, repo_dirs, backup_dir):
+        """最后的系统命令强制删除尝试"""
+        try:
+            import subprocess
+            import time
+            
+            if os.name == 'nt':  # Windows
+                # 尝试使用强制删除命令
+                for repo_dir in repo_dirs:
+                    if os.path.exists(repo_dir):
+                        try:
+                            # 先尝试常规删除
+                            subprocess.run(['rd', '/s', '/q', repo_dir], shell=True, timeout=5)
+                            time.sleep(1)
+                            
+                            # 如果仍然存在，尝试使用del命令
+                            if os.path.exists(repo_dir):
+                                subprocess.run(['del', '/f', '/s', '/q', repo_dir], shell=True, timeout=5)
+                                time.sleep(1)
+                                
+                                # 如果仍然存在，尝试使用robocopy技巧清空后删除
+                                if os.path.exists(repo_dir):
+                                    empty_dir = os.path.join(self.temp_dir, 'empty')
+                                    os.makedirs(empty_dir, exist_ok=True)
+                                    subprocess.run(['robocopy', empty_dir, repo_dir, '/mir'], timeout=10)
+                                    os.rmdir(repo_dir)
+                        except:
+                            pass
+                            
+                if os.path.exists(backup_dir):
+                    try:
+                        subprocess.run(['rd', '/s', '/q', backup_dir], shell=True, timeout=5)
+                    except:
+                        pass
+            else:  # Linux/Mac
+                for repo_dir in repo_dirs:
+                    if os.path.exists(repo_dir):
+                        subprocess.run(['rm', '-rf', '--no-preserve-root', repo_dir], timeout=5)
+                if os.path.exists(backup_dir):
+                    subprocess.run(['rm', '-rf', '--no-preserve-root', backup_dir], timeout=5)
+        except Exception as e:
+            logger.error(f"最终强制系统命令清理失败: {str(e)}")
 
     def prompt_update(self, update_info: dict) -> bool:
         """提示用户是否更新"""

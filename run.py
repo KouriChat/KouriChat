@@ -34,6 +34,7 @@ def initialize_system():
     try:
         from src.utils.cleanup import cleanup_pycache
         from src.main import main
+        from src.autoupdate.updater import Updater  # 导入更新器
 
         print_banner()
         print_status("系统初始化中...", "info", "LAUNCH")
@@ -79,6 +80,16 @@ def initialize_system():
             cleanup_utils.cleanup_all()
             image_handler.cleanup_temp_dir()
             voice_handler.cleanup_voice_dir()
+            
+            # 清理更新残留文件
+            print_status("清理更新残留文件...", "info", "CLEAN")
+            try:
+                updater = Updater()
+                updater.cleanup()  # 调用清理功能
+                print_status("更新残留文件清理完成", "success", "CHECK")
+            except Exception as e:
+                print_status(f"清理更新残留文件失败: {str(e)}", "warning", "CROSS")
+                
         except Exception as e:
             print_status(f"清理缓存失败: {str(e)}", "warning", "CROSS")
         print_status("缓存清理完成", "success", "CHECK")
