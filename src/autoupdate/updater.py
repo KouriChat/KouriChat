@@ -24,7 +24,7 @@ class Updater:
     # GitHub仓库信息
     REPO_OWNER = "KouriChat"
     REPO_NAME = "KouriChat"
-    REPO_BRANCH = "WeChat-wxauto"
+    REPO_BRANCH = "Kourichat-Festival-Test"
     GITHUB_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
     
     # 需要跳过的文件和文件夹（不会被更新）
@@ -156,20 +156,8 @@ class Updater:
 
                 # 只有当最新版本大于当前版本时才返回更新信息
                 if latest_ver_tuple > current_ver_tuple:
-                    # 获取最新release的下载地址
-                    release_url = self.get_proxy_url(f"{self.GITHUB_API}/releases/latest")
-                    response = requests.get(
-                        release_url,
-                        headers=headers,
-                        timeout=10
-                    )
-                    
-                    if response.status_code == 404:
-                        # 如果没有release，使用分支的zip下载地址
-                        download_url = f"{self.GITHUB_API}/zipball/{self.REPO_BRANCH}"
-                    else:
-                        release_info = response.json()
-                        download_url = release_info['zipball_url']
+                    # 直接使用分支的zip下载地址
+                    download_url = f"{self.GITHUB_API}/zipball/{self.REPO_BRANCH}"
                     
                     # 确保下载URL也使用代理
                     proxied_download_url = self.get_proxy_url(download_url)
