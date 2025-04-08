@@ -1764,8 +1764,8 @@ class MessageHandler:
             first_timestamp = first_timestamp or datetime.now().strftime(
                 "%Y-%m-%d %H:%M"
             )
-            merged_content = f"[{first_timestamp}]ta 私聊对你说：{content_text}"
-            logger.info(f"合并后的消息内容: {merged_content[:100]}...") # 记录合并后的内容
+            merged_content = f"[{first_timestamp}][{username}] ：{content_text}"
+            logger.info(f"合并后的消息内容: {merged_content[:200]}...") # 记录合并后的内容
 
             if context:
                 merged_content = f"{context}\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容，并且回复不要重复！！！)\n\n{merged_content}"
@@ -2237,6 +2237,10 @@ class MessageHandler:
         
         # 移除多余的空白字符
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        # 移除[timestamp][username]前缀
+        # 匹配格式: [2025-04-09 01:15:11][雾未开] ：消息内容
+        cleaned = re.sub(r'\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\[.*?\] ：', '', cleaned)
         
         return cleaned
 
@@ -4209,7 +4213,7 @@ class MessageHandler:
                 hasattr(self, "send_message_lock_time")
                 and current_time - self.send_message_lock_time > 300
             ):
-                logger.warning("检测到消息发送锁可能已死锁，强制重置")
+                logger.debug("检测到消息发送锁可能已死锁，强制重置")
                 self.send_message_lock = threading.Lock()
 
             # 记录当前时间作为下次检查的参考

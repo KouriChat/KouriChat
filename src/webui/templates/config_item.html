@@ -542,251 +542,350 @@
         });
         </script>
     </div>
-{% elif config.type == "number" %}
-    {% if key == 'MAX_TOKEN' %}
-        <style>
-            .token-slider {
-                -webkit-appearance: none;
-                appearance: none;
-                width: 100%;
-                height: 8px;
-                border-radius: 4px;
-                background: #e2e8f0;
-                outline: none;
-                transition: all 0.3s ease;
-            }
-            
-            .token-slider::-webkit-slider-thumb {
-                -webkit-appearance: none;
-                appearance: none;
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                background: #fff;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                box-shadow: 0 0 4px rgba(0,0,0,0.2);
-                border: 2px solid #0d6efd;
-            }
-            
-            .token-slider::-moz-range-track {
-                background: #e2e8f0;
-                height: 8px;
-                border-radius: 4px;
-            }
-            
-            .token-slider::-moz-range-thumb {
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                background: #fff;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                box-shadow: 0 0 4px rgba(0,0,0,0.2);
-                border: 2px solid #0d6efd;
-            }
-            
-            .token-slider::-webkit-slider-thumb:hover {
-                background: #f8f9fa;
-                box-shadow: 0 0 8px rgba(13,110,253,0.5);
-                transform: scale(1.1);
-            }
-            
-            .token-slider:active {
-                opacity: 0.8;
-            }
-            
-            .token-value {
-                transition: all 0.2s ease;
-            }
-            .token-value.updating {
-                color: #0d6efd;
-                transform: scale(1.1);
-            }
-        </style>
+{% elif key == 'MAX_TOKEN' %}
+    <style>
+        .token-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #e2e8f0;
+            outline: none;
+            transition: all 0.3s ease;
+        }
         
-        <div class="mb-3">
-            <div class="d-flex justify-content-between align-items-center">
-                <span>当前值: <strong id="{{ key }}_display" class="token-value">{{ config.value }}</strong></span>
-            </div>
-            <input type="range" 
-                class="token-slider" 
-                id="{{ key }}_slider" 
-                min="50"
-                max="5000"
-                step="5"
-                value="{{ config.value }}"
-                oninput="updateToken('{{ key }}', this.value)"
-                style="cursor: pointer;"
-                title="最大token数滑动条">
-            <div class="d-flex justify-content-between" style="color: #6c757d; font-size: 0.875rem;">
-                <span>50</span>
-                <span>5000</span>
-            </div>
-            <!-- 隐藏的实际提交值输入框 -->
-            <input type="hidden" 
-                id="{{ key }}" 
-                name="{{ key }}" 
-                value="{{ config.value }}">
-        </div>
-
-        <script>
-            function updateToken(key, value) {
-                // 将字符串转换为整数
-                const numValue = parseInt(value);
-                
-                // 更新显示值
-                const displayElement = document.getElementById(key + '_display');
-                if (displayElement) {
-                    displayElement.classList.add('updating');
-                    displayElement.textContent = numValue;
-                    setTimeout(() => {
-                        displayElement.classList.remove('updating');
-                    }, 300);
-                }
-                
-                // 更新隐藏的实际提交值
-                const inputElement = document.getElementById(key);
-                if (inputElement) {
-                    inputElement.value = numValue;
-                }
-            }
-        </script>
-    {% elif key == 'TEMPERATURE' %}
-        <style>
-            .temperature-slider {
-                -webkit-appearance: none;
-                appearance: none;
-                width: 100%;
-                height: 8px;
-                border-radius: 4px;
-                background: linear-gradient(to right, 
-                    #3498db 0%,
-                    #3498db 60%,
-                    #9b59b6 70%,
-                    #e74c3c 80%,
-                    #e74c3c 100%
-                );
-                outline: none;
-                transition: all 0.3s ease;
-            }
-            
-            .temperature-slider::-webkit-slider-thumb {
-                -webkit-appearance: none;
-                appearance: none;
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                background: #fff;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                box-shadow: 0 0 4px rgba(0,0,0,0.2);
-                border: 2px solid #0d6efd;
-            }
-            
-            .temperature-slider::-moz-range-thumb {
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                background: #fff;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                box-shadow: 0 0 4px rgba(0,0,0,0.2);
-                border: 2px solid #0d6efd;
-            }
-            
-            .temperature-value {
-                transition: all 0.2s ease;
-            }
-            .temperature-value.updating {
-                color: #0d6efd;
-                transform: scale(1.1);
-            }
-            
-            .slider-labels {
-                color: #6c757d;
-                font-size: 0.875rem;
-            }
-            .slider-labels .low {
-                color: #3498db;
-            }
-            .slider-labels .high {
-                color: #e74c3c;
-            }
-        </style>
+        .token-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+            border: 2px solid #0d6efd;
+        }
         
-        <div class="mb-3">
-            <div class="d-flex justify-content-between align-items-center">
-                <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value }}</strong></span>
-            </div>
-            <input type="range" 
-                class="temperature-slider" 
-                id="{{ key }}_slider" 
-                min="0.00"
-                max="1.70"
-                step="0.01"
-                value="{{ config.value }}"
-                oninput="updateTemperature('{{ key }}', this.value)"
-                style="cursor: pointer;"
-                title="温度参数滑动条">
-            <div class="d-flex justify-content-between slider-labels">
-                <span class="low">0.0</span>
-                <span class="high">1.7</span>
-            </div>
-            <!-- 隐藏的实际提交值输入框 -->
-            <input type="hidden" 
-                id="{{ key }}" 
-                name="{{ key }}" 
-                value="{{ config.value }}">
+        .token-slider::-moz-range-track {
+            background: #e2e8f0;
+            height: 8px;
+            border-radius: 4px;
+        }
+        
+        .token-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+            border: 2px solid #0d6efd;
+        }
+        
+        .token-slider::-webkit-slider-thumb:hover {
+            background: #f8f9fa;
+            box-shadow: 0 0 8px rgba(13,110,253,0.5);
+            transform: scale(1.1);
+        }
+        
+        .token-slider:active {
+            opacity: 0.8;
+        }
+        
+        .token-value {
+            transition: all 0.2s ease;
+        }
+        .token-value.updating {
+            color: #0d6efd;
+            transform: scale(1.1);
+        }
+    </style>
+    
+    <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <span>当前值: <strong id="{{ key }}_display" class="token-value">{{ config.value }}</strong></span>
         </div>
-
-        <script>
-            function updateTemperature(key, value) {
-                // 将字符串转换为数字
-                const numValue = parseFloat(value);
-                
-                // 更新显示值
-                const displayElement = document.getElementById(key + '_display');
-                if (displayElement) {
-                    displayElement.classList.add('updating');
-                    displayElement.textContent = numValue;
-                    setTimeout(() => {
-                        displayElement.classList.remove('updating');
-                    }, 300);
-                }
-                
-                // 更新隐藏的实际提交值
-                const inputElement = document.getElementById(key);
-                if (inputElement) {
-                    inputElement.value = numValue;
-                    // 触发 change 事件以确保表单能捕获到值的变化
-                    const event = new Event('change', { bubbles: true });
-                    inputElement.dispatchEvent(event);
-                }
-
-                // 调试输出
-                console.log(`Temperature updated - key: ${key}, value: ${numValue}, type: ${typeof numValue}`);
-                console.log(`Hidden input value: ${document.getElementById(key).value}`);
-            }
-
-            // 确保页面加载时初始化温度值
-            document.addEventListener('DOMContentLoaded', function() {
-                const slider = document.getElementById('{{ key }}_slider');
-                if (slider) {
-                    updateTemperature('{{ key }}', slider.value);
-                }
-            });
-        </script>
-    {% else %}
-        <input type="number" 
-            class="form-control" 
+        <input type="range" 
+            class="token-slider" 
+            id="{{ key }}_slider" 
+            min="50"
+            max="5000"
+            step="5"
+            value="{{ config.value }}"
+            oninput="updateToken('{{ key }}', this.value)"
+            style="cursor: pointer;"
+            title="最大token数滑动条">
+        <div class="d-flex justify-content-between" style="color: #6c757d; font-size: 0.875rem;">
+            <span>50</span>
+            <span>5000</span>
+        </div>
+        <!-- 隐藏的实际提交值输入框 -->
+        <input type="hidden" 
             id="{{ key }}" 
             name="{{ key }}" 
+            value="{{ config.value }}">
+    </div>
+
+    <script>
+        // 获取配置文件中的最新Token值
+        async function fetchCurrentToken() {
+            try {
+                const response = await fetch('/get_config');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success' && data.config && 
+                        typeof data.config.MAX_TOKEN !== 'undefined') {
+                        return parseInt(data.config.MAX_TOKEN);
+                    }
+                }
+                return null;
+            } catch (error) {
+                console.error("获取Token值失败:", error);
+                return null;
+            }
+        }
+
+        function updateToken(key, value) {
+            // 将字符串转换为整数
+            const numValue = parseInt(value);
+            
+            // 更新显示值
+            const displayElement = document.getElementById(key + '_display');
+            if (displayElement) {
+                displayElement.classList.add('updating');
+                displayElement.textContent = numValue;
+                setTimeout(() => {
+                    displayElement.classList.remove('updating');
+                }, 300);
+            }
+            
+            // 更新隐藏的实际提交值
+            const inputElement = document.getElementById(key);
+            if (inputElement) {
+                inputElement.value = numValue;
+            }
+        }
+
+        // 立即初始化滑块
+        (function initializeSlider() {
+            const slider = document.getElementById('{{ key }}_slider');
+            const displayEl = document.getElementById('{{ key }}_display');
+            const inputEl = document.getElementById('{{ key }}');
+            
+            if (slider && displayEl && inputEl) {
+                // 使用模板值作为初始值（可能是默认值）
+                let initialValue = {{ config.value }};
+                console.log("模板初始Token值:", initialValue);
+                
+                // 确保滑块、显示和隐藏输入的值一致
+                slider.value = initialValue;
+                displayEl.textContent = initialValue;
+                inputEl.value = initialValue;
+            }
+        })();
+        
+        // 文档加载完成后，尝试从服务器获取实际值
+        document.addEventListener('DOMContentLoaded', async function() {
+            // 从服务器获取最新值
+            const serverValue = await fetchCurrentToken();
+            if (serverValue !== null) {
+                // 获取元素
+                const slider = document.getElementById('{{ key }}_slider');
+                const displayEl = document.getElementById('{{ key }}_display');
+                const inputEl = document.getElementById('{{ key }}');
+                
+                console.log("从服务器获取的Token值:", serverValue);
+                
+                // 更新所有相关元素
+                if (slider) slider.value = serverValue;
+                if (displayEl) displayEl.textContent = serverValue;
+                if (inputEl) inputEl.value = serverValue;
+                
+                console.log("滑块值已更新为:", serverValue);
+            } else {
+                console.warn("无法获取服务器Token值，使用默认值");
+            }
+        });
+    </script>
+{% elif key == 'TEMPERATURE' %}
+    <style>
+        .temperature-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, 
+                #3498db 0%,
+                #3498db 60%,
+                #9b59b6 70%,
+                #e74c3c 80%,
+                #e74c3c 100%
+            );
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        
+        .temperature-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+            border: 2px solid #0d6efd;
+        }
+        
+        .temperature-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.2);
+            border: 2px solid #0d6efd;
+        }
+        
+        .temperature-value {
+            transition: all 0.2s ease;
+        }
+        .temperature-value.updating {
+            color: #0d6efd;
+            transform: scale(1.1);
+        }
+        
+        .slider-labels {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        .slider-labels .low {
+            color: #3498db;
+        }
+        .slider-labels .high {
+            color: #e74c3c;
+        }
+    </style>
+    
+    <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value|float|round(1) }}</strong></span>
+        </div>
+        <input type="range" 
+            class="temperature-slider" 
+            id="{{ key }}_slider" 
+            min="0.00"
+            max="1.70"
+            step="0.01"
             value="{{ config.value }}"
-            step="0.1"
-            {% if config.min is defined %}min="{{ config.min }}"{% endif %}
-            {% if config.max is defined %}max="{{ config.max }}"{% endif %}>
-    {% endif %}
+            oninput="updateTemperature('{{ key }}', this.value)"
+            style="cursor: pointer;"
+            title="温度参数滑动条">
+        <div class="d-flex justify-content-between slider-labels">
+            <span class="low">0.0</span>
+            <span class="high">1.7</span>
+        </div>
+        <!-- 隐藏的实际提交值输入框 -->
+        <input type="hidden" 
+            id="{{ key }}" 
+            name="{{ key }}" 
+            value="{{ config.value }}">
+    </div>
+
+    <script>
+        // 获取配置文件中的最新温度值
+        async function fetchTemperatureValue() {
+            try {
+                const response = await fetch('/get_config');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success' && data.config && 
+                        typeof data.config.TEMPERATURE !== 'undefined') {
+                        return parseFloat(data.config.TEMPERATURE);
+                    }
+                }
+                return null;
+            } catch (error) {
+                console.error("获取温度值失败:", error);
+                return null;
+            }
+        }
+        
+        function updateTemperature(key, value) {
+            // 将字符串转换为数字
+            const numValue = parseFloat(value);
+            
+            // 更新显示值
+            const displayElement = document.getElementById(key + '_display');
+            if (displayElement) {
+                displayElement.classList.add('updating');
+                displayElement.textContent = numValue.toFixed(1);
+                setTimeout(() => {
+                    displayElement.classList.remove('updating');
+                }, 300);
+            }
+            
+            // 更新隐藏的实际提交值
+            const inputElement = document.getElementById(key);
+            if (inputElement) {
+                inputElement.value = numValue;
+                // 触发 change 事件以确保表单能捕获到值的变化
+                const event = new Event('change', { bubbles: true });
+                inputElement.dispatchEvent(event);
+            }
+
+            // 调试输出
+            console.log(`Temperature updated - key: ${key}, value: ${numValue.toFixed(1)}, type: ${typeof numValue}`);
+            console.log(`Hidden input value: ${document.getElementById(key).value}`);
+        }
+
+        // 立即初始化滑块
+        (function initializeSlider() {
+            const slider = document.getElementById('{{ key }}_slider');
+            const displayEl = document.getElementById('{{ key }}_display');
+            const inputEl = document.getElementById('{{ key }}');
+            
+            if (slider && displayEl && inputEl) {
+                // 使用模板值作为初始值（可能是默认值）
+                let initialValue = {{ config.value }};
+                console.log("模板初始温度值:", initialValue);
+                
+                // 确保滑块、显示和隐藏输入的值一致
+                slider.value = initialValue;
+                displayEl.textContent = parseFloat(initialValue).toFixed(1);
+                inputEl.value = initialValue;
+            }
+        })();
+        
+        // 文档加载完成后，尝试从服务器获取实际值
+        document.addEventListener('DOMContentLoaded', async function() {
+            // 从服务器获取最新值
+            const serverValue = await fetchTemperatureValue();
+            if (serverValue !== null) {
+                // 获取元素
+                const slider = document.getElementById('{{ key }}_slider');
+                const displayEl = document.getElementById('{{ key }}_display');
+                const inputEl = document.getElementById('{{ key }}');
+                
+                console.log("从服务器获取的温度值:", serverValue);
+                
+                // 更新所有相关元素
+                if (slider) slider.value = serverValue;
+                if (displayEl) displayEl.textContent = parseFloat(serverValue).toFixed(1);
+                if (inputEl) inputEl.value = serverValue;
+                
+                console.log("温度滑块值已更新为:", serverValue);
+            } else {
+                console.warn("无法获取服务器温度值，使用默认值");
+            }
+        });
+    </script>
 {% elif key == 'MOONSHOT_API_KEY' %}
     <div class="mb-3">
         <input type="text" class="form-control mb-2" 
@@ -941,7 +1040,7 @@
     
     <div class="mb-3">
         <div class="d-flex justify-content-between align-items-center">
-            <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value }}</strong></span>
+            <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value|float|round(1) }}</strong></span>
         </div>
         <input type="range" 
             class="img-recog-temperature-slider" 
@@ -991,7 +1090,7 @@
             const displayElement = document.getElementById(key + '_display');
             if (displayElement) {
                 displayElement.classList.add('updating');
-                displayElement.textContent = numValue;
+                displayElement.textContent = numValue.toFixed(1);
                 setTimeout(() => {
                     displayElement.classList.remove('updating');
                 }, 300);
@@ -1017,7 +1116,7 @@
                 
                 // 确保滑块、显示和隐藏输入的值一致
                 slider.value = initialValue;
-                displayEl.textContent = initialValue;
+                displayEl.textContent = parseFloat(initialValue).toFixed(1);
                 inputEl.value = initialValue;
             }
         })();
@@ -1036,7 +1135,7 @@
                 
                 // 更新所有相关元素
                 if (slider) slider.value = serverValue;
-                if (displayEl) displayEl.textContent = serverValue;
+                if (displayEl) displayEl.textContent = parseFloat(serverValue).toFixed(1);
                 if (inputEl) inputEl.value = serverValue;
                 
                 console.log("滑块值已更新为:", serverValue);
@@ -1484,6 +1583,30 @@
             }
         });
     </script>
+{% elif config.type == "number" %}
+    <input type="number" 
+        class="form-control" 
+        id="{{ key }}" 
+        name="{{ key }}" 
+        value="{{ config.value }}"
+        step="0.1"
+        {% if config.min is defined %}min="{{ config.min }}"{% endif %}
+        {% if config.max is defined %}max="{{ config.max }}"{% endif %}>
+{% elif key == 'MOONSHOT_API_KEY' %}
+    <div class="mb-3">
+        <input type="text" class="form-control mb-2" 
+            id="{{ key }}" name="{{ key }}" 
+            value="{{ config.value }}"
+            placeholder="请输入密钥">
+        <a href="https://platform.moonshot.cn/console/api-keys" 
+            class="btn btn-primary w-100"
+            target="_blank"
+            rel="noopener"
+            id="imgRecogRegisterBtn"
+            style="display: none;">
+            <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
+        </a>
+    </div>
 {% else %}
     <input type="text" class="form-control" 
         id="{{ key }}" name="{{ key }}" 

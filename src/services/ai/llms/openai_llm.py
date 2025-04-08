@@ -59,15 +59,15 @@ class OpenAILLM(BaseLLM):
                 timeout=timeout,
                 max_retries=2  # 添加自动重试次数
             )
-            logger.info(f"OpenAI LLM 客户端初始化完成，模型: {self.model_name}")
+            logger.debug(f"OpenAI LLM 客户端初始化完成，模型: {self.model_name}")
             
             # 尝试一个简单请求测试连接
             logger.info("正在测试API连接...")
             test_result = self._test_connection()
             if test_result:
-                logger.info("API连接测试成功")
+                logger.debug("API连接测试成功")
             else:
-                logger.warning("API连接测试失败，但已创建客户端实例")
+                logger.debug("API连接测试失败，但已创建客户端实例")
                 
         except Exception as e:
             logger.error(f"OpenAI LLM 客户端初始化失败: {str(e)}")
@@ -77,7 +77,7 @@ class OpenAILLM(BaseLLM):
         """测试API连接"""
         try:
             # 使用模型列表API进行简单测试，通常不消耗token
-            self.logger.info(f"尝试连接API: {self.url}")
+            self.logger.debug(f"尝试连接API: {self.url}")
             
             # 确保已导入所需库
             import httpx

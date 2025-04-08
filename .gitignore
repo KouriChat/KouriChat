@@ -192,24 +192,13 @@ cython_debug/
 .cursor/
 .cursorrules
 
-data/avatars/ATRI/memory.json
-data/avatars/ATRI/rag_storage.json
-data/avatars/MONO/memory.json
-data/avatars/MONO/rag_storage.json
-data/avatars/MONO/groups/群聊测试/rag_storage.json
-data/avatars/MONO/groups/群聊测试/memory.json
-data/avatars/Nijiko/groups/群聊测试
-data/avatars/Nijiko/groups/群聊测试
-data/avatars/Nijiko/memory.json
-data/avatars/default/groups/群聊测试
-data/avatars/groups/群聊测试
+data/avatars/Lucy
+data/avatars/MONO
+data/avatars/Nijiko
+data/avatars/ATRI
+data/images
 temp/emoji
-data/avatars/MONO/memory.json.bak
-data/avatars/MONO/groups/群聊测试/memory.json.bak
-fix.txt
-fix_line.txt
 debug_images
 temp/voice_recognition
-data/avatars/Lucy
 
 *.mdb
