@@ -42,6 +42,8 @@ class Updater:
 
     # GitHub代理列表
     PROXY_SERVERS = [
+        "https://ghproxy.com/https://github.com/",
+        "https://hub.fastgit.xyz/",
         "https://ghfast.top/",
         "https://github.moeyy.xyz/", 
         "https://git.886.be/",
@@ -156,8 +158,8 @@ class Updater:
 
                 # 只有当最新版本大于当前版本时才返回更新信息
                 if latest_ver_tuple > current_ver_tuple:
-                    # 直接使用分支的zip下载地址
-                    download_url = f"{self.GITHUB_API}/zipball/{self.REPO_BRANCH}"
+                    # 使用正确的GitHub zip下载地址格式
+                    download_url = f"https://github.com/{self.REPO_OWNER}/{self.REPO_NAME}/archive/{self.REPO_BRANCH}.zip"
                     
                     # 确保下载URL也使用代理
                     proxied_download_url = self.get_proxy_url(download_url)
@@ -296,18 +298,74 @@ class Updater:
     def cleanup(self):
         """清理临时文件"""
         try:
+            # 清理临时更新目录
             if os.path.exists(self.temp_dir):
                 shutil.rmtree(self.temp_dir)
+                logger.info(f"已清理临时更新目录: {self.temp_dir}")
+                
+            # 清理备份目录
             backup_dir = os.path.join(self.root_dir, 'backup')
             if os.path.exists(backup_dir):
                 shutil.rmtree(backup_dir)
+                logger.info(f"已清理备份目录: {backup_dir}")
+                
+            # 清理解压后的仓库文件夹（处理多种可能的命名格式）
+            possible_repo_dirs = [
+                os.path.join(self.root_dir, f"{self.REPO_NAME}-{self.REPO_BRANCH}"),
+                os.path.join(self.root_dir, f"{self.REPO_OWNER}-{self.REPO_NAME}-{self.REPO_BRANCH}"),
+                os.path.join(self.root_dir, f"{self.REPO_NAME}-Kourichat-Festival-Test"),  # 添加实际的文件夹名称
+                os.path.join(self.root_dir, f"{self.REPO_NAME}-Kourichat-Festival-Test-{self.REPO_BRANCH}")
+            ]
+            
+            for repo_dir in possible_repo_dirs:
+                if os.path.exists(repo_dir):
+                    try:
+                        shutil.rmtree(repo_dir)
+                        logger.info(f"已清理解压目录: {repo_dir}")
+                    except Exception as e:
+                        logger.error(f"清理目录失败 {repo_dir}: {str(e)}")
+                        
+            # 清理其他可能的格式的解压文件夹
+            for item in os.listdir(self.root_dir):
+                item_path = os.path.join(self.root_dir, item)
+                if os.path.isdir(item_path):
+                    # 检查是否是解压后的仓库文件夹
+                    if (item.startswith(f"{self.REPO_NAME}-") or 
+                        item.startswith(f"{self.REPO_OWNER}-{self.REPO_NAME}") or
+                        "Kourichat-Festival-Test" in item):  # 添加实际的文件夹名称匹配
+                        if item_path != self.root_dir:  # 确保不会删除项目根目录
+                            try:
+                                shutil.rmtree(item_path)
+                                logger.info(f"已清理额外的解压目录: {item}")
+                            except Exception as e:
+                                logger.error(f"清理目录失败 {item_path}: {str(e)}")
+                        
         except Exception as e:
             logger.error(f"清理临时文件失败: {str(e)}")
+            # 尝试使用系统命令强制删除
+            try:
+                import subprocess
+                if os.name == 'nt':  # Windows
+                    for repo_dir in possible_repo_dirs:
+                        if os.path.exists(repo_dir):
+                            subprocess.run(['rd', '/s', '/q', repo_dir], shell=True)
+                    if os.path.exists(backup_dir):
+                        subprocess.run(['rd', '/s', '/q', backup_dir], shell=True)
+                else:  # Linux/Mac
+                    for repo_dir in possible_repo_dirs:
+                        if os.path.exists(repo_dir):
+                            subprocess.run(['rm', '-rf', repo_dir])
+                    if os.path.exists(backup_dir):
+                        subprocess.run(['rm', '-rf', backup_dir])
+            except Exception as e2:
+                logger.error(f"使用系统命令清理失败: {str(e2)}")
 
     def prompt_update(self, update_info: dict) -> bool:
         """提示用户是否更新"""
         print(self.format_version_info(self.get_current_version(), update_info))
         
+        # 在WebUI模式下，由前端提供输入确认
+        # 这里为了兼容命令行模式，保留原有代码
         while True:
             choice = input("\n是否现在更新? (y/n): ").lower().strip()
             if choice in ('y', 'yes'):
@@ -322,35 +380,22 @@ class Updater:
             progress = []
             def log_progress(step, success=True, details=""):
                 msg = self.format_update_progress(step, success, details)
+                logger.info(msg)  # 确保记录到日志
                 progress.append(msg)
                 if callback:
                     callback(msg)
-
+                    
             # 检查更新
             log_progress("开始检查GitHub更新...")
             update_info = self.check_for_updates()
-            if not update_info['has_update']:
+            if not update_info.get('has_update', False):
                 log_progress("检查更新完成", True, "当前已是最新版本")
-                print("\n当前已是最新版本，无需更新")
-                print("按回车键继续...")
-                input()
                 return {
-                    'success': True,
+                    'success': True, 
                     'output': '\n'.join(progress)
                 }
             
-            # 提示用户是否更新
-            log_progress("提示用户是否更新...")
-            if not self.prompt_update(update_info):
-                log_progress("提示用户是否更新", True, "用户取消更新")
-                print("\n已取消更新")
-                print("按回车键继续...")
-                input()
-                return {
-                    'success': True,
-                    'output': '\n'.join(progress)
-                }
-                
+            # WebUI模式下跳过确认，因为确认已经在前端完成
             log_progress(f"开始更新到版本: {update_info['version']}")
             
             # 下载更新

@@ -643,20 +643,28 @@ def confirm_update():
     """确认是否更新"""
     try:
         choice = (request.json or {}).get('choice', '').lower()
-        if choice in ('y', 'yes'):
+        logger.info(f"收到用户更新选择: {choice}")
+        
+        if choice in ('y', 'yes', '是', '确认', '确定'):
+            logger.info("用户确认更新，开始执行更新过程")
             updater = Updater()
-            result = updater.update()
+            result = updater.update(
+                callback=lambda msg: logger.info(f"更新进度: {msg}")
+            )
             
+            logger.info(f"更新完成，结果: {result['success']}")
             return jsonify({
                 'status': 'success' if result['success'] else 'error',
                 'console_output': result['output']
             })
         else:
+            logger.info("用户取消更新")
             return jsonify({
                 'status': 'success',
                 'console_output': '用户取消更新'
             })
     except Exception as e:
+        logger.error(f"更新失败: {str(e)}", exc_info=True)
         return jsonify({
             'status': 'error',
             'console_output': f'更新失败: {str(e)}'

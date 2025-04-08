@@ -488,6 +488,34 @@
             -webkit-backdrop-filter: blur(10px);
             backdrop-filter: blur(10px);
         }
+
+        /* 更新通知样式 */
+        .update-notification {
+            animation: slideIn 0.5s ease-out forwards;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .update-notification:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .update-notification .btn-close {
+            font-size: 0.8rem;
+            padding: 0.25rem;
+        }
     </style>
     <!-- 添加 dark-mode.js -->
     <script src="/static/js/bootstrap.bundle.min.js"></script>
@@ -1244,7 +1272,15 @@
                     if (data.has_update && data.wait_input) {
                         // 等待用户输入
                         const input = document.getElementById('consoleInput');
+                        input.placeholder = "请输入 y 确认更新或 n 取消更新";
                         input.focus();
+                        
+                        // 显示提示信息
+                        const promptLine = document.createElement('div');
+                        promptLine.className = 'log-line';
+                        promptLine.innerHTML = `<span class="command-input">请输入 y 确认更新或 n 取消更新，然后按回车键</span>`;
+                        logsElement.appendChild(promptLine);
+                        scrollToBottom();
                         
                         // 临时修改输入处理
                         const originalHandler = input.onkeydown;
@@ -1253,12 +1289,20 @@
                                 event.preventDefault();
                                 const choice = input.value.trim().toLowerCase();
                                 input.value = '';
+                                input.placeholder = "请输入命令...";  // 恢复默认提示
                                 
                                 // 显示用户输入
                                 const inputLine = document.createElement('div');
                                 inputLine.className = 'log-line';
-                                inputLine.innerHTML = `<span class="command-output">${choice}</span>`;
+                                inputLine.innerHTML = `<span class="user-input">> ${choice}</span>`;
                                 logsElement.appendChild(inputLine);
+                                
+                                // 显示处理中提示
+                                const processingLine = document.createElement('div');
+                                processingLine.className = 'log-line';
+                                processingLine.innerHTML = `<span class="command-output">正在处理您的选择...</span>`;
+                                logsElement.appendChild(processingLine);
+                                scrollToBottom();
                                 
                                 // 发送用户选择
                                 fetch('/confirm_update', {
@@ -1368,7 +1412,66 @@
                     }
                 })
                 .catch(error => console.error('Error:', error));
+                
+            // 自动检查更新
+            autoCheckUpdate();
         });
+        
+        // 自动检查更新函数
+        function autoCheckUpdate() {
+            // 检查是否已经检查过更新（避免每次刷新页面都检查）
+            const lastCheckTime = localStorage.getItem('lastUpdateCheck');
+            const now = new Date().getTime();
+            
+            // 如果从未检查过或者上次检查时间超过24小时，则进行检查
+            if (!lastCheckTime || (now - parseInt(lastCheckTime)) > 24 * 60 * 60 * 1000) {
+                console.log('正在自动检查更新...');
+                
+                fetch('/check_update')
+                    .then(response => response.json())
+                    .then(data => {
+                        // 记录当前时间为上次检查时间
+                        localStorage.setItem('lastUpdateCheck', now.toString());
+                        
+                        if (data.has_update) {
+                            // 有可用更新，显示通知
+                            showUpdateNotification(data.update_info);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('自动检查更新失败:', error);
+                    });
+            }
+        }
+        
+        // 显示更新通知
+        function showUpdateNotification(updateInfo) {
+            // 创建更新通知元素
+            const notificationContainer = document.createElement('div');
+            notificationContainer.className = 'update-notification glass-panel';
+            notificationContainer.style = 'position: fixed; bottom: 20px; right: 20px; max-width: 350px; z-index: 9999;';
+            
+            // 设置通知内容
+            notificationContainer.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h5 class="mb-0"><i class="bi bi-arrow-up-circle-fill text-primary me-2"></i>发现新版本</h5>
+                    <button type="button" class="btn-close" aria-label="关闭" onclick="this.parentElement.parentElement.remove()"></button>
+                </div>
+                <p class="mb-1">当前版本: ${updateInfo.version.replace('\\d', '')}</p>
+                <p class="mb-2">更新内容: ${updateInfo.description}</p>
+                <div class="d-flex justify-content-end">
+                    <button class="btn btn-sm btn-primary me-2" onclick="checkUpdate(); this.parentElement.parentElement.remove();">
+                        <i class="bi bi-cloud-download me-1"></i>立即更新
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="this.parentElement.parentElement.remove();">
+                        稍后再说
+                    </button>
+                </div>
+            `;
+            
+            // 添加到页面
+            document.body.appendChild(notificationContainer);
+        }
 
         // 更新用户信息
         function updateUserInfo() {
