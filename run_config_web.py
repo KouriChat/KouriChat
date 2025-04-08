@@ -2355,8 +2355,7 @@ def get_announcement():
                 "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。",
                 "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "version": "1.0.0",
-                "type": "info",
-                "show_once_per_day": True
+                "type": "info"
             }
             
             # 写入默认配置
