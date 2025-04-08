@@ -42,6 +42,8 @@ class Updater:
 
     # GitHub代理列表
     PROXY_SERVERS = [
+        "https://ghproxy.com/https://github.com/",
+        "https://hub.fastgit.xyz/",
         "https://ghfast.top/",
         "https://github.moeyy.xyz/", 
         "https://git.886.be/",
@@ -156,8 +158,8 @@ class Updater:
 
                 # 只有当最新版本大于当前版本时才返回更新信息
                 if latest_ver_tuple > current_ver_tuple:
-                    # 直接使用分支的zip下载地址
-                    download_url = f"{self.GITHUB_API}/zipball/{self.REPO_BRANCH}"
+                    # 使用正确的GitHub zip下载地址格式
+                    download_url = f"https://github.com/{self.REPO_OWNER}/{self.REPO_NAME}/archive/{self.REPO_BRANCH}.zip"
                     
                     # 确保下载URL也使用代理
                     proxied_download_url = self.get_proxy_url(download_url)
@@ -296,18 +298,135 @@ class Updater:
     def cleanup(self):
         """清理临时文件"""
         try:
+            # 清理临时更新目录
             if os.path.exists(self.temp_dir):
                 shutil.rmtree(self.temp_dir)
+                logger.info(f"已清理临时更新目录: {self.temp_dir}")
+                
+            # 清理备份目录 - 添加更多重试和强制删除逻辑
             backup_dir = os.path.join(self.root_dir, 'backup')
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir)
+            self._force_remove_directory(backup_dir, "备份目录")
+                
+            # 清理解压后的仓库文件夹（处理多种可能的命名格式）
+            possible_repo_dirs = [
+                os.path.join(self.root_dir, f"{self.REPO_NAME}-{self.REPO_BRANCH}"),
+                os.path.join(self.root_dir, f"{self.REPO_OWNER}-{self.REPO_NAME}-{self.REPO_BRANCH}"),
+                os.path.join(self.root_dir, f"{self.REPO_NAME}-Kourichat-Festival-Test"),  # 添加实际的文件夹名称
+                os.path.join(self.root_dir, f"{self.REPO_NAME}-Kourichat-Festival-Test-{self.REPO_BRANCH}"),
+                os.path.join(self.root_dir, "KouriChat-Kourichat-Festival-Test")  # 确保此目录也被尝试删除
+            ]
+            
+            for repo_dir in possible_repo_dirs:
+                self._force_remove_directory(repo_dir, "解压目录")
+                        
+            # 清理其他可能的格式的解压文件夹
+            for item in os.listdir(self.root_dir):
+                item_path = os.path.join(self.root_dir, item)
+                if os.path.isdir(item_path):
+                    # 检查是否是解压后的仓库文件夹
+                    if (item.startswith(f"{self.REPO_NAME}-") or 
+                        item.startswith(f"{self.REPO_OWNER}-{self.REPO_NAME}") or
+                        "Kourichat-Festival-Test" in item):  # 添加实际的文件夹名称匹配
+                        if item_path != self.root_dir:  # 确保不会删除项目根目录
+                            self._force_remove_directory(item_path, f"额外的解压目录: {item}")
+                        
         except Exception as e:
             logger.error(f"清理临时文件失败: {str(e)}")
+            # 继续进行强制系统命令删除
+            self._system_force_remove(possible_repo_dirs, backup_dir)
+    
+    def _force_remove_directory(self, directory, dir_type="目录"):
+        """使用多种方法强制删除目录"""
+        if not os.path.exists(directory):
+            return
+            
+        # 尝试修改权限后删除
+        try:
+            for root, dirs, files in os.walk(directory, topdown=False):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.chmod(file_path, 0o777)
+                    except:
+                        pass
+                for dir in dirs:
+                    dir_path = os.path.join(root, dir)
+                    try:
+                        os.chmod(dir_path, 0o777)
+                    except:
+                        pass
+            
+            # 尝试常规删除
+            shutil.rmtree(directory)
+            logger.info(f"已清理{dir_type}: {directory}")
+            return
+        except Exception as e:
+            logger.warning(f"常规方法删除{dir_type}失败: {str(e)}")
+        
+        # 尝试使用系统命令删除
+        try:
+            import subprocess
+            if os.name == 'nt':  # Windows
+                subprocess.run(['rd', '/s', '/q', directory], shell=True, timeout=10)
+            else:  # Linux/Mac
+                subprocess.run(['rm', '-rf', directory], timeout=10)
+                
+            if not os.path.exists(directory):
+                logger.info(f"已使用系统命令清理{dir_type}: {directory}")
+            else:
+                logger.warning(f"系统命令无法完全清理{dir_type}: {directory}")
+        except Exception as e:
+            logger.error(f"使用系统命令清理{dir_type}失败: {str(e)}")
+    
+    def _system_force_remove(self, repo_dirs, backup_dir):
+        """最后的系统命令强制删除尝试"""
+        try:
+            import subprocess
+            import time
+            
+            if os.name == 'nt':  # Windows
+                # 尝试使用强制删除命令
+                for repo_dir in repo_dirs:
+                    if os.path.exists(repo_dir):
+                        try:
+                            # 先尝试常规删除
+                            subprocess.run(['rd', '/s', '/q', repo_dir], shell=True, timeout=5)
+                            time.sleep(1)
+                            
+                            # 如果仍然存在，尝试使用del命令
+                            if os.path.exists(repo_dir):
+                                subprocess.run(['del', '/f', '/s', '/q', repo_dir], shell=True, timeout=5)
+                                time.sleep(1)
+                                
+                                # 如果仍然存在，尝试使用robocopy技巧清空后删除
+                                if os.path.exists(repo_dir):
+                                    empty_dir = os.path.join(self.temp_dir, 'empty')
+                                    os.makedirs(empty_dir, exist_ok=True)
+                                    subprocess.run(['robocopy', empty_dir, repo_dir, '/mir'], timeout=10)
+                                    os.rmdir(repo_dir)
+                        except:
+                            pass
+                            
+                if os.path.exists(backup_dir):
+                    try:
+                        subprocess.run(['rd', '/s', '/q', backup_dir], shell=True, timeout=5)
+                    except:
+                        pass
+            else:  # Linux/Mac
+                for repo_dir in repo_dirs:
+                    if os.path.exists(repo_dir):
+                        subprocess.run(['rm', '-rf', '--no-preserve-root', repo_dir], timeout=5)
+                if os.path.exists(backup_dir):
+                    subprocess.run(['rm', '-rf', '--no-preserve-root', backup_dir], timeout=5)
+        except Exception as e:
+            logger.error(f"最终强制系统命令清理失败: {str(e)}")
 
     def prompt_update(self, update_info: dict) -> bool:
         """提示用户是否更新"""
         print(self.format_version_info(self.get_current_version(), update_info))
         
+        # 在WebUI模式下，由前端提供输入确认
+        # 这里为了兼容命令行模式，保留原有代码
         while True:
             choice = input("\n是否现在更新? (y/n): ").lower().strip()
             if choice in ('y', 'yes'):
@@ -322,35 +441,22 @@ class Updater:
             progress = []
             def log_progress(step, success=True, details=""):
                 msg = self.format_update_progress(step, success, details)
+                logger.info(msg)  # 确保记录到日志
                 progress.append(msg)
                 if callback:
                     callback(msg)
-
+                    
             # 检查更新
             log_progress("开始检查GitHub更新...")
             update_info = self.check_for_updates()
-            if not update_info['has_update']:
+            if not update_info.get('has_update', False):
                 log_progress("检查更新完成", True, "当前已是最新版本")
-                print("\n当前已是最新版本，无需更新")
-                print("按回车键继续...")
-                input()
                 return {
-                    'success': True,
+                    'success': True, 
                     'output': '\n'.join(progress)
                 }
             
-            # 提示用户是否更新
-            log_progress("提示用户是否更新...")
-            if not self.prompt_update(update_info):
-                log_progress("提示用户是否更新", True, "用户取消更新")
-                print("\n已取消更新")
-                print("按回车键继续...")
-                input()
-                return {
-                    'success': True,
-                    'output': '\n'.join(progress)
-                }
-                
+            # WebUI模式下跳过确认，因为确认已经在前端完成
             log_progress(f"开始更新到版本: {update_info['version']}")
             
             # 下载更新

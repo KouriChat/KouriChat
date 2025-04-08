@@ -88,6 +88,47 @@ class CleanupUtils:
         except Exception as e:
             logger.error(f"清理screenshot目录失败: {str(e)}")
 
+    def cleanup_update_files(self):
+        """清理更新残留文件和目录"""
+        try:
+            # 清理backup目录
+            backup_dir = os.path.join(self.root_dir, "backup")
+            if os.path.exists(backup_dir):
+                try:
+                    shutil.rmtree(backup_dir)
+                    logger.info(f"已清理备份目录: {backup_dir}")
+                except Exception as e:
+                    logger.error(f"清理备份目录失败: {str(e)}")
+                    # 尝试使用系统命令强制删除
+                    try:
+                        import subprocess
+                        if os.name == 'nt':  # Windows
+                            subprocess.run(['rd', '/s', '/q', backup_dir], shell=True)
+                        else:  # Linux/Mac
+                            subprocess.run(['rm', '-rf', backup_dir])
+                    except Exception as e2:
+                        logger.error(f"使用系统命令清理备份目录失败: {str(e2)}")
+            
+            # 清理KouriChat-Kourichat-Festival-Test目录
+            test_dir = os.path.join(self.root_dir, "KouriChat-Kourichat-Festival-Test")
+            if os.path.exists(test_dir):
+                try:
+                    shutil.rmtree(test_dir)
+                    logger.info(f"已清理测试目录: {test_dir}")
+                except Exception as e:
+                    logger.error(f"清理测试目录失败: {str(e)}")
+                    # 尝试使用系统命令强制删除
+                    try:
+                        import subprocess
+                        if os.name == 'nt':  # Windows
+                            subprocess.run(['rd', '/s', '/q', test_dir], shell=True)
+                        else:  # Linux/Mac
+                            subprocess.run(['rm', '-rf', test_dir])
+                    except Exception as e2:
+                        logger.error(f"使用系统命令清理测试目录失败: {str(e2)}")
+        except Exception as e:
+            logger.error(f"清理更新残留文件失败: {str(e)}")
+
     def cleanup_all(self):
         """执行所有清理操作"""
         try:
@@ -97,6 +138,8 @@ class CleanupUtils:
             cleanup_pycache()
             # 清理screenshot文件夹
             self.cleanup_screenshot()
+            # 清理更新残留文件
+            self.cleanup_update_files()
             logger.info("所有清理操作完成")
         except Exception as e:
             logger.error(f"清理操作失败: {str(e)}")
