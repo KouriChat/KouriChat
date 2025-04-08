@@ -91,7 +91,29 @@ class MemoryProcessor:
                     data = json.load(f)
                     self.memory_data = data.get("memories", {})
                     self.embedding_data = data.get("embeddings", {})
-                    
+                
+                # 判断是否为最新的JSON格式（私聊或群聊）
+                is_new_format = True
+                for user_id, memories in self.memory_data.items():
+                    # 检查是否为列表格式
+                    if not isinstance(memories, list):
+                        is_new_format = False
+                        break
+                    # 检查记忆条目的格式
+                    if memories and isinstance(memories[0], dict):
+                        if "human_message" not in memories[0] or "assistant_message" not in memories[0]:
+                            is_new_format = False
+                            break
+                
+                if is_new_format:
+                    # 新格式直接使用，无需转换
+                    logger.info("检测到新的JSON格式记忆，直接加载")
+                    self.memory_count = sum(len(memories) for memories in self.memory_data.values() if isinstance(memories, list))
+                    self.embedding_count = len(self.embedding_data)
+                    logger.info(f"从 {self.memory_path} 加载了 {self.memory_count} 条记忆和 {self.embedding_count} 条嵌入向量")
+                    return
+                
+                # 以下是兼容旧格式的转换逻辑
                 # 确保每个用户的记忆是列表格式，并且记忆条目格式正确
                 memory_format_corrected = False
                 
@@ -172,7 +194,7 @@ class MemoryProcessor:
                         del self.memory_data[old_id]
                         memory_format_corrected = True
                 
-                # 确保所有用户的记忆都是列表格式
+                # 确保所有用户的记忆都是列表格式（标准化为新格式）
                 for user_id in list(self.memory_data.keys()):
                     if not isinstance(self.memory_data[user_id], list):
                         memory_format_corrected = True
@@ -219,8 +241,8 @@ class MemoryProcessor:
                 if memory_format_corrected:
                     logger.info("检测到并修复了记忆格式问题，将保存修复后的格式")
                     self.save()
-                        
-                self.memory_count = sum(len(memories) for memories in self.memory_data.values())
+                
+                self.memory_count = sum(len(memories) for memories in self.memory_data.values() if isinstance(memories, list))
                 self.embedding_count = len(self.embedding_data)
                 logger.info(f"从 {self.memory_path} 加载了 {self.memory_count} 条记忆和 {self.embedding_count} 条嵌入向量")
             else:

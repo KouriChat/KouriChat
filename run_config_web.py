@@ -255,7 +255,7 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
 
         # Prompt配置
         available_avatars = get_available_avatars()
-        config_groups["Prompt配置"].update(
+        config_groups["人设配置"].update(
             {
                 "MAX_GROUPS": {
                     "value": config.behavior.context.max_groups,

@@ -1,6 +1,17 @@
-# Set the default behavior, in case people don't have core.autocrlf set
+# 强制所有文本文件使用 crlf 作为行尾符
 * text=auto
 
-# Explicitly declare files that should have CRLF line endings on checkout
-*.bat text eol=crlf
-*.cmd text eol=crlf
+# 对特定文件类型强制使用 crlf
+*.js text eol=crlf
+*.html text eol=crlf
+*.css text eol=crlf
+
+# 对二进制文件禁用行尾符转换
+*.png binary
+*.jpg binary
+*.gif binary
+*.bmp binary
+*.ico binary
+*.webp binary
+*.svg binary
+*.ttf binary

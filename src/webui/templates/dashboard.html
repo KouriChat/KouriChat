@@ -2172,21 +2172,21 @@
         }
         
         // 页面加载时初始化 WebSocket
-        document.addEventListener('DOMContentLoaded', function() {
-            initWebSocket();
-            
-            // 如果在控制台页面，加载已保存的日志
-            if (window.location.pathname === '/dashboard') {
-                loadLogs();
-            }
-        });
+        //document.addEventListener('DOMContentLoaded', function() {
+        //    initWebSocket();
+        //    
+        //    // 如果在控制台页面，加载已保存的日志
+         //   if (window.location.pathname === '/dashboard') {
+        //        loadLogs();
+         //   }
+        //});
         
         // 页面关闭前关闭 WebSocket 连接
-        window.addEventListener('beforeunload', function() {
-            if (ws) {
-                ws.close();
-            }
-        });
+        //window.addEventListener('beforeunload', function() {
+      //      if (ws) {
+       //         ws.close();
+       //     }
+      //  });
 
         // 全局日志处理函数
         function handleGlobalLog(content) {
