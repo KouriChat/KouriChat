@@ -161,114 +161,171 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
     # 检查缓存是否有效
     current_time = time.time()
     if _config_cache and current_time - _config_cache_time < _cache_ttl:
+        logger.debug("返回缓存的配置组")
         return _config_cache
         
     try:
-        from src.config.rag_config import config
+        # 修改导入语句，从主配置模块导入
+        from src.config import config
+        logger.info("尝试从 src.config 导入 config 对象")
         
+        # 记录config对象的类型和可用属性，帮助调试
+        logger.debug(f"Config object type: {type(config)}")
+        if hasattr(config, '__dict__'):
+             logger.debug(f"Config object attributes: {list(config.__dict__.keys())}")
+        elif hasattr(config, '__slots__'):
+             logger.debug(f"Config object slots: {config.__slots__}")
+             
+        # 检查关键属性是否存在
+        missing_attrs = []
+        for attr in ['user', 'llm', 'media', 'behavior']:
+             if not hasattr(config, attr):
+                 missing_attrs.append(attr)
+        if missing_attrs:
+            logger.warning(f"Config object is missing attributes: {', '.join(missing_attrs)}")
+
         # 基础配置组
         config_groups = {
             "基础配置": {},
             "图像识别API配置": {},
             "主动消息配置": {},
-            "Prompt配置": {},
+            "人设配置": {}, # 重命名Prompt配置为人设配置以匹配后续代码
+            "定时任务配置": {}, # 确保定时任务组存在
         }
+        logger.debug("初始化 config_groups")
 
         # 基础配置
-        config_groups["基础配置"].update(
-            {
+        try:
+            base_config = {
                 "LISTEN_LIST": {
-                    "value": config.user.listen_list,
+                    "value": getattr(config.user, 'listen_list', []),
                     "description": "用户列表(可以填写备注名，但是尽量别带特殊符号)",
                 },
                 "DEEPSEEK_BASE_URL": {
-                    "value": config.llm.base_url,
+                    "value": getattr(config.llm, 'base_url', ''),
                     "description": "API注册地址",
                 },
-                "MODEL": {"value": config.llm.model, "description": "AI模型选择"},
+                "MODEL": {"value": getattr(config.llm, 'model', ''), "description": "AI模型选择"},
                 "DEEPSEEK_API_KEY": {
-                    "value": config.llm.api_key,
+                    "value": getattr(config.llm, 'api_key', ''),
                     "description": "API密钥",
+                    "is_secret": True # 标记为密码字段
                 },
                 "MAX_TOKEN": {
-                    "value": config.llm.max_tokens,
+                    "value": getattr(config.llm, 'max_tokens', 2000),
                     "description": "回复最大token数",
                     "type": "number",
                 },
                 "TEMPERATURE": {
-                    "value": float(config.llm.temperature),  # 确保是浮点数
+                    "value": float(getattr(config.llm, 'temperature', 1.1)), # 确保是浮点数
                     "type": "number",
                     "description": "温度参数",
                     "min": 0.0,
-                    "max": 1.7,
+                    "max": 2.0, # 稍微放宽最大值
                 },
             }
-        )
+            config_groups["基础配置"].update(base_config)
+            logger.debug(f"填充 '基础配置': {base_config}")
+        except AttributeError as e:
+            logger.error(f"填充 '基础配置' 时出错: {e}")
+        except Exception as e:
+            logger.error(f"填充 '基础配置' 时发生未知错误: {e}")
+
 
         # 图像识别API配置
-        config_groups["图像识别API配置"].update(
-            {
-                "MOONSHOT_BASE_URL": {
-                    "value": config.media.image_recognition.base_url or "https://api.ciallo.ac.cn/v1",
+        try:
+            image_rec_config = {
+                 "MOONSHOT_BASE_URL": {
+                    "value": getattr(config.media.image_recognition, 'base_url', "https://api.ciallo.ac.cn/v1"),
                     "description": "图像识别API提供商",
                 },
                 "MOONSHOT_API_KEY": {
-                    "value": config.media.image_recognition.api_key,
+                    "value": getattr(config.media.image_recognition, 'api_key', ''),
                     "description": "请输入所选择API提供商对应的密钥",
+                    "is_secret": True
                 },
                 "MOONSHOT_MODEL": {
-                    "value": config.media.image_recognition.model,
+                    "value": getattr(config.media.image_recognition, 'model', 'kourichat-vision'),
                     "description": "图像识别模型",
                 },
                 "MOONSHOT_TEMPERATURE": {
-                    "value": config.media.image_recognition.temperature or 0.35,
+                    "value": float(getattr(config.media.image_recognition, 'temperature', 0.35)),
                     "description": "图像识别温度参数",
+                    "type": "number",
+                    "min": 0.0,
+                    "max": 2.0,
                 }
             }
-        )
+            config_groups["图像识别API配置"].update(image_rec_config)
+            logger.debug(f"填充 '图像识别API配置': {image_rec_config}")
+        except AttributeError as e:
+            logger.error(f"填充 '图像识别API配置' 时出错: {e}")
+        except Exception as e:
+            logger.error(f"填充 '图像识别API配置' 时发生未知错误: {e}")
 
         # 主动消息配置
-        config_groups["主动消息配置"].update(
-            {
+        try:
+            auto_msg_config = {
                 "AUTO_MESSAGE": {
-                    "value": config.behavior.auto_message.content,
+                    "value": getattr(config.behavior.auto_message, 'content', ''),
                     "description": "自动消息内容",
+                    "type": "textarea" # 设为文本区域以便输入长内容
                 },
                 "MIN_COUNTDOWN_HOURS": {
-                    "value": config.behavior.auto_message.min_hours,
+                    "value": getattr(config.behavior.auto_message.countdown, 'min_hours', 1),
                     "description": "最小倒计时时间（小时）",
+                    "type": "number",
+                    "min": 0
                 },
                 "MAX_COUNTDOWN_HOURS": {
-                    "value": config.behavior.auto_message.max_hours,
+                    "value": getattr(config.behavior.auto_message.countdown, 'max_hours', 3),
                     "description": "最大倒计时时间（小时）",
+                    "type": "number",
+                    "min": 0
                 },
                 "QUIET_TIME_START": {
-                    "value": config.behavior.quiet_time.start,
-                    "description": "安静时间开始",
+                    "value": getattr(config.behavior.quiet_time, 'start', '22:00'),
+                    "description": "安静时间开始 (HH:MM格式)",
+                    "type": "time"
                 },
                 "QUIET_TIME_END": {
-                    "value": config.behavior.quiet_time.end,
-                    "description": "安静时间结束",
+                    "value": getattr(config.behavior.quiet_time, 'end', '08:00'),
+                    "description": "安静时间结束 (HH:MM格式)",
+                    "type": "time"
                 },
             }
-        )
+            config_groups["主动消息配置"].update(auto_msg_config)
+            logger.debug(f"填充 '主动消息配置': {auto_msg_config}")
+        except AttributeError as e:
+            logger.error(f"填充 '主动消息配置' 时出错: {e}")
+        except Exception as e:
+            logger.error(f"填充 '主动消息配置' 时发生未知错误: {e}")
 
-        # Prompt配置
-        available_avatars = get_available_avatars()
-        config_groups["人设配置"].update(
-            {
+
+        # 人设配置
+        try:
+            available_avatars = get_available_avatars()
+            logger.debug(f"可用的 Avatars: {available_avatars}")
+            avatar_config = {
                 "MAX_GROUPS": {
-                    "value": config.behavior.context.max_groups,
+                    "value": getattr(config.behavior.context, 'max_groups', 15),
                     "description": "最大的上下文轮数",
+                    "type": "number",
+                    "min": 1
                 },
                 "AVATAR_DIR": {
-                    "value": config.behavior.context.avatar_dir,
+                    "value": getattr(config.behavior.context, 'avatar_dir', 'MONO'),
                     "description": "人设目录（自动包含 avatar.md 和 emojis 目录）",
                     "options": available_avatars,
                     "type": "select"
                 }
             }
-        )
+            config_groups["人设配置"].update(avatar_config)
+            logger.debug(f"填充 '人设配置': {avatar_config}")
+        except AttributeError as e:
+            logger.error(f"填充 '人设配置' 时出错: {e}")
+        except Exception as e:
+             logger.error(f"填充 '人设配置' 时发生未知错误: {e}")
 
         # 直接从配置文件读取定时任务数据
         tasks = []
@@ -276,29 +333,34 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = yaml.safe_load(f)
-                if 'categories' in config_data and 'schedule_settings' in config_data['categories']:
-                    if 'settings' in config_data['categories']['schedule_settings'] and 'tasks' in \
-                            config_data['categories']['schedule_settings']['settings']:
-                        tasks = config_data['categories']['schedule_settings']['settings']['tasks'].get('value', [])
+                if ('categories' in config_data and 
+                    'schedule_settings' in config_data['categories'] and
+                    'settings' in config_data['categories']['schedule_settings'] and 
+                    'tasks' in config_data['categories']['schedule_settings']['settings']):
+                    tasks = config_data['categories']['schedule_settings']['settings']['tasks'].get('value', [])
+                    logger.debug(f"从 YAML 加载的任务数据: {tasks}")
         except Exception as e:
-            logger.error(f"读取任务数据失败: {str(e)}")
+            logger.error(f"从 YAML 读取任务数据失败: {str(e)}")
 
         # 将定时任务配置添加到 config_groups 中
-        config_groups['定时任务配置'] = {
-            'tasks': {
+        config_groups['定时任务配置']['tasks'] = {
                 'value': tasks,
-                'type': 'array',
+                'type': 'array', # 前端需要这个类型来正确渲染
                 'description': '定时任务列表'
             }
-        }
-
-        logger.debug(f"解析后的定时任务配置: {tasks}")
+        
+        # 更新缓存
+        _config_cache = config_groups
+        _config_cache_time = current_time
+        logger.info("成功解析并缓存了配置组")
+        logger.debug(f"最终 config_groups: {json.dumps(config_groups, indent=2, ensure_ascii=False)}") # 打印最终结果
 
         return config_groups
 
     except Exception as e:
-        logger.error(f"解析配置组失败: {str(e)}")
-        return {}
+        # 记录更详细的错误信息
+        logger.exception(f"解析配置组时发生严重错误: {str(e)}", exc_info=True)
+        return {} # 返回空字典，避免前端出错
 
 
 @app.route('/')
@@ -2846,13 +2908,13 @@ def get_all_configs():
                         configs['主动消息配置']['QUIET_TIME_END'] = {'value': quiet['end'].get('value', '')}
 
                 # Prompt配置
-                configs['Prompt配置'] = {}
+                configs['人设配置'] = {}
                 if 'context' in behavior:
                     context = behavior['context']
                     if 'max_groups' in context:
-                        configs['Prompt配置']['MAX_GROUPS'] = {'value': context['max_groups'].get('value', 15)}
+                        configs['人设配置']['MAX_GROUPS'] = {'value': context['max_groups'].get('value', 15)}
                     if 'avatar_dir' in context:
-                        configs['Prompt配置']['AVATAR_DIR'] = {'value': context['avatar_dir'].get('value', '')}
+                        configs['人设配置']['AVATAR_DIR'] = {'value': context['avatar_dir'].get('value', '')}
 
             # 定时任务
             if 'schedule_settings' in config_data['categories'] and 'settings' in config_data['categories'][
