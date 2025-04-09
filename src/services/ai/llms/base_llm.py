@@ -96,11 +96,11 @@ class BaseLLM(online_llm):
         messages.append({"role": "user", "content": current_prompt})
         
         # 添加详细日志
-        self.logger.info(f"[上下文跟踪] 构建提示，当前上下文消息数: {len(messages)}")
+        self.logger.debug(f"[上下文跟踪] 构建提示，当前上下文消息数: {len(messages)}")
         for idx, msg in enumerate(messages):
             # 限制长度以免日志过长
             content_preview = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
-            self.logger.info(f"[上下文消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
+            self.logger.debug(f"[上下文消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
         
         return messages
     
@@ -121,7 +121,7 @@ class BaseLLM(online_llm):
         system_offset = 1 if self.system_prompt else 0
         pair_count = (message_count - system_offset) // 2
         
-        self.logger.info(f"[上下文管理] 更新后上下文总消息数: {message_count}, 对话对数: {pair_count}, 最大限制: {self.max_context_messages}")
+        self.logger.debug(f"[上下文管理] 更新后上下文总消息数: {message_count}, 对话对数: {pair_count}, 最大限制: {self.max_context_messages}")
         
         # 如果超出对话对数量限制，移除最早的对话对
         if pair_count > self.max_context_messages:
@@ -139,7 +139,7 @@ class BaseLLM(online_llm):
             # 记录被移除的消息
             for idx, msg in enumerate(removed_messages):
                 content_preview = msg["content"][:50] + "..." if len(msg["content"]) > 50 else msg["content"]
-                self.logger.info(f"[移除消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
+                self.logger.debug(f"[移除消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
             
             # 更新上下文，保留system prompt
             if self.system_prompt:
@@ -171,7 +171,7 @@ class BaseLLM(online_llm):
             str: 助手回复
         """
         try:
-            self.logger.info(f"[处理提示] 收到输入: {prompt}")
+            self.logger.debug(f"[处理提示] 收到输入: {prompt}")
             
             # 使用用户ID构建上下文键
             context_key = user_id if user_id else "default"
@@ -196,10 +196,10 @@ class BaseLLM(online_llm):
             current_context.append({"role": "user", "content": prompt_with_marker})
             
             # 构建完整提示
-            self.logger.info(f"[上下文跟踪] 构建提示，当前上下文消息数: {len(current_context)}")
+            self.logger.debug(f"[上下文跟踪] 构建提示，当前上下文消息数: {len(current_context)}")
             for idx, msg in enumerate(current_context):
                 content_preview = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
-                self.logger.info(f"[上下文消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
+                self.logger.debug(f"[上下文消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
             
             # 添加重试逻辑
             max_retries = 3
@@ -218,7 +218,7 @@ class BaseLLM(online_llm):
                         last_error = response
                         retry_count += 1
                         if retry_count < max_retries:
-                            self.logger.info(f"进行第 {retry_count+1} 次重试...")
+                            self.logger.warning(f"进行第 {retry_count+1} 次重试...")
                             continue
                     else:
                         # 成功获取响应，跳出循环
@@ -229,7 +229,7 @@ class BaseLLM(online_llm):
                     last_error = str(e)
                     retry_count += 1
                     if retry_count < max_retries:
-                        self.logger.info(f"进行第 {retry_count+1} 次重试...")
+                        self.logger.warning(f"进行第 {retry_count+1} 次重试...")
                         continue
                     else:
                         response = f"API调用失败: {str(e)}"
@@ -239,23 +239,30 @@ class BaseLLM(online_llm):
             if response is None and last_error:
                 response = f"多次尝试后仍然失败: {last_error}"
             
+            # 后处理：移除可能的完全重复内容
+            if response and not any(error_text in response for error_text in ["API调用失败", "Connection error", "服务暂时不可用", "多次尝试后仍然失败"]):
+                original_response_len = len(response)
+                response = self._remove_immediate_duplicate(response)
+                if len(response) != original_response_len:
+                    self.logger.warning(f"检测到并移除了响应中的重复内容。原始长度: {original_response_len}, 清理后长度: {len(response)}")
+            
             # 只有在成功获取有效响应时才更新上下文
-            if not any(error_text in response for error_text in ["API调用失败", "Connection error", "服务暂时不可用"]):
+            if not any(error_text in response for error_text in ["API调用失败", "Connection error", "服务暂时不可用", "多次尝试后仍然失败"]):
                 # 更新用户上下文，用原始prompt而不是带标记的
                 self.user_contexts[context_key].append({"role": "user", "content": prompt})
                 self.user_contexts[context_key].append({"role": "assistant", "content": response})
                 
                 # 关键修复点：立即调用上下文管理，确保每次对话后检查并截断上下文
-                self.logger.info(f"[上下文管理] 开始管理上下文长度，最大允许对话对数: {self.max_context_messages}")
+                self.logger.debug(f"[上下文管理] 开始管理上下文长度，最大允许对话对数: {self.max_context_messages}")
                 self._manage_context_length(context_key)
                 
                 # 打印更新后的上下文信息
                 post_manage_context = self.user_contexts[context_key]
-                self.logger.info(f"[上下文管理后] 更新后的上下文消息数: {len(post_manage_context)}")
+                self.logger.debug(f"[上下文管理后] 更新后的上下文消息数: {len(post_manage_context)}")
             else:
                 self.logger.warning(f"检测到API错误响应，不更新上下文: {response[:100]}...")
             
-            self.logger.info(f"[API响应] 最终回复: {response[:100]}...")
+            self.logger.info(f"[API响应] 最终回复: {response[:150]}...")
             
             # 更新最近交互时间
             if hasattr(self, 'user_recent_chat_time'):
@@ -266,6 +273,20 @@ class BaseLLM(online_llm):
         except Exception as e:
             self.logger.error(f"处理提示时出错: {str(e)}")
             return f"处理您的请求时出现错误: {str(e)}"
+    
+    def _remove_immediate_duplicate(self, text: str) -> str:
+        """简单的后处理，移除形如 'ABAB' 变成 'AB' 的完全重复。"""
+        n = len(text)
+        if n < 2:
+            return text
+        # 检查字符串是否由两个相同的连续部分组成
+        if n % 2 == 0:
+            half = n // 2
+            if text[:half] == text[half:]:
+                self.logger.info(f"检测到响应内容完全重复，已进行清理。")
+                return text[:half]
+        # 未来可以根据需要添加更复杂的重复检测逻辑，例如检测部分重复或基于语义的重复
+        return text
     
     def _manage_context_length(self, context_key):
         """管理特定用户的上下文长度"""

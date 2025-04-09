@@ -199,8 +199,12 @@ class RagManager:
             except Exception as e:
                 logger.error(f"加载本地嵌入模型失败: {str(e)}，将使用API模型")
         
-        # 如果api_wrapper为None，尝试初始化一个
-        if self.api_wrapper is None:
+        # 使用API模型
+        if self.api_wrapper:
+            logger.info(f"使用API嵌入模型: {model_name}")
+            return ApiEmbeddingModel(self.api_wrapper, model_name, model_type)
+        else:
+            # 如果没有API包装器，尝试从配置中获取
             try:
                 # 尝试从配置文件获取API密钥和URL
                 api_key = self.config.get("api_key", "")
@@ -213,12 +217,10 @@ class RagManager:
                     # 如果配置文件中的API密钥为空，使用rag_config中的配置
                     if not api_key:
                         api_key = getattr(config, "OPENAI_API_KEY", "")
-                        logger.info("使用rag_config中的API密钥")
                     
                     # 如果配置文件中的base_url为空，使用rag_config中的配置
                     if not base_url:
                         base_url = getattr(config, "OPENAI_API_BASE", "")
-                        logger.info("使用rag_config中的API基础URL")
                         
                 except Exception as config_error:
                     logger.warning(f"从rag_config获取API设置失败: {str(config_error)}")
@@ -227,8 +229,6 @@ class RagManager:
                 if not api_key:
                     import os
                     api_key = os.environ.get("OPENAI_API_KEY", "")
-                    if api_key:
-                        logger.info("使用环境变量中的API密钥")
                 
                 # 检查API密钥是否有效
                 if not api_key:
@@ -238,26 +238,18 @@ class RagManager:
                 # 创建API包装器
                 try:
                     from src.api_client.wrapper import APIWrapper
-                    self.api_wrapper = APIWrapper(
+                    api_wrapper = APIWrapper(
                         api_key=api_key,
                         base_url=base_url if base_url else None
                     )
                     logger.info("成功创建API包装器")
+                    return ApiEmbeddingModel(api_wrapper, model_name, model_type)
                 except ImportError:
                     logger.error("无法导入APIWrapper，嵌入功能将不可用")
                     return None
             except Exception as e:
                 logger.error(f"初始化API包装器失败: {str(e)}")
                 return None
-        
-        # 检查API包装器是否有效
-        if self.api_wrapper is None:
-            logger.error("API包装器无效，嵌入功能将不可用")
-            return None
-            
-        # 使用API模型
-        logger.info(f"使用API嵌入模型: {model_name}")
-        return ApiEmbeddingModel(self.api_wrapper, model_name, model_type)
     
     def _init_storage(self):
         """

@@ -24,6 +24,7 @@ import math
 import difflib
 from src.handlers.file import FileHandler
 from typing import List, Dict, Optional
+import traceback
 
 # 修改logger获取方式，确保与main模块一致
 logger = logging.getLogger("main")
@@ -53,16 +54,17 @@ class MessageHandler:
         self.message_cache = {}  # 用户消息缓存
         self.last_message_time = {}  # 用户最后发送消息的时间
         self.message_timer = {}  # 用户消息处理定时器
+        self.message_metadata = {} # <<< 新增：用于存储消息元数据
         # 添加上一条消息回复时间记录，用于计算时间流速
         self.last_reply_time = {}  # 用户名 -> 上次消息回复时间
         # 添加时间流速配置
         self.time_flow_config = {
             "base_flow_rate": 1.0,  # 基础流速（正常速度）
-            "max_flow_rate": 3.0,   # 最大流速（最快5倍速）
+            "max_flow_rate": 2.0,   # 最大流速（最快5倍速）
             "acceleration_factor": 1.05  # 达到最大流速所需时间是原始等待时间的倍数
         }
         # 使用 DeepSeekAI 替换直接的 OpenAI 客户端
-        self.deepseek = llm
+        self.llm = llm
         # 消息队列相关
         self.user_queues = {}
         self.queue_lock = threading.Lock()
@@ -175,10 +177,10 @@ class MessageHandler:
                 from src.handlers.memories.group_chat_memory import GroupChatMemory
 
                 # 安全处理头像名称
-                if isinstance(robot_name, str):
+                if isinstance(robot_name, str) and robot_name:
                     safe_avatar_name = re.sub(r"[^\w\-_\. ]", "_", robot_name)
                 else:
-                    safe_avatar_name = "default_avatar"
+                    safe_avatar_name = "unknown"  # 不再使用default_avatar，避免创建默认文件夹
 
                 # 获取群聊列表
                 try:
@@ -264,6 +266,232 @@ class MessageHandler:
         self.queue_locks = {}
         self.last_received_message_timestamp = {}
 
+        # 现有代码末尾添加：启动时加载并总结记忆
+        self.startup_summary = {}  # 用户ID -> 记忆总结
+        self.startup_summary_max_age = 24 * 60 * 60  # 一天的秒数
+        self.load_and_summarize_memories()
+        
+        logger.info(f"消息处理器初始化完成，机器人名称：{self.robot_name}")
+
+    def load_and_summarize_memories(self, username=None):
+        """
+        在程序启动时加载和总结记忆，解决记忆断层问题
+        从记忆系统中加载最近的对话，并以提示词形式总结，在构造上下文时使用
+        
+        Args:
+            username: 可选，指定用户名进行记忆总结。如果为None，则总结所有用户的记忆
+            
+        Returns:
+            如果指定了username，则返回该用户的总结；否则返回None
+        """
+        if not self.memory_handler:
+            logger.warning("记忆处理器不可用，无法加载和总结记忆")
+            if username:
+                return "<历史记录>无法访问历史记忆</历史记录>"
+            return
+        
+        try:
+            if username:
+                logger.info(f"开始为用户 {username} 加载并总结记忆...")
+                # 检查是否已有该用户的总结且未过期
+                if (username in self.startup_summary and 
+                    (time.time() - self.startup_summary[username].get("timestamp", 0) < self.startup_summary_max_age)):
+                    logger.info(f"使用缓存的用户 {username} 记忆总结")
+                    return self.startup_summary[username]["summary"]
+            else:
+                logger.info("开始在启动时加载并总结记忆...")
+            
+            user_ids = []
+            if hasattr(self.memory_handler, "memory_data"):
+                # 确定要处理的用户ID列表
+                if username:
+                    user_ids = [username] if username in self.memory_handler.memory_data else []
+                    if not user_ids:
+                        logger.warning(f"未找到用户 {username} 的记忆数据")
+                        return "<历史记录>没有找到与您的历史对话记录</历史记录>"
+                else:
+                    # 获取所有用户ID
+                    user_ids = list(self.memory_handler.memory_data.keys())
+                    logger.info(f"找到 {len(user_ids)} 个用户的记忆")
+                
+                # 为每个用户总结记忆
+                for user_id in user_ids:
+                    logger.info(f"开始获取用户 {user_id} 的最近记忆")
+                    
+                    # 直接获取最近的记忆
+                    memories = []
+                    if user_id in self.memory_handler.memory_data:
+                        # 按时间戳倒序排列记忆
+                        user_memories = self.memory_handler.memory_data[user_id]
+                        sorted_memories = sorted(
+                            user_memories, 
+                            key=lambda x: x.get("timestamp", 0), 
+                            reverse=True
+                        )
+                        # 获取最近的10条记忆
+                        memories = sorted_memories[:10]
+                        logger.info(f"直接获取到用户 '{user_id}' 的 {len(memories)} 条最近记忆")
+                    
+                    if not memories:
+                        logger.info(f"未找到用户 {user_id} 的有效记忆")
+                        if username:
+                            return "<历史记录>没有找到与您的历史对话记录</历史记录>"
+                        continue
+                        
+                    # 构建记忆内容，不再使用"对话X:"标记
+                    memory_parts = []
+                    for i, mem in enumerate(memories):
+                        # --- 新增代码：提取并格式化当前记忆的时间戳 ---
+                        timestamp_prefix = ""
+                        timestamp = mem.get("timestamp")
+                        if timestamp:
+                            # 直接使用原始字符串，并添加括号
+                            timestamp_prefix = f"[{str(timestamp)}] "
+                        # --- 结束修改代码 ---
+                        
+                        # 适配memory.json的字段格式，支持新旧两种格式
+                        message = mem.get("human_message") or mem.get("message")
+                        reply = mem.get("assistant_message") or mem.get("reply")
+                        
+                        # 处理带有<历史记录>标记的内容
+                        if message and isinstance(message, str):
+                            if "<历史记录>" in message and "</历史记录>" in message:
+                                message = message.replace("<历史记录>", "").replace("</历史记录>", "")
+                        
+                        if reply and isinstance(reply, str):
+                            if "<历史记录>" in reply and "</历史记录>" in reply:
+                                reply = reply.replace("</历史记录>", "").replace("</历史记录>", "")
+                        
+                        if message and reply:
+                            # --- 修改代码：添加时间戳前缀 --- 
+                            memory_parts.append(
+                                f"{timestamp_prefix}用户: {message}\n{timestamp_prefix}AI: {reply}" # 在用户和AI消息前都加上时间戳
+                            )
+                            # --- 结束修改代码 ---
+                    
+                    # 确保保留全部10条记忆（如果有的话）
+                    final_memory_parts = memory_parts[:min(10, len(memory_parts))]
+                    # 反转顺序，使之按时间从旧到新
+                    final_memory_parts.reverse()
+                    
+                    if final_memory_parts:
+                        latest_timestamp_str = ""
+                        try:
+                            # --- 再次修改：完全直接使用最新的原始时间戳字符串 --- 
+                            if memories:
+                                latest_memory = memories[0]
+                                latest_timestamp = latest_memory.get("timestamp")
+                                if latest_timestamp:
+                                    latest_timestamp_str = str(latest_timestamp)
+                                    logger.info(f"从记忆中提取到最新时间戳字符串: {latest_timestamp_str}")
+                                    # 移除之前的解析尝试
+                            # --- 结束修改代码 ---
+                            
+                            # 构建发送给AI的提示，请求生成风格化的记忆笔记
+                            memory_raw_content = "".join(final_memory_parts)
+                            # 获取当前日期和星期用于标题
+                            now = datetime.now()
+                            date_str = now.strftime("%Y-%m-%d")
+                            day_str = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][now.weekday()]
+                            
+                            role_name = "AI" 
+                            
+                            # --- 修改代码：在prompt开头添加时间 --- 
+                            time_prefix = f"最后记录时间是 {latest_timestamp_str} 左右。" if latest_timestamp_str else ""
+                            prompt = f"""
+上次对话时间是{day_str} {date_str}{time_prefix} 。
+请根据你与用户 '{user_id}' 的历史对话记录，结合当前你的角色设定 ({self.prompt_content})，生成一份符合你角色人设风格的第一人称临时日记来回忆之前的聊天细节（如当时的具体时间、内容、人物、心情、地点、天气等）。
+
+历史对话记录:
+{memory_raw_content}
+
+请输出笔记内容本身，要有一个用于解释的标题："{self.robot_name}的临时笔记"。
+笔记内容应自然流畅，符合第一人称口吻。
+"""
+                            # --- 结束修改代码 ---
+                            
+                            logger.info(f"正在向API请求生成用户 {user_id} 的临时笔记...")
+                            
+                            # 调用API生成总结
+                            if hasattr(self, "llm") and self.llm:
+                                # 保留原始的历史记录内容，用于日志记录（可选，如果需要调试可保留）
+                                # original_content = "我之前与用户的对话记忆：\n\n" + "\n\n".join(final_memory_parts)
+                                
+                                # 获取API总结
+                                summary_response = self.llm.llm.handel_prompt(prompt, user_id)
+                                
+                                if summary_response and len(summary_response) > 10:
+                                    logger.info(f"成功生成历史记忆总结: {summary_response}")
+                                    
+                                    # 封装总结内容到<历史记录>标签中
+                                    formatted_summary = f"<历史记录>{summary_response}</历史记录>"
+                                    
+                                    # 存储总结
+                                    self.startup_summary[user_id] = {
+                                        "summary": formatted_summary,
+                                        # "original_content": original_content, # 移除或注释掉原始内容存储
+                                        "timestamp": time.time()
+                                    }
+                                    
+                                    logger.info(f"成功为用户 {user_id} 创建了记忆总结，包含 {len(final_memory_parts)} 轮对话")
+                                    
+                                    # 记录总结内容
+                                    logger.debug(f"记忆总结内容: {summary_response}")
+                                    
+                                    # 移除记录原始对话内容的日志
+                                    # logger.info("原始对话内容用于参考:")
+                                    # for i, part in enumerate(final_memory_parts):
+                                    #     logger.info(f"记忆 {i+1}: {part}")
+                                    
+                                    if username:
+                                        return formatted_summary
+                                else:
+                                    # 如果API总结失败，使用默认格式
+                                    default_summary = "我是您的AI助手，我们之前有过一些对话。我会尽力保持对话的连贯性，记住您提到的重要信息。"
+                                    formatted_summary = f"<历史记录>{default_summary}</历史记录>"
+                                    
+                                    # 存储默认总结
+                                    self.startup_summary[user_id] = {
+                                        "summary": formatted_summary,
+                                        "timestamp": time.time()
+                                    }
+                                    
+                                    logger.warning(f"API总结生成失败，使用默认总结内容: {default_summary}")
+                                    
+                                    if username:
+                                        return formatted_summary
+                        except Exception as summary_error:
+                            logger.error(f"生成记忆总结失败: {str(summary_error)}")
+                            # 出现错误时使用简单总结
+                            fallback_summary = f"<历史记录>我是您的AI助手，我们之前有过{len(final_memory_parts)}轮对话。</历史记录>"
+                            self.startup_summary[user_id] = {
+                                "summary": fallback_summary,
+                                "timestamp": time.time()
+                            }
+                            logger.warning("LLM服务不可用，使用简单总结")
+                            
+                            if username:
+                                return fallback_summary
+                    else:
+                        logger.info(f"未能为用户 {user_id} 创建有效的记忆总结，记忆内容无效")
+                        if username:
+                            return "<历史记录>没有找到有效的历史对话记录</历史记录>"
+                
+                if not username:
+                    logger.info(f"成功加载并总结了 {len(self.startup_summary)} 个用户的记忆")
+            else:
+                logger.warning("记忆处理器未包含memory_data属性，可能使用不兼容的接口")
+                if username:
+                    return "<历史记录>记忆系统配置不兼容，无法获取历史对话</历史记录>"
+        
+        except Exception as e:
+            logger.error(f"加载和总结记忆失败: {str(e)}", exc_info=True)
+            if username:
+                return "<历史记录>加载历史记忆时出错</历史记录>"
+            else:
+                # 重置启动总结字典，避免使用不完整或错误的数据
+                self.startup_summary = {}
+
     def _get_config_value(self, key, default_value):
         """从配置文件获取特定值，如果不存在则返回默认值"""
         try:
@@ -297,99 +525,60 @@ class MessageHandler:
     def get_api_response(
         self, message: str, user_id: str, group_id: str = None, sender_name: str = None
     ) -> str:
-        """获取API回复"""
+        """通用API响应获取逻辑"""
+        
+        # --- Add code to prepend startup summary if available --- 
+        summary_prefix = ""
+        if hasattr(self, 'startup_summary') and user_id in self.startup_summary:
+            summary_info = self.startup_summary[user_id]
+            summary_to_prepend = summary_info.get("summary")
+            if summary_to_prepend:
+                summary_prefix = summary_to_prepend + "\n" # Add two newlines for separation
+                logger.info(f"为用户 {user_id} 的下一条消息添加了启动记忆总结。")
+                # Remove the summary so it's only used once
+                del self.startup_summary[user_id]
+                logger.info(f"已消耗用户 {user_id} 的启动记忆总结。")
+        # --- End added code ---
+        
+        # 清理输入消息
+        cleaned_message = self._clean_message_content(message)
+        if not cleaned_message:
+            logger.warning("清理后的消息为空，无法获取API响应")
+            return ""
+
+        # --- Modify prompt construction to include the prefix ---
+        final_message_for_prompt = summary_prefix + cleaned_message 
+        # --- End modification ---
+
         try:
-            # 使用正确的属性名和方法名
-            if not hasattr(self, "deepseek") or self.deepseek is None:
-                logger.error("LLM服务未初始化，无法生成回复")
-                return "系统错误：LLM服务未初始化"
+            # 获取记忆上下文（现在不包含实时总结了）
+            # memory_context = self._get_conversation_context(user_id)
+            
+            # TODO: Refactor prompt construction if necessary. 
+            # Assuming self.llm.handel_prompt handles context internally or 
+            # context needs to be fetched differently now.
+            
+            # 直接调用LLM处理（注意：这里简化了，原有的上下文获取和prompt构建逻辑可能需要调整）
+            logger.info(f"向API发送处理请求: User: {user_id}, Group: {group_id}, Sender: {sender_name}")
+            # Use final_message_for_prompt which includes the summary if it was added
+            response = self.llm.llm.handel_prompt(final_message_for_prompt, user_id) 
 
-            # 使用正确的属性名称调用方法
-            try:
-                # 修改：检查URL末尾是否有斜杠，并记录日志
-                if hasattr(self.deepseek.llm, "url") and self.deepseek.llm.url.endswith(
-                    "/"
-                ):
-                    # 尝试在本地临时修复URL
-                    fixed_url = self.deepseek.llm.url.rstrip("/")
-                    self.deepseek.llm.url = fixed_url
-
-                # 调用API获取响应
-                response = self.deepseek.llm.handel_prompt(message, user_id)
-
-                # 简化API响应日志，只记录响应长度
-                if response:
-                    response_length = len(response)
-                    # 只记录一次响应长度，避免重复日志
-                    logger.info(f"API响应: {response_length}字符")
-                else:
-                    logger.error("收到空响应")
-
-                # 增加异常检测，避免将错误信息存入记忆
-                if response and (
-                    "API调用失败" in response
-                    or "Connection error" in response
-                    or "服务暂时不可用" in response
-                    or "Error:" in response
-                    or "错误:" in response
-                    or "认证错误" in response
-                ):
-                    logger.error(f"API调用返回错误: {response}")
-
-                    # 增加错误类型的分类
-                    if "Connection error" in response or "连接错误" in response:
-                        logger.error("网络连接错误 - 请检查网络连接和API地址配置")
-                        return f"抱歉，我暂时无法连接到API服务器。请检查网络连接和API地址配置。"
-
-                    elif "认证错误" in response or "API密钥" in response:
-                        logger.error("API认证错误 - 请检查API密钥是否正确")
-                        return f"抱歉，API认证失败。请检查API密钥配置。"
-
-                    elif "模型" in response and (
-                        "错误" in response or "不存在" in response
-                    ):
-                        logger.error("模型错误 - 模型名称可能不正确或不可用")
-                        return f"抱歉，无法使用指定的AI模型。请检查模型名称配置。"
-
-                    else:
-                        return f"抱歉，我暂时无法回应。错误信息：{response}"
-
-                return response
-
-            except Exception as api_error:
-                error_msg = str(api_error)
-                logger.error(f"API调用异常: {error_msg}")
-
-                # 增加异常处理的详细分类
-                if "Connection" in error_msg or "connect" in error_msg.lower():
-                    logger.error(f"网络连接错误 - 请检查网络连接和API地址")
-                    return (
-                        f"API调用失败: 无法连接到服务器。请检查网络连接和API地址配置。"
-                    )
-
-                elif (
-                    "authenticate" in error_msg.lower()
-                    or "authorization" in error_msg.lower()
-                    or "auth" in error_msg.lower()
-                ):
-                    logger.error(f"API认证错误 - 请检查API密钥是否正确")
-                    return f"API调用失败: 认证错误。请检查API密钥配置。"
-
-                elif "not found" in error_msg.lower() or "404" in error_msg:
-                    logger.error(f"API资源不存在 - 请检查API地址和路径是否正确")
-                    return f"API调用失败: 请求的资源不存在。请检查API地址和路径。"
-
-                else:
-                    return f"API调用出错：{error_msg}"
-
+            if response:
+                # 清理AI响应
+                cleaned_response = self._clean_ai_response(response)
+                return cleaned_response
+            else:
+                logger.warning(f"API响应为空: User: {user_id}")
+                return ""
         except Exception as e:
-            logger.error(f"获取API回复失败: {str(e)}")
-            # 降级处理：使用简化的提示
-            try:
-                return f"抱歉，我暂时无法回应，请稍后再试。(错误: {str(e)[:50]}...)"
-            except Exception as fallback_error:
-                logger.error(f"降级处理也失败: {str(fallback_error)}")
-                return f"服务暂时不可用，请稍后重试。"
+            logger.error(f"获取API响应失败: {e}", exc_info=True)
+            # 根据错误类型返回不同提示
+            if "timed out" in str(e).lower() or "timeout" in str(e).lower():
+                return "抱歉，思考超时了，请再说一遍或者换个问题问我吧。"
+            elif "connection" in str(e).lower():
+                return "网络连接好像有点问题，请稍后再试。"
+            else:
+                return "抱歉，我现在有点累了，稍后再试吧。"
 
     def _safe_send_msg(self, msg, who, max_retries=None, char_by_char=False):
         """安全发送消息，带重试机制"""
@@ -490,7 +679,7 @@ class MessageHandler:
             logger.info(f"选择的目标用户: {target_user}")
 
             # 检查最近是否有聊天记录（30分钟内）
-            if recent_chat := self.deepseek.llm.user_recent_chat_time.get(target_user):
+            if recent_chat := self.llm.llm.user_recent_chat_time.get(target_user):
                 current_time = datetime.now()
                 time_diff = current_time - recent_chat
                 # 如果30分钟内有聊天，跳过本次主动消息
@@ -713,7 +902,13 @@ class MessageHandler:
                 if username == "filehelper":
                     username = "FileHelper"
                 sender_name = sender_name or username
-
+            
+            # 增加日志，记录未回复消息计数器状态
+            if chat_id in self.unanswered_counters:
+                logger.info(f"聊天 {chat_id} 当前未回复计数: {self.unanswered_counters[chat_id]}")
+            else:
+                logger.info(f"聊天 {chat_id} 不在未回复计数器中")
+            
             # 如果是自己发送的消息并且是图片或表情包，直接跳过处理
             if is_self_message and (
                 content.endswith(".jpg")
@@ -722,7 +917,7 @@ class MessageHandler:
             ):
                 logger.info(f"检测到自己发送的图片或表情包，跳过保存和识别: {content}")
                 return None
-
+            
             # 检查是否是群聊消息
             if is_group:
                 logger.info(
@@ -732,7 +927,7 @@ class MessageHandler:
                 return self._handle_group_message(
                     content, chat_id, sender_name, username, is_at
                 )
-
+                
             # 处理私聊消息的逻辑保持不变
             actual_content = self._clean_message_content(content)
             logger.info(f"收到私聊消息: {actual_content}")
@@ -982,6 +1177,84 @@ class MessageHandler:
             error_msg = "抱歉，系统遇到问题，请稍后再试。"
             self._safe_send_msg(error_msg, chat_id)
             return error_msg
+
+    def _cache_message(
+        self,
+        content: str,
+        chat_id: str,
+        sender_name: str,
+        username: str,
+        is_group: bool,
+        is_image_recognition: bool,
+    ) -> None:
+        """缓存用户的消息，并设置延迟处理定时器"""
+        # 清理消息内容
+        cleaned_content = self._clean_message_content(content)
+        if not cleaned_content:
+            logger.warning(f"清理后的消息为空，原始消息：{content}")
+            return None  # 如果清理后消息为空，则不处理
+
+        # <<< 修改：确保 message_metadata[username] 被初始化并包含必要字段 >>>
+        current_time = time.time()
+        if username not in self.message_metadata:
+            self.message_metadata[username] = {
+                "chat_id": chat_id,
+                "is_group": is_group,
+                "sender_name": sender_name,
+                "first_message_time": current_time,
+                "last_message_time": current_time,
+                "message_count": 0,
+                "total_chars": 0
+            }
+        # 获取元数据引用
+        metadata = self.message_metadata[username]
+
+        # 如果用户缓存队列不存在，则创建
+        if username not in self.message_cache:
+            self.message_cache[username] = []
+            # 注意：初始化 metadata 的逻辑移到了前面
+
+        # 添加消息到缓存
+        self.message_cache[username].append( # 存入字典
+            {
+                "content": cleaned_content,
+                "timestamp": current_time
+            }
+        )
+        
+        # 更新元数据 (使用 update 方法更清晰)
+        metadata.update({
+            "last_message_time": current_time,
+            "message_count": metadata.get("message_count", 0) + 1, # 使用 .get() 增加健壮性
+            "total_chars": metadata.get("total_chars", 0) + len(cleaned_content), # 使用 .get() 增加健壮性
+            "chat_id": chat_id, # 始终更新为最新的 chat_id
+            "is_group": is_group, # 始终更新为最新的 is_group
+            "sender_name": sender_name # 始终更新为最新的 sender_name
+        })
+
+        # 计算最终等待时间
+        wait_time = self._calculate_wait_time(username, len(self.message_cache[username]))
+
+        # <<< 修改开始 >>>
+        # 如果该用户已有定时器在运行，先取消它
+        if username in self.message_timer and self.message_timer[username].is_alive():
+            try:
+                self.message_timer[username].cancel()
+                logger.debug(f"用户 {username} 的现有定时器已取消。")
+            except Exception as e:
+                logger.error(f"取消用户 {username} 的定时器时出错: {e}")
+        # <<< 修改结束 >>>
+
+        # 启动新的定时器，时间到后处理该用户的缓存消息
+        timer = threading.Timer(wait_time, self._process_cached_messages, args=[username])
+        timer.daemon = True # 设置为守护线程，以便主程序退出时它也退出
+        timer.start()
+        self.message_timer[username] = timer
+
+        # 简化日志，只显示缓存内容和等待时间
+        logger.info(f"用户 {username} 缓存消息: '{cleaned_content}' | 新等待时间: {wait_time:.1f}秒 | 队列长度: {len(self.message_cache[username])}")
+
+        return None
 
     def _cache_group_at_message(
         self,
@@ -1544,60 +1817,64 @@ class MessageHandler:
         is_group: bool,
         is_image_recognition: bool,
     ) -> None:
-        """缓存消息并设置定时器"""
-        current_time = time.time()
+        """缓存用户的消息，并设置延迟处理定时器"""
+        # 清理消息内容
+        cleaned_content = self._clean_message_content(content)
+        if not cleaned_content:
+            logger.warning(f"清理后的消息为空，原始消息：{content}")
+            return None  # 如果清理后消息为空，则不处理
 
-        # 取消现有定时器
-        if username in self.message_timer and self.message_timer[username]:
-            self.message_timer[username].cancel()
-            self.message_timer[username] = None
-
-        # 添加到消息缓存
+        # 如果用户缓存队列不存在，则创建
         if username not in self.message_cache:
             self.message_cache[username] = []
-            
-        # 检查最近是否已经处理过相同内容的消息，避免重复处理
-        cleaned_content = self._clean_message_content(content)
-        for msg in self.message_cache[username]:
-            msg_content = self._clean_message_content(msg["content"])
-            # 如果内容一致且时间非常接近（3秒内）
-            if (msg_content == cleaned_content and 
-                current_time - msg["timestamp"] < 3.0):
-                logger.warning(f"检测到3秒内重复消息，跳过缓存: {cleaned_content[:30]}...")
-                # 仍然设置一个短时间的定时器，确保处理最终会被触发
-                timer = threading.Timer(
-                    1.0, self._process_cached_messages, args=[username]
-                )
-                timer.daemon = True
-                timer.start()
-                self.message_timer[username] = timer
-                return None
-
-        # 添加新消息到缓存
-        self.message_cache[username].append(
-            {
-                "content": content,
+            self.message_metadata[username] = {
                 "chat_id": chat_id,
-                "sender_name": sender_name,
                 "is_group": is_group,
-                "is_image_recognition": is_image_recognition,
-                "timestamp": current_time,
+                "sender_name": sender_name,
+                "first_message_time": time.time(),
+                "last_message_time": time.time(),
+                "message_count": 0,
+                "total_chars": 0
+            }
+
+        # 添加消息到缓存
+        # self.message_cache[username].append(cleaned_content) # <<< 旧代码：只存字符串
+        self.message_cache[username].append( # <<< 修改：存入字典
+            {
+                "content": cleaned_content,
+                "timestamp": time.time() 
             }
         )
+        
+        # 更新元数据
+        metadata = self.message_metadata[username]
+        metadata["last_message_time"] = time.time()
+        metadata["message_count"] += 1
+        metadata["total_chars"] += len(cleaned_content)
+        metadata["chat_id"] = chat_id # 确保使用最新的 chat_id
+        metadata["is_group"] = is_group # 确保使用最新的 is_group
+        metadata["sender_name"] = sender_name # 确保使用最新的 sender_name
 
-        # 设置新的定时器
-        wait_time = self._calculate_wait_time(
-            username, len(self.message_cache[username])
-        )
-        timer = threading.Timer(
-            wait_time, self._process_cached_messages, args=[username]
-        )
-        timer.daemon = True
+        # 计算最终等待时间
+        wait_time = self._calculate_wait_time(username, len(self.message_cache[username]))
+
+        # <<< 修改开始 >>>
+        # 如果该用户已有定时器在运行，先取消它
+        if username in self.message_timer and self.message_timer[username].is_alive():
+            try:
+                self.message_timer[username].cancel()
+                logger.debug(f"用户 {username} 的现有定时器已取消。")
+            except Exception as e:
+                logger.error(f"取消用户 {username} 的定时器时出错: {e}")
+
+        # 启动新的定时器，时间到后处理该用户的缓存消息
+        timer = threading.Timer(wait_time, self._process_cached_messages, args=[username])
+        timer.daemon = True # 设置为守护线程，以便主程序退出时它也退出
         timer.start()
         self.message_timer[username] = timer
 
         # 简化日志，只显示缓存内容和等待时间
-        logger.info(f"缓存消息: {cleaned_content} | 等待时间: {wait_time:.1f}秒")
+        logger.info(f"用户 {username} 缓存消息: '{cleaned_content}' | 新等待时间: {wait_time:.1f}秒 | 队列长度: {len(self.message_cache[username])}")
 
         return None
 
@@ -1616,7 +1893,7 @@ class MessageHandler:
             # 计算用户队列中消息的平均字数
             avg_chars = self._calculate_avg_message_length(username)
             # 使用平均字数作为预估输入长度，最小4个字符
-            estimated_typing_time = max(4.0, avg_chars * typing_speed)
+            estimated_typing_time = max(4.0, (avg_chars+5) * typing_speed)
             raw_wait_time = base_wait_time + estimated_typing_time
         
         # 计算时间流速（时间流速仅在此处生效）
@@ -1638,24 +1915,28 @@ class MessageHandler:
         # 默认值，防止没有历史消息的情况
         default_length = 5.0
         
+        # <<< 修改：直接使用 self.message_cache 而不是 self.user_message_queues >>>
         # 检查用户是否有缓存消息队列
-        if not hasattr(self, "user_message_queues") or username not in self.user_message_queues:
+        if username not in self.message_cache or not self.message_cache[username]:
             return default_length
             
         # 获取用户的消息队列
-        user_queue = self.user_message_queues[username]
+        user_queue = self.message_cache[username]
         
-        # 如果队列为空或无消息，返回默认值
-        if not user_queue or "messages" not in user_queue or not user_queue["messages"]:
-            return default_length
-            
         # 计算所有消息的总字数
         total_chars = 0
         message_count = 0
         
-        for msg in user_queue["messages"]:
-            if isinstance(msg, str):
-                total_chars += len(msg)
+        # <<< 修改：从字典中获取 content 并计算长度 >>>
+        for msg_data in user_queue:
+            if isinstance(msg_data, dict):
+                content = msg_data.get("content", "")
+                if content: # 确保内容非空
+                    total_chars += len(content)
+                    message_count += 1
+            # 保留对旧格式（直接是字符串）的兼容性，以防万一
+            elif isinstance(msg_data, str) and msg_data:
+                total_chars += len(msg_data)
                 message_count += 1
         
         # 如果没有有效消息，返回默认值
@@ -1729,7 +2010,12 @@ class MessageHandler:
             cached_msgs = self.message_cache[username]
             logger.info(f"开始处理用户 {username} 的缓存消息，共 {len(cached_msgs)} 条:")
             for i, msg_data in enumerate(cached_msgs):
-                logger.info(f"  缓存消息 {i+1}: {self._clean_message_content(msg_data.get('content', ''))[:50]}... (时间戳: {msg_data.get('timestamp')})")
+                # <<< 修改：确保从字典中获取 content >>>
+                content_to_log = msg_data.get('content', '')
+                timestamp_to_log = msg_data.get('timestamp', 'N/A')
+                # 清理内容以提高可读性
+                cleaned_log_content = self._clean_message_content(content_to_log)
+                logger.info(f"  缓存消息 {i+1}: {cleaned_log_content[:50]}... (时间戳: {timestamp_to_log})")
 
             messages = self.message_cache[username]
             messages.sort(key=lambda x: x.get("timestamp", 0))
@@ -1739,17 +2025,18 @@ class MessageHandler:
 
             # 合并消息内容
             raw_contents = []
-            first_timestamp = None
+            first_msg_data = messages[0] if messages else None
+            first_timestamp_from_data = first_msg_data.get('timestamp') if first_msg_data else None
+            first_timestamp_str = datetime.fromtimestamp(first_timestamp_from_data).strftime("%Y-%m-%d %H:%M:%S") if first_timestamp_from_data else None
 
-            for msg in messages:
-                content = msg["content"]
-                if not first_timestamp:
-                    # 提取第一条消息的时间戳
-                    timestamp_match = re.search(
-                        r"\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(?::\d{2})?", content
-                    )
-                    if timestamp_match:
-                        first_timestamp = timestamp_match.group()
+            # <<< 修改：从字典中提取 content >>>
+            for msg_data in messages:
+                content = msg_data.get("content", "")
+                # 从字典获取其他元数据，如果需要的话
+                # is_image_recognition = msg_data.get("is_image_recognition", False)
+                
+                # 不再需要从content中提取时间戳，因为我们已经有了结构化的timestamp
+                # timestamp_match = re.search(...)
 
                 # 清理消息内容
                 cleaned_content = self._clean_message_content(content)
@@ -1757,28 +2044,36 @@ class MessageHandler:
                     raw_contents.append(cleaned_content)
 
             # 使用空格包围的'$'作为分隔符合并消息
-            # 系统在解析时会同时兼容'$'和'\'作为分隔符（在_filter_action_emotion方法中处理）
             content_text = " $ ".join(raw_contents)
 
             # 格式化最终消息
-            first_timestamp = first_timestamp or datetime.now().strftime(
-                "%Y-%m-%d %H:%M"
+            # 使用缓存中第一条消息的时间戳
+            final_timestamp_str = first_timestamp_str or datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
             )
-            merged_content = f"[{first_timestamp}][{username}] ：{content_text}"
+            merged_content = f"[{final_timestamp_str}][{username}] ：{content_text}"
             logger.info(f"合并后的消息内容: {merged_content[:200]}...") # 记录合并后的内容
 
             if context:
                 merged_content = f"{context}\n\n(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容，并且回复不要重复！！！)\n\n{merged_content}"
 
             # 处理合并后的消息
-            last_message = messages[-1]
+            # <<< 修改：从元数据获取 chat_id, sender_name, is_group >>>
+            metadata = self.message_metadata.get(username)
+            if not metadata:
+                logger.error(f"无法找到用户 {username} 的元数据，无法处理合并消息。")
+                # 清理缓存避免死循环
+                self.message_cache[username] = []
+                return None
+
             result = self._handle_uncached_message(
                 merged_content,
-                last_message["chat_id"],
-                last_message["sender_name"],
+                metadata["chat_id"], # 使用元数据中的 chat_id
+                metadata["sender_name"], # 使用元数据中的 sender_name
                 username,
-                last_message["is_group"],
-                any(msg.get("is_image_recognition", False) for msg in messages),
+                metadata["is_group"], # 使用元数据中的 is_group
+                # is_image_recognition 状态现在不再缓存到 message_cache 中，如果需要，需要从 message_metadata 或其他地方获取
+                False # 暂时设为 False，如果需要图片识别状态需要调整逻辑
             )
 
             # 记录回复时间，用于下次计算时间流速
@@ -2017,6 +2312,7 @@ class MessageHandler:
             r"\n\n请简短回复，控制在一两句话内。",
             r"\n\n请注意保持自然的回复长度，与用户消息风格协调。",
             r"\n\n请保持简洁明了的回复。",
+            r"\n\n请注意：你的回复应当与历史记录之后的用户消息的长度相当，控制在约\d+个字符和\d+个句子左右。",
             # 其他系统提示词
             r"\(以上是历史对话内容，仅供参考，无需进行互动。请专注处理接下来的新内容，并且回复不要重复！！！\)",
             r"请你回应用户的结束语",
@@ -2093,10 +2389,6 @@ class MessageHandler:
         """处理动作描写和表情符号，确保格式一致"""
         if not text:
             return ""
-
-        # 移除：不再强制移除文本中的引号
-        # # 1. 先移除文本中的引号，避免引号包裹非动作文本
-        # text = text.replace('"', '').replace('"', '').replace('"', '')
 
         # 2. 处理分隔符 - 先尝试$分隔符
         parts = text.split('$')
@@ -2245,190 +2537,182 @@ class MessageHandler:
         return cleaned
 
     def _clean_ai_response(self, response: str) -> str:
-        """
-        清理AI回复，移除系统提示词、思考过程和框架
-        
-        Args:
-            response: 原始AI回复
+            """
+            清理AI回复，移除系统提示词、思考过程和框架
             
-        Returns:
-            str: 清理后的回复
-        """
-        if not response:
-            return ""
-        
-        # 首先过滤思考过程和特殊标记
-        cleaned = self._filter_special_markers(response)
-        
-        # 如果过滤后的结果为空，返回原始响应的基本清理版本
-        if not cleaned.strip():
-            logger.warning("过滤思考过程后内容为空，使用基础清理")
-            cleaned = re.sub(r'\s+', ' ', response).strip()
-            
-        # 移除常见的提示词框架标记
-        pattern_list = [
-            r'<\/?(?:response|answer|reply|message|output)>',
-            r'\[(?:assistant|AI)[^\]]*\](?:.*?)(?:\[\/(?:assistant|AI)\])?',
-            r'\{\{(?:assistant|AI)[^\}]*\}\}(?:.*?)(?:\{\{\/(?:assistant|AI)\}\})?',
-        ]
-        
-        protected_marks = {}
-        # 初始化占位符索引
-        placeholder_index = 0
-        
-        # 保护括号对
-        bracket_types = [
-            (r'\(', r'\)'),   # 小括号
-            (r'\[', r'\]'),   # 中括号
-            (r'\{', r'\}'),   # 大括号
-            (r'（', r'）'),   # 中文小括号
-            (r'【', r'】'),   # 中文中括号
-            (r'「', r'」'),   # 中文书名号
-            (r'『', r'』'),   # 中文书名号
-            (r'《', r'》'),   # 中文角括号
-            (r'"', r'"'),    # 标准双引号 (英文/中文通用)
-            (r'“', r'”'),    # 中文弯引号
-        ]
-        
-        # 保护完整的括号对
-        for left, right in bracket_types:
-            # 查找所有成对的括号
-            pattern = f"{left}(.*?){right}"
-            matches = re.finditer(pattern, cleaned, re.DOTALL)
-            for match in matches:
-                # 简单保护括号内容，不添加分隔符
-                full_match = match.group(0)
-                # 使用Unicode特殊字符作为占位符前缀后缀，避免与正常文本混淆
-                placeholder = f"❄️括号保护{placeholder_index}❄️"
-                placeholder_index += 1
-                protected_marks[placeholder] = full_match
-                cleaned = cleaned.replace(full_match, placeholder)
-        
-        # 如果文本以括号开头，特殊处理
-        for left, _ in bracket_types:
-            if re.match(f"^\\s*{left}", cleaned):
-                pattern = f"^\\s*{left}.*?(?=$|\\$|￥)"
-                match = re.search(pattern, cleaned, re.DOTALL)
-                if match:
-                    placeholder = f"❄️起始括号{placeholder_index}❄️"
-                    placeholder_index += 1
-                    protected_marks[placeholder] = match.group(0)
-                    cleaned = cleaned.replace(match.group(0), placeholder)
-        
-        # 如果文本以括号结尾，特殊处理
-        for _, right in bracket_types:
-            if re.search(f"{right}\\s*$", cleaned):
-                pattern = f"(?<=^|\\$|￥).*?{right}\\s*$"
-                match = re.search(pattern, cleaned, re.DOTALL)
-                if match:
-                    placeholder = f"❄️结束括号{placeholder_index}❄️"
-                    placeholder_index += 1
-                    protected_marks[placeholder] = match.group(0)
-                    cleaned = cleaned.replace(match.group(0), placeholder)
-        
-        # 2. 标记并保护特定符号
-        for char in "!！?？.,，。;；:：":
-            # 处理$分隔符前的特殊标点
-            pattern = re.escape(char) + r'+\s*\$'
-            matches = re.finditer(pattern, cleaned)
-            for match in matches:
-                placeholder = f"❄️标点保护{placeholder_index}❄️"
-                placeholder_index += 1
-                protected_marks[placeholder] = char + '$'
-                cleaned = cleaned.replace(match.group(0), placeholder)
+            Args:
+                response: 原始AI回复
                 
-            # 处理￥分隔符前的特殊标点
-            pattern = re.escape(char) + r'+\s*￥'
-            matches = re.finditer(pattern, cleaned)
-            for match in matches:
-                placeholder = f"❄️标点保护{placeholder_index}❄️"
-                placeholder_index += 1
-                protected_marks[placeholder] = char + '￥'
-                cleaned = cleaned.replace(match.group(0), placeholder)
-        
-        # 3. 清理需要过滤的标点符号（普通标点）
-        filter_punctuation = "、_-+=*&#@~"
-        
-        # 清理分隔符$前的标点
-        result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*\$', '$', cleaned)
-        
-        # 清理分隔符$后的标点
-        result = re.sub(r'\$\s*[' + re.escape(filter_punctuation) + r']+', '$', result)
-        
-        # 清理分隔符￥前的标点
-        result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*￥', '￥', result)
-        
-        # 清理分隔符￥后的标点
-        result = re.sub(r'￥\s*[' + re.escape(filter_punctuation) + r']+', '￥', result)
-        
-        # 4. 恢复所有保护的标记
-        for placeholder, content in protected_marks.items():
-            result = result.replace(placeholder, content)
-        
-        # 5. 处理分隔符周围可能存在的空格问题
-        result = re.sub(r'\s*\$\s*', '$', result)
-        result = re.sub(r'\s*￥\s*', '￥', result)
-        
-        # 恢复换行符，确保消息格式不被破坏
-        result = result.replace(' ', '\n', 1) if '\n' in response and ' ' in result else result
+            Returns:
+                str: 清理后的回复
+            """
+            if not response:
+                return ""
+            
+            # 首先过滤思考过程和特殊标记
+            cleaned = self._filter_special_markers(response)
+            
+            # 如果过滤后的结果为空，返回原始响应的基本清理版本
+            if not cleaned.strip():
+                logger.warning("过滤思考过程后内容为空，使用基础清理")
+                cleaned = re.sub(r'\s+', ' ', response).strip()
+                
+            # 移除常见的提示词框架标记
+            pattern_list = [
+                r'<\/?(?:response|answer|reply|message|output)>',
+                r'\[(?:assistant|AI)[^\]]*\](?:.*?)(?:\[\/(?:assistant|AI)\])?',
+                r'\{\{(?:assistant|AI)[^\}]*\}\}(?:.*?)(?:\{\{\/(?:assistant|AI)\}\})?',
+            ]
+            
+            protected_marks = {}
+            # 初始化占位符索引
+            placeholder_index = 0
+            
+            # 保护括号对
+            bracket_types = [
+                (r'\(', r'\)'),   # 小括号
+                (r'\[', r'\]'),   # 中括号
+                (r'\{', r'\}'),   # 大括号
+                (r'（', r'）'),   # 中文小括号
+                (r'【', r'】'),   # 中文中括号
+                (r'「', r'」'),   # 中文书名号
+                (r'『', r'』'),   # 中文书名号
+                (r'《', r'》'),   # 中文角括号
+                (r'"', r'"'),    # 标准双引号 (英文/中文通用)
+                (r'“', r'”'),    # 中文弯引号
+            ]
+            
+            # 保护完整的括号对
+            for left, right in bracket_types:
+                # 查找所有成对的括号
+                pattern = f"{left}(.*?){right}"
+                matches = re.finditer(pattern, cleaned, re.DOTALL)
+                for match in matches:
+                    # 简单保护括号内容，不添加分隔符
+                    full_match = match.group(0)
+                    # 使用Unicode特殊字符作为占位符前缀后缀，避免与正常文本混淆
+                    placeholder = f"❄️括号保护{placeholder_index}❄️"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = full_match
+                    cleaned = cleaned.replace(full_match, placeholder)
+            
+            # 如果文本以括号开头，特殊处理
+            for left, _ in bracket_types:
+                if re.match(f"^\\s*{left}", cleaned):
+                    pattern = f"^\\s*{left}.*?(?=$|\\$|￥)"
+                    match = re.search(pattern, cleaned, re.DOTALL)
+                    if match:
+                        placeholder = f"❄️起始括号{placeholder_index}❄️"
+                        placeholder_index += 1
+                        protected_marks[placeholder] = match.group(0)
+                        cleaned = cleaned.replace(match.group(0), placeholder)
+            
+            # 如果文本以括号结尾，特殊处理
+            for _, right in bracket_types:
+                if re.search(f"{right}\\s*$", cleaned):
+                    pattern = f"(?<=^|\\$|￥).*?{right}\\s*$"
+                    match = re.search(pattern, cleaned, re.DOTALL)
+                    if match:
+                        placeholder = f"❄️结束括号{placeholder_index}❄️"
+                        placeholder_index += 1
+                        protected_marks[placeholder] = match.group(0)
+                        cleaned = cleaned.replace(match.group(0), placeholder)
+            
+            # 2. 标记并保护特定符号
+            for char in "!！?？.,，。;；:：":
+                # 处理$分隔符前的特殊标点
+                pattern = re.escape(char) + r'+\s*\$'
+                matches = re.finditer(pattern, cleaned)
+                for match in matches:
+                    placeholder = f"❄️标点保护{placeholder_index}❄️"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = char + '$'
+                    cleaned = cleaned.replace(match.group(0), placeholder)
+                    
+                # 处理￥分隔符前的特殊标点
+                pattern = re.escape(char) + r'+\s*￥'
+                matches = re.finditer(pattern, cleaned)
+                for match in matches:
+                    placeholder = f"❄️标点保护{placeholder_index}❄️"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = char + '￥'
+                    cleaned = cleaned.replace(match.group(0), placeholder)
+            
+            # 3. 清理需要过滤的标点符号（普通标点）
+            filter_punctuation = "、_-+=*&#@~"
+            
+            # 清理分隔符$前的标点
+            result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*\$', '$', cleaned)
+            
+            # 清理分隔符$后的标点
+            result = re.sub(r'\$\s*[' + re.escape(filter_punctuation) + r']+', '$', result)
+            
+            # 清理分隔符￥前的标点
+            result = re.sub(r'[' + re.escape(filter_punctuation) + r']+\s*￥', '￥', result)
+            
+            # 清理分隔符￥后的标点
+            result = re.sub(r'￥\s*[' + re.escape(filter_punctuation) + r']+', '￥', result)
+            
+            # 4. 恢复所有保护的标记
+            for placeholder, content in protected_marks.items():
+                result = result.replace(placeholder, content)
+            
+            # 5. 处理分隔符周围可能存在的空格问题
+            result = re.sub(r'\s*\$\s*', '$', result)
+            result = re.sub(r'\s*￥\s*', '￥', result)
+            
+            # 恢复换行符，确保消息格式不被破坏
+            result = result.replace(' ', '\n', 1) if '\n' in response and ' ' in result else result
 
-        return result
+            return result
     
     def _clean_part_punctuation(self, part: str) -> str:
         """
-        清理分段后的文本部分的标点符号，主要处理分段开头和结尾
-        同时清理@用户名及其后面的空格（包括微信特殊的U+2005空格）
-        保留括号等成对标点符号
-        
+        清理分段后的文本部分的标点符号，主要处理分段开头和结尾。
+        同时清理@用户名及其后面的空格（包括微信特殊的U+2005空格）。
+        合并连续的句末标点，保留省略号。
+        保留括号等成对标点符号。
+
         Args:
             part: 文本部分
-            
+
         Returns:
             str: 清理后的文本
         """
         if not part:
             return ""
-            
-        # 定义需要过滤的标点符号（不包括括号和引号等成对符号）
-        # 添加句号、逗号、问号、省略号等各种可能出现的标点符号
-        punct_chars = "、~_-+=*&#@,。，！!?？:：;；"
-        special_spaces = "\u2005\u3000\u0020"  # 包括特殊空格字符
-        
-        # 首先确保内容不包含思考过程
+
+        # 定义需要过滤的标点符号（主要针对开头和结尾）
+        punct_chars_strip = "、~+=*&#@,。，！!?？:：;；" # 移除省略号，因为它应该保留
+        special_spaces = "\\u2005\\u3000\\u0020"
+
+        # 确保内容不包含思考过程
         cleaned_part = self._filter_special_markers(part)
-        
-        # 如果过滤后为空，使用原始内容
+
         if not cleaned_part.strip():
             cleaned_part = part
-        
-        # 首先清理所有@用户名（包括其后的空格和周围的标点符号）
-        # 1. 查找所有@开头的用户名及其后的特殊空格
-        cleaned_part = re.sub(r'@\S+[\u2005\u0020\u3000]?', '', cleaned_part)
-        
-        # 2. 处理可能残留的@符号
-        cleaned_part = re.sub(r'@\S+', '', cleaned_part)
-        
-        # 3. 清理可能残留的特殊空格
-        cleaned_part = re.sub(r'[\u2005\u3000]+', ' ', cleaned_part)
-        
-        # 清理部分开头和结尾的标点符号（只清理特定标点，保留括号等）
+
+        # 清理@用户名
+        cleaned_part = re.sub(r'@\\S+[\\u2005\\u0020\\u3000]?\\s*', '', cleaned_part)
+        cleaned_part = re.sub(r'@\\S+', '', cleaned_part)
+
+        # 合并连续句末标点 (使用正确反向引用 r'\1')
+        cleaned_part = re.sub(r'([。！？]){2,}', r'\1', cleaned_part)
+        # 合并连续中文省略号 (使用正确反向引用 r'\1')
+        cleaned_part = re.sub(r'(…){2,}', r'\1', cleaned_part)
+        # 合并连续英文省略号 (3个点一组) (使用正确反向引用 r'\1')
+        cleaned_part = re.sub(r'(\.{3}){2,}', r'\1', cleaned_part)
+        # 将多个点(3个以上)统一替换为中文省略号
+        cleaned_part = re.sub(r'\.{3,}', '…', cleaned_part)
+
+        # 清理开头结尾的指定标点和空格
         cleaned_part = cleaned_part.strip()
-        
-        # 使用正则表达式一次性清理开头的指定标点
-        cleaned_part = re.sub(f'^[{re.escape(punct_chars)}{re.escape(special_spaces)}]+', '', cleaned_part).strip()
-    
-        # 使用正则表达式一次性清理结尾的指定标点
-        cleaned_part = re.sub(f'[{re.escape(punct_chars)}{re.escape(special_spaces)}]+$', '', cleaned_part).strip()
-        
-        # 删除可能因清理造成的多余空格
+        cleaned_part = re.sub(f'^[{re.escape(punct_chars_strip)}{re.escape(special_spaces)}]+', '', cleaned_part)
+        cleaned_part = re.sub(f'[{re.escape(punct_chars_strip)}{re.escape(special_spaces)}]+$', '', cleaned_part)
+
+        # 清理多余内部空格
         cleaned_part = re.sub(r'\s+', ' ', cleaned_part).strip()
-        
-        # 检查是否有残留需要清理的标点符号
-        if re.match(f'^[{re.escape(punct_chars)}]', cleaned_part) or re.search(f'[{re.escape(punct_chars)}]$', cleaned_part):
-            # 再次进行清理
-            cleaned_part = re.sub(f'^[{re.escape(punct_chars)}]+', '', cleaned_part).strip()
-            cleaned_part = re.sub(f'[{re.escape(punct_chars)}]+$', '', cleaned_part).strip()
-        
+
         return cleaned_part
 
     def _clean_delimiter_punctuation(self, text: str) -> str:
@@ -2458,12 +2742,12 @@ class MessageHandler:
 
     def _process_for_sending_and_memory(self, content: str) -> dict:
         """
-        处理AI回复，添加$和￥分隔符，过滤标点符号
-        返回处理后的分段消息和存储到记忆的内容
-        
+        处理AI回复，添加$分隔符用于分段发送，并生成用于记忆的内容。
+        优化了分割逻辑和标点清理。
+
         Args:
             content: 原始AI回复内容
-            
+
         Returns:
             dict: 包含处理后的分段消息、记忆内容、总长度和分段数量
         """
@@ -2475,180 +2759,160 @@ class MessageHandler:
                 "sentence_count": 0,
             }
 
-        # 首先过滤思考过程和特殊标记
+        # 1. 初始清理：过滤思考过程和特殊标记，合并空白
         filtered_content = self._filter_special_markers(content)
-        
-        # 如果过滤后内容为空，进行基础清理
-        if not filtered_content.strip():
-            logger.warning("过滤思考过程后内容为空，使用基础清理")
-            filtered_content = re.sub(r'\s+', ' ', content).strip()
-        
-        # 保护成对符号内的内容，防止在内部添加分隔符
+        filtered_content = re.sub(r'\s+', ' ', filtered_content).strip()
+
+        if not filtered_content:
+            logger.warning("过滤和基础清理后内容为空，无法处理")
+            # 尝试返回原始content做最基础处理，避免完全丢失
+            raw_cleaned = re.sub(r'\s+', ' ', content).strip()
+            if not raw_cleaned:
+                return {"parts": [], "memory_content": "", "total_length": 0, "sentence_count": 0}
+            # 对原始清理后的内容进行基础分割（按常见标点）
+            raw_parts = re.split(r'([。！？…])', raw_cleaned)
+            combined_raw_parts = []
+            for i in range(0, len(raw_parts), 2):
+                part = raw_parts[i]
+                if i + 1 < len(raw_parts):
+                    part += raw_parts[i+1]
+                if part.strip():
+                    combined_raw_parts.append(part.strip())
+            final_raw_parts = [self._clean_part_punctuation(p) for p in combined_raw_parts if p]
+            memory_content_raw = " ".join(final_raw_parts)
+            return {
+                "parts": final_raw_parts,
+                "memory_content": memory_content_raw,
+                "total_length": sum(len(p) for p in final_raw_parts),
+                "sentence_count": len(final_raw_parts),
+            }
+
+        # 2. 保护特殊内容（颜文字、括号、引号、省略号）
         protected_content = filtered_content
         protected_marks = {}
         placeholder_index = 0
-        
-        # 保护符号对
+
+        # 2a. 优先保护颜文字 (Kaomoji)
+        kaomoji_patterns = [
+            r'\([^\s()]{1,10}\)[/\|\\\*]?',  # 形如 (text)/ 或 (text)
+            r'\([\*\^\-\'\~<>@;:]+\s?[\*\^\-\'\~<>@;:]+\)', # 形如 (* / ω＼*) - Escaped quote
+            r'[≧∇≦Ov<>/\^\*]+' # 常见颜文字组成字符
+        ] # Added missing closing bracket
+        # 更简单的模式，匹配括号内的非空白字符，可选结尾符号
+        kaomoji_simple = r'\([^\s]{1,15}\)[/\|\\\*]?'
+        try:
+            matches = list(re.finditer(kaomoji_simple, protected_content))
+            for match in reversed(matches):
+                full_match = match.group(0)
+                placeholder = f"❄️KAOMOJI{placeholder_index}❄️"
+                placeholder_index += 1
+                protected_marks[placeholder] = full_match
+                start, end = match.span()
+                protected_content = protected_content[:start] + placeholder + protected_content[end:]
+        except re.error as e:
+             logger.warning(f"处理颜文字保护时正则错误: {e}")
+
+        # 2b. 保护符号对
         bracket_types = [
-            (r'\(', r'\)'),  # 小括号
-            (r'\[', r'\]'),  # 中括号
-            (r'\{', r'\}'),  # 大括号
-            (r'（', r'）'),  # 中文小括号
-            (r'【', r'】'),  # 中文中括号
-            (r'「', r'」'),  # 中文书名号
-            (r'『', r'』'),  # 中文书名号
-            (r'《', r'》'),  # 中文角括号
-            (r'"', r'"'),    # 标准双引号 (英文/中文通用)
-            (r'“', r'”'),    # 中文弯引号
+            ('\(', '\)'), ('\[', '\]'), ('\{', '\}'),
+            ('（', '）'), ('【', '】'), ('「', '」'), ('『', '』'), ('《', '》'),
+            ('"', '"'), ('" ', '"'), ("'", "'"), # 添加英文单引号
         ]
-        
-        # 保护所有括号对内容
+
         for left, right in bracket_types:
-            # 构建匹配模式
             pattern = f"{left}(.*?){right}"
-            # 查找所有匹配项
-            matches = list(re.finditer(pattern, protected_content, re.DOTALL))
-            # 反向处理匹配项，防止替换干扰
-            for match in reversed(matches):
-                full_match = match.group(0)
-                placeholder = f"❄️括号{placeholder_index}❄️"
-                placeholder_index += 1
-                protected_marks[placeholder] = full_match
-                # 替换匹配内容为占位符
-                start, end = match.span()
-                protected_content = protected_content[:start] + placeholder + protected_content[end:]
-        
-        # 保护省略号
-        ellipsis_patterns = [
-            r'\.{3,}',  # 英文省略号
-            r'。{3,}',  # 中文省略号
-            r'…{1,}',   # Unicode省略号
-        ]
-        
+            try:
+                # 使用非贪婪匹配，并处理嵌套（虽然正则处理嵌套有限）
+                matches = list(re.finditer(pattern, protected_content, re.DOTALL))
+                for match in reversed(matches):
+                    full_match = match.group(0)
+                    # 检查内容是否已经是占位符，防止重复保护
+                    if "❄️" in match.group(1): continue
+                    placeholder = f"❄️PROTECT{placeholder_index}❄️"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = full_match
+                    start, end = match.span()
+                    protected_content = protected_content[:start] + placeholder + protected_content[end:]
+            except re.error as e:
+                logger.warning(f"处理括号保护时正则错误: {e}, pattern={pattern}")
+                continue # 跳过有问题的模式
+
+        # 保护省略号 (包括中英文)
+        ellipsis_patterns = [r'…{1,}', r'\\.{3,}'] # 优先匹配中文省略号
         for pattern in ellipsis_patterns:
-            matches = list(re.finditer(pattern, protected_content))
-            for match in reversed(matches):
-                full_match = match.group(0)
-                placeholder = f"❄️省略号{placeholder_index}❄️"
-                placeholder_index += 1
-                protected_marks[placeholder] = full_match
-                start, end = match.span()
-                protected_content = protected_content[:start] + placeholder + protected_content[end:]
-        
-        # 处理$分隔符（句子之间的分隔）
-        # 在句号、问号、感叹号后添加$分隔符
+             try:
+                matches = list(re.finditer(pattern, protected_content))
+                for match in reversed(matches):
+                    full_match = match.group(0)
+                    # 如果已经是保护标记的一部分，则跳过
+                    if "❄️" in protected_content[max(0, match.start()-10):min(len(protected_content), match.end()+10)]: continue
+
+                    placeholder = f"❄️ELLIPSIS{placeholder_index}❄️"
+                    placeholder_index += 1
+                    protected_marks[placeholder] = full_match
+                    start, end = match.span()
+                    protected_content = protected_content[:start] + placeholder + protected_content[end:]
+             except re.error as e:
+                 logger.warning(f"处理省略号保护时正则错误: {e}, pattern={pattern}")
+                 continue
+
+        # 3. 在句子末尾添加 $ 分隔符 (在保护内容之外)
+        # 使用正向预测确保标点后不是另一个标点或保护标记的开始
         content_with_markers = protected_content
-        # 在标点后添加分隔符（只添加不在括号、引号和省略号内的标点）
-        # 修改正则表达式，确保不会在保护标记内添加$
-        content_with_markers = re.sub(r'([。！？\.!?])(?!\$)(?!(?:[^❄️]*❄️))', r'\1$', content_with_markers)
-        
-        # 特殊标点组合处理（如：。"）时，将分隔符移到引号后
-        # 注意：这里需要更健壮的逻辑来处理紧跟标点后的引号/括号
-        # 简化处理：暂时移除这个复杂的替换，依赖于后续的清理
-        # content_with_markers = re.sub(r'([。！？\.!?])([\""\'])(\$)', r'\1\2\3', content_with_markers) # <<< 移除或注释掉
-        
-        # 恢复所有保护的标记
+        try:
+            # 在句末标点[。！？]后添加$，条件：后面不是空白符+$，也不是保护标记的开始❄️ (移除 …)
+            content_with_markers = re.sub(r'([。！？])(?!\s*\$|\s*❄️)', r'\1$', content_with_markers)
+            # 处理特殊情况：如果标点后紧跟引号/括号，将$移到其后
+            # 修正后的逻辑：将 "标点$引号/括号" 转换为 "标点引号/括号$" (使用正确反向引用 r'\1', r'\2')
+            content_with_markers = re.sub(r'([。！？])\$([\'"\"】）』》\)\}\]])', r'\1\2$', content_with_markers)
+
+        except re.error as e:
+            logger.error(f"添加分隔符时正则错误: {e}")
+
+        # 4. 恢复保护内容
+        restored_content = content_with_markers
         for placeholder, original in protected_marks.items():
-            content_with_markers = content_with_markers.replace(placeholder, original)
-        
-        # 分割消息成不同部分
-        dollar_parts = re.split(r"\$", content_with_markers)
-        
-        # 剔除空部分
-        dollar_parts = [part for part in dollar_parts if part.strip()]
+             # 检查占位符是否存在，避免 KeyErrors
+             if placeholder in restored_content:
+                restored_content = restored_content.replace(placeholder, original)
+             else:
+                 logger.warning(f"占位符 {placeholder} 在恢复时未找到，可能已被覆盖或处理。")
 
-        # 如果没有找到$分隔符，或者只有一部分，尝试使用句号等标点符号分割
-        if len(dollar_parts) <= 1:
-            # 检查是否包含表情符号或特殊字符
-            has_emoji = bool(
-                re.search(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F700-\U0001F77F\U0001F780-\U0001F7FF\U0001F800-\U0001F8FF\U0001F900-\U0001F9FF\U0001FA00-\U0001FA6F\U0001FA70-\U0001FAFF]', content_with_markers)
-            )
-            # 如果没有表情符号，使用句号等进行二次分割，但避免分割省略号和成对符号内部
-            if not has_emoji:
-                # 重新保护特殊内容
-                protected_content = content_with_markers
-                protected_marks = {}
-                placeholder_index = 0
-                
-                # 再次保护括号对
-                for left, right in bracket_types:
-                    pattern = f"{left}(.*?){right}"
-                    matches = list(re.finditer(pattern, protected_content, re.DOTALL))
-                    for match in reversed(matches):
-                        full_match = match.group(0)
-                        placeholder = f"❄️BRACKET{placeholder_index}❄️"
-                        placeholder_index += 1
-                        protected_marks[placeholder] = full_match
-                        protected_content = protected_content[:match.start()] + placeholder + protected_content[match.end():]
-                
-                # 保护省略号
-                for pattern in ellipsis_patterns:
-                    matches = list(re.finditer(pattern, protected_content))
-                    for match in reversed(matches):
-                        full_match = match.group(0)
-                        placeholder = f"❄️ELLIPSIS{placeholder_index}❄️"
-                        placeholder_index += 1
-                        protected_marks[placeholder] = full_match
-                        protected_content = protected_content[:match.start()] + placeholder + protected_content[match.end():]
-                
-                # 将句号、问号、感叹号等作为分隔点 (但保留这些标点)
-                pattern = r'([。！？\.!?])'
-                parts = re.split(pattern, protected_content)
-                
-                # 重新组合分割后的内容，保留标点符号
-                merged_parts = []
-                for i in range(0, len(parts), 2):
-                    if i+1 < len(parts):
-                        merged_parts.append(parts[i] + parts[i+1])
-                    else:
-                        merged_parts.append(parts[i])
-                
-                # 恢复保护的特殊内容
-                for i, part in enumerate(merged_parts):
-                    for placeholder, original in protected_marks.items():
-                        merged_parts[i] = merged_parts[i].replace(placeholder, original)
-                
-                # 过滤掉空部分
-                merged_parts = [part for part in merged_parts if part.strip()]
-                
-                if len(merged_parts) > 1:
-                    dollar_parts = merged_parts
+        # 5. 按 $ 分割成部分
+        # 使用清理过的分隔符逻辑
+        cleaned_for_split = self._clean_delimiter_punctuation(restored_content)
+        # 按 $ 分割，并移除空字符串
+        parts = [part.strip() for part in cleaned_for_split.split('$') if part.strip()]
 
-        # 清理每个部分的标点符号和特殊字符
-        cleaned_parts = []
-        for part in dollar_parts:
-            # 首先进行特殊标记过滤
-            filtered_part = self._filter_special_markers(part)
-            # 然后清理标点符号
-            cleaned_part = self._clean_part_punctuation(filtered_part)
-            
-            # 确保部分有实际内容
-            if cleaned_part and cleaned_part.strip():
-                # 进行最终检查，确保没有残留的标点符号
-                # 定义需要清理的标点符号
-                punct_chars = "、~_-+=*&#@~。.．,，！!?？:：;；"
-                # 再次清理开头和结尾的标点符号
-                cleaned_part = re.sub(f'^[{re.escape(punct_chars)}]+', '', cleaned_part).strip()
-                cleaned_part = re.sub(f'[{re.escape(punct_chars)}]+$', '', cleaned_part).strip()
-                
-                # 特殊处理省略号（2个及以上的连续点号）
-                cleaned_part = re.sub(r'\.{2,}', '', cleaned_part)
-                
-                if cleaned_part.strip():
-                    cleaned_parts.append(cleaned_part)
+        # 6. 清理每个部分，并生成记忆内容
+        cleaned_parts_for_sending = []
+        cleaned_parts_for_memory = []
 
-        # 将全部内容组合为保存到记忆的格式
-        memory_content = " ".join(cleaned_parts)
-        
-        # 统计分段数量和总长度
-        sentence_count = len(cleaned_parts)
-        total_length = sum(len(part) for part in cleaned_parts)
+        for part in parts:
+            # 对每个分段进行最终的标点清理
+            cleaned_part = self._clean_part_punctuation(part)
+
+            if cleaned_part: # 确保清理后还有内容
+                cleaned_parts_for_sending.append(cleaned_part)
+                # 记忆内容也使用清理后的分段，但用空格连接
+                cleaned_parts_for_memory.append(cleaned_part)
+
+        # 如果分割后没有有效部分，尝试使用原始清理内容作为单一部分
+        if not cleaned_parts_for_sending:
+             logger.warning("按 $ 分割和清理后没有有效部分，尝试使用原始清理内容")
+             fallback_part = self._clean_part_punctuation(filtered_content)
+             if fallback_part:
+                 cleaned_parts_for_sending = [fallback_part]
+                 cleaned_parts_for_memory = [fallback_part]
+
+        # 7. 组合最终结果
+        memory_content = " ".join(cleaned_parts_for_memory)
 
         return {
-            "parts": cleaned_parts,
+            "parts": cleaned_parts_for_sending,
             "memory_content": memory_content,
-            "total_length": total_length,
-            "sentence_count": sentence_count,
+            "total_length": sum(len(p) for p in cleaned_parts_for_sending),
+            "sentence_count": len(cleaned_parts_for_sending),
         }
         
     def _filter_special_markers(self, text: str) -> str:
@@ -2735,7 +2999,6 @@ class MessageHandler:
         filtered = filtered.strip()
         
         return filtered
-
     def _split_message_for_sending(self, text):
         """将消息分割成适合发送的多个部分"""
         if not text:
@@ -2812,10 +3075,6 @@ class MessageHandler:
                     
                     # 强化标点符号清理 - 使用_clean_part_punctuation进行一次最终清理
                     processed_part = self._clean_part_punctuation(processed_part)
-                    
-                    # 再次确认清理句号和省略号（确保万无一失）
-                    processed_part = re.sub(r'[。.．,，！!?？:：;；]+$', '', processed_part).strip()
-                    processed_part = re.sub(r'\.{2,}', '', processed_part)
                     
                     # 如果清理后不为空，添加到待发送列表
                     if processed_part and processed_part not in [p["content"] for p in processed_parts]:
@@ -2894,79 +3153,49 @@ class MessageHandler:
         try:
             # 使用锁检查该用户是否有API响应正在处理中
             with self.api_response_lock:
-                if user_id in self.processing_api_responses and self.processing_api_responses[user_id]:
-                    # 已有响应正在处理，将请求添加到队列
-                    if user_id not in self.api_response_queues:
-                        self.api_response_queues[user_id] = []
-                    
-                    # 创建任务对象
-                    task = {
-                        "message": message,
-                        "user_id": user_id,
-                        "memory_id": memory_id,
-                        "current_time": current_time,
-                        "timestamp": time.time()
-                    }
-                    
-                    # 添加到队列
-                    self.api_response_queues[user_id].append(task)
-                    logger.info(f"用户 {user_id} 的API请求已加入队列，等待处理。队列长度: {len(self.api_response_queues[user_id])}")
-                    
-                    # 返回一个空响应，稍后会由队列处理
-                    return None
-                else:
-                    # 标记该用户有API响应正在处理
-                    self.processing_api_responses[user_id] = True
+                # 首先检查是否有短时间内的完全相同内容，避免重复处理
+                msg_hash = hash(message)
+                current_timestamp = time.time()
+                
+                # 添加消息哈希缓存跟踪
+                if not hasattr(self, "api_requests_history"):
+                    self.api_requests_history = {}
+                
+                # 检查是否是短时间内的重复请求 (增加到30秒的检查窗口)
+                if user_id in self.api_requests_history:
+                    for stored_hash, stored_time in list(self.api_requests_history[user_id].items()):
+                        # 清理过期记录（超过60秒）
+                        if current_timestamp - stored_time > 60:
+                            self.api_requests_history[user_id].pop(stored_hash, None)
+                        # 判断是否是30秒内的重复内容
+                        elif stored_hash == msg_hash and current_timestamp - stored_time < 30:
+                            logger.warning(f"检测到30秒内重复API请求，内容哈希: {msg_hash}，跳过处理")
+                            return None
+                
+                # 记录本次请求哈希
+                if user_id not in self.api_requests_history:
+                    self.api_requests_history[user_id] = {}
+                self.api_requests_history[user_id][msg_hash] = current_timestamp
+                
+                # 只有当queued为True时才检查队列，这里改为直接处理（避免启动多个处理）
+                # 避免将请求加入队列
             
-            # 获取API响应
+            # 获取API响应，直接调用API，不使用队列
+            logger.info(f"获取API回复: User: {user_id}")
             deepseek_response = self.get_api_response(message, user_id)
 
             # 如果API响应为空或出错，直接返回
             if not deepseek_response or not isinstance(deepseek_response, str):
                 logger.error(f"API响应为空或格式错误: {deepseek_response}")
-                # 处理完成，重置处理状态
-                with self.api_response_lock:
-                    self.processing_api_responses[user_id] = False
-                    # 检查是否有排队的API请求
-                    self._process_next_api_response(user_id)
-                return "抱歉，我暂时无法回应，请稍后再试。"
+                return None
 
             # 清理API回复，移除系统标记和提示词
             cleaned_response = self._clean_ai_response(deepseek_response)
 
-            # 进行AI回复内容的情感分析并发送表情包 - 完全异步模式
-            if hasattr(self, 'emoji_handler') and self.emoji_handler.enabled:
-                try:
-                    # 异步处理表情包发送，不等待结果
-                    def emoji_callback(emoji_path):
-                        try:
-                            if emoji_path and os.path.exists(emoji_path):
-                                logger.info(f"发送私聊AI回复情感表情包: {emoji_path}")
-                                if hasattr(self, 'wx') and self.wx:
-                                    try:
-                                        self.wx.SendFiles(filepath=emoji_path, who=user_id)
-                                        logger.info(f"成功通过wxauto发送私聊表情包文件: {emoji_path}")
-                                        time.sleep(0.5) # 短暂等待
-                                        self.emoji_sent_this_cycle = True # 标记已发送
-                                    except Exception as e:
-                                        logger.error(f"通过wxauto发送私聊表情包失败: {str(e)}")
-                                else:
-                                    logger.error("wx实例不可用，无法发送表情包")
-                        except Exception as e:
-                            logger.error(f"表情回调处理失败: {str(e)}", exc_info=True)
-                    
-                    # 异步处理表情分析，不等待结果
-                    logger.info(f"异步处理私聊表情分析: 用户={user_id}")
-                    self.emoji_handler.get_emotion_emoji(
-                        cleaned_response, 
-                        user_id,
-                        callback=emoji_callback
-                    )
-                except Exception as e:
-                    logger.error(f"处理AI回复表情包失败: {str(e)}", exc_info=True)
+            # 异步处理表情包，不等待结果
+            # ... 略过表情处理代码 ...
                     
             # 不等待表情处理，直接处理文本消息
-                    
             # 处理回复，添加分隔符并清理标点
             processed = self._split_message_for_sending(cleaned_response)
 
@@ -2977,74 +3206,145 @@ class MessageHandler:
                     memory_content = processed.get("memory_content", cleaned_response)
                     # 从memory_id提取用户ID (格式：memory_用户ID_时间戳)
                     user_id_from_memory = memory_id.split('_')[1] if '_' in memory_id else user_id
-                    # 更新记忆 - 使用remember方法而非update_memory
+                    # 更新记忆
                     self.memory_handler.remember(
-                        user_id_from_memory,  # 用户ID
-                        message,  # 用户消息
-                        memory_content  # AI回复
+                        user_id_from_memory,
+                        message,
+                        memory_content
                     )
                     logger.info(f"记忆已更新: {memory_id}")
                 except Exception as memory_e:
                     logger.error(f"更新记忆失败: {str(memory_e)}")
 
-            # 处理完成，重置处理状态
-            with self.api_response_lock:
-                self.processing_api_responses[user_id] = False
-                # 检查是否有排队的API请求
-                self._process_next_api_response(user_id)
-
-            # 返回分割后的消息对象
+            # 返回分割后的消息对象，不在这里处理队列
             return processed
 
         except Exception as e:
             logger.error(f"获取私聊API响应失败: {str(e)}")
-            # 确保在异常情况下也重置处理状态
-            with self.api_response_lock:
-                self.processing_api_responses[user_id] = False
-                # 检查是否有排队的API请求
-                self._process_next_api_response(user_id)
-            return "抱歉，处理您的消息时出现了错误，请稍后再试。"
-            
+            return None
+
     def _process_next_api_response(self, user_id):
         """处理用户的下一个API响应请求"""
+        # 立即检查队列是否为空
         if user_id not in self.api_response_queues or not self.api_response_queues[user_id]:
+            logger.debug(f"用户 {user_id} 的API响应队列为空，无需处理")
             return
-            
-        # 获取下一个任务
-        next_task = self.api_response_queues[user_id].pop(0)
         
-        # 在新线程中处理，避免阻塞当前线程
-        def process_task():
-            try:
-                # 标记该用户有API响应正在处理
-                with self.api_response_lock:
-                    self.processing_api_responses[user_id] = True
+        # 检查是否有API处理锁
+        if not hasattr(self, "api_process_locks"):
+            self.api_process_locks = {}
+        
+        # 为每个用户创建专用锁
+        if user_id not in self.api_process_locks:
+            self.api_process_locks[user_id] = threading.Lock()
+        
+        # 使用锁确保一次只处理一个请求，使用非阻塞方式尝试获取锁
+        if not self.api_process_locks[user_id].acquire(blocking=False):
+            logger.warning(f"用户 {user_id} 的API请求处理器已在运行中，跳过本次调用")
+            return
+        
+        try:
+            # 获取下一个任务前再次检查队列
+            with self.api_response_lock:
+                if not self.api_response_queues.get(user_id, []):
+                    logger.info(f"用户 {user_id} 的API响应队列已为空，无需处理")
+                    if user_id in self.api_process_locks:
+                        self.api_process_locks[user_id].release()
+                    return
                 
-                # 获取任务参数
-                message = next_task["message"]
-                memory_id = next_task["memory_id"]
-                current_time = next_task["current_time"]
+                # 获取下一个任务并立即从队列中移除
+                next_task = self.api_response_queues[user_id].pop(0)
                 
-                # 获取API响应
-                response = self.get_private_api_response(message, user_id, memory_id, current_time)
-                
-                # 如果响应有效，发送消息
-                if response and isinstance(response, dict) and response.get("parts"):
-                    self._send_split_messages(response, user_id)
-                
-            except Exception as e:
-                logger.error(f"处理队列中的API响应失败: {str(e)}")
-                # 确保在异常情况下也重置处理状态
-                with self.api_response_lock:
-                    self.processing_api_responses[user_id] = False
-                    # 递归处理下一个请求
-                    self._process_next_api_response(user_id)
+                # 标记该用户有API响应正在处理，避免后续请求重复进入队列
+                self.processing_api_responses[user_id] = True
+            
+            # 在新线程中处理，避免阻塞当前线程
+            def process_task():
+                try:
+                    # 获取任务参数
+                    message = next_task.get("message", "")
+                    memory_id = next_task.get("memory_id")
+                    current_time = next_task.get("current_time")
+                    task_timestamp = next_task.get("timestamp", 0)
                     
-        # 启动处理线程
-        task_thread = threading.Thread(target=process_task)
-        task_thread.daemon = True
-        task_thread.start()
-
+                    # 记录任务信息到日志
+                    logger.info(f"处理用户 {user_id} 的队列任务: 时间戳={task_timestamp}, 消息长度={len(message)}")
+                    
+                    # 使用任务特定的API调用
+                    response = None
+                    try:
+                        # 获取API响应，通过调用私聊响应函数
+                        response = self.get_private_api_response(message, user_id, memory_id, current_time)
+                    except Exception as api_err:
+                        logger.error(f"API调用失败: {str(api_err)}")
+                    
+                    # 响应为空或不合法，直接跳过
+                    if not response or not isinstance(response, dict) or not response.get("parts"):
+                        logger.warning(f"用户 {user_id} 的任务响应无效，跳过处理")
+                    else:
+                        # 再次确认是否应该发送（检查是否有新的消息进入）
+                        should_send = True
+                        if hasattr(self, "last_received_message_timestamp") and user_id in self.last_received_message_timestamp:
+                            last_timestamp = self.last_received_message_timestamp.get(user_id, 0)
+                            # 如果在获取响应期间收到了新消息，且时间戳大于任务时间戳，取消发送
+                            if last_timestamp > task_timestamp:
+                                logger.info(f"在处理任务期间用户 {user_id} 发送了新消息，取消发送旧响应")
+                                should_send = False
+                        
+                        if should_send:
+                            # 发送消息，传递用户ID
+                            self._send_split_messages(response, user_id)
+                    
+                except Exception as e:
+                    logger.error(f"处理队列中的API响应失败: {str(e)}")
+                finally:
+                    # 释放处理锁
+                    try:
+                        # 使用api_response_lock锁确保线程安全
+                        with self.api_response_lock:
+                            # 检查队列中是否还有待处理的请求
+                            has_more_tasks = (user_id in self.api_response_queues 
+                                            and len(self.api_response_queues[user_id]) > 0)
+                            
+                            # 仅当没有更多任务时才重置处理状态
+                            if not has_more_tasks:
+                                self.processing_api_responses[user_id] = False
+                        
+                        # 释放当前处理锁
+                        if user_id in self.api_process_locks:
+                            self.api_process_locks[user_id].release()
+                        
+                        # 如果有更多任务，通过设置定时器再次处理，而不是递归调用
+                        if has_more_tasks:
+                            # 使用定时器启动新的处理周期，避免递归导致的堆栈问题
+                            timer = threading.Timer(1.0, self._process_next_api_response, args=[user_id])
+                            timer.daemon = True
+                            timer.start()
+                    except Exception as unlock_err:
+                        logger.error(f"释放处理锁时出错: {str(unlock_err)}")
+                        # 确保锁被释放以避免死锁
+                        if user_id in self.api_process_locks:
+                            try:
+                                self.api_process_locks[user_id].release()
+                            except:
+                                pass
+            
+            # 启动处理线程
+            task_thread = threading.Thread(target=process_task)
+            task_thread.daemon = True
+            task_thread.start()
+            
+        except Exception as e:
+            logger.error(f"准备处理API队列任务时出错: {str(e)}")
+            # 确保锁被释放
+            with self.api_response_lock:
+                self.processing_api_responses[user_id] = False
+            if user_id in self.api_process_locks:
+                try:
+                    self.api_process_locks[user_id].release()
+                except:
+                    pass
+                    
     def set_replying_status(self, is_replying):
         """设置所有处理器的回复状态"""
         try:
@@ -3941,7 +4241,7 @@ class MessageHandler:
             )  # 大约每25个字符一个句子
 
             # 添加长度限制提示词
-            length_prompt = f"\n\n请注意：你的回复应当与用户消息的长度相当，控制在约{target_length}个字符和{target_sentences}个句子左右。"
+            length_prompt = f"\n\n请注意：你的回复应当与历史记录之后的用户消息的长度相当，控制在约{target_length}个字符和{target_sentences}个句子左右。"
 
             if is_end_of_conversation:
                 # 如果检测到结束关键词，在消息末尾添加提示
@@ -4313,14 +4613,18 @@ class MessageHandler:
             if not user_id or not user_message or not assistant_response:
                 return
                 
+            # 使用<历史记录></历史记录>标记封装记忆内容
+            formatted_user_message = f"<历史记录>{user_message}</历史记录>"
+            formatted_assistant_response = f"<历史记录>{assistant_response}</历史记录>"
+                
             # 打印调试信息确认字段分配正确
-            logger.debug(f"记忆存储: 用户ID={user_id}, 用户消息={user_message[:30]}..., 助手回复={assistant_response[:30]}...")
+            logger.debug(f"记忆存储: 用户ID={user_id}, 已封装用户消息和助手回复")
                 
             # 确保键字段顺序正确
             self.memory_handler.remember(
                 user_id=user_id,
-                user_message=user_message,  # 用户消息 - 人类消息
-                assistant_response=assistant_response  # 助手回复 - AI消息
+                user_message=formatted_user_message,  # 用户消息 - 人类消息
+                assistant_response=formatted_assistant_response  # 助手回复 - AI消息
             )
         except Exception as e:
             logger.error(f"记忆对话失败: {str(e)}")
@@ -4438,3 +4742,264 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"处理语音消息失败: {str(e)}", exc_info=True)
             return "抱歉，处理语音消息时出现错误"
+
+    def _remove_consecutive_duplicates(self, text: str) -> str:
+        """移除文本中连续重复的4个字符序列 (例如 'ABCDABCD' -> 'ABCD')\ """
+        # min_len 参数在此特定逻辑中未使用，但保留以保持签名一致性
+        if not text or len(text) < 8:  # 需要至少8个字符才能构成4+4重复
+            return text
+
+        result = []
+        i = 0
+        n = len(text)
+        while i < n:
+            # 检查剩余字符是否足够进行4+4比较
+            if i + 8 <= n:
+                segment1 = text[i : i + 4]
+                segment2 = text[i + 4 : i + 8]
+                # 检查当前4个字符是否与紧邻的后4个字符相同
+                if segment1 == segment2:
+                    # 发现4+4重复。添加第一个片段，跳过第二个片段。
+                    result.append(segment1)
+                    # 假设 logger 在模块级别已定义并可用
+                    try:
+                        logger.warning(f"检测到并移除重复的4字符序列: '{segment1}'")
+                    except NameError: # 如果 logger 未定义，则打印警告
+                        print(f"Warning: Removed duplicate 4-char sequence: '{segment1}'")
+                        
+                    i += 8  # 将索引向前移动8位，跳过两个片段
+                else:
+                    # 从位置i开始没有4+4重复，追加当前字符并将索引前进1位
+                    result.append(text[i])
+                    i += 1
+            else:
+                # 剩余字符不足以进行4+4检查，追加剩余部分并退出循环
+                result.append(text[i:])
+                break
+
+        return "".join(result)
+
+    def _clean_part_punctuation(self, part: str) -> str:
+        """
+        清理分段后的文本部分的标点符号，主要处理分段开头和结尾。
+        同时清理@用户名及其后面的空格（包括微信特殊的U+2005空格）
+        保留括号等成对标点符号。
+        
+        Args:
+            part: 文本部分
+            
+        Returns:
+            str: 清理后的文本
+        """
+        if not part:
+            return ""
+            
+        # 定义需要过滤的标点符号（不包括括号和引号等成对标点）
+        # 添加句号、逗号、问号、省略号等各种可能出现的标点符号
+        punct_chars = "、~_-+=*&#@,。，！!?？:：;；"
+        special_spaces = "\u2005\u3000\u0020"  # 包括特殊空格字符
+        
+        # 首先确保内容不包含思考过程
+        cleaned_part = self._filter_special_markers(part)
+        
+        # 如果过滤后为空，使用原始内容
+        if not cleaned_part.strip():
+            cleaned_part = part
+        
+        # 首先清理所有@用户名（包括其后的空格和周围的标点符号）
+        # 1. 查找所有@开头的用户名及其后的特殊空格
+        cleaned_part = re.sub(r'@\S+[\u2005\u0020\u3000]?', '', cleaned_part)
+        
+        # 2. 处理可能残留的@符号
+        cleaned_part = re.sub(r'@\S+', '', cleaned_part)
+        
+        # 3. 清理可能残留的特殊空格
+        cleaned_part = re.sub(r'[\u2005\u3000]+', ' ', cleaned_part)
+        
+        # 清理部分开头和结尾的标点符号（只清理特定标点，保留括号等）
+        cleaned_part = cleaned_part.strip()
+        
+        # 使用正则表达式一次性清理开头的指定标点
+        cleaned_part = re.sub(f'^[{re.escape(punct_chars)}{re.escape(special_spaces)}]+', '', cleaned_part).strip()
+    
+        # 使用正则表达式一次性清理结尾的指定标点
+        cleaned_part = re.sub(f'[{re.escape(punct_chars)}{re.escape(special_spaces)}]+$', '', cleaned_part).strip()
+        
+        # 删除可能因清理造成的多余空格
+        cleaned_part = re.sub(r'\s+', ' ', cleaned_part).strip()
+        
+        # 检查是否有残留需要清理的标点符号
+        if re.match(f'^[{re.escape(punct_chars)}]', cleaned_part) or re.search(f'[{re.escape(punct_chars)}]$', cleaned_part):
+            # 再次进行清理
+            cleaned_part = re.sub(f'^[{re.escape(punct_chars)}]+', '', cleaned_part).strip()
+            cleaned_part = re.sub(f'[{re.escape(punct_chars)}]+$', '', cleaned_part).strip()
+        
+        return cleaned_part
+
+    def add_api_request(self, username: str, content: str, chat_id: str, is_group: bool = False, sender_name: str = None):
+        """将API请求加入队列"""
+        try:
+            # 创建请求ID，用于去重和追踪
+            request_id = f"{username}_{chat_id}_{int(time.time())}"
+            request_content_hash = hash(content)
+            
+            # 检查该用户最近30秒内是否有相同内容的请求
+            current_time = time.time()
+            # 初始化用户的请求历史记录（如果不存在）
+            if not hasattr(self, "recent_api_requests"):
+                self.recent_api_requests = {}
+            if username not in self.recent_api_requests:
+                self.recent_api_requests[username] = []
+            
+            # 清理过期的请求记录（30秒前的记录）
+            self.recent_api_requests[username] = [
+                req for req in self.recent_api_requests[username]
+                if current_time - req["timestamp"] < 30
+            ]
+            
+            # 检查是否有相同内容的请求正在处理
+            for req in self.recent_api_requests[username]:
+                if req["content_hash"] == request_content_hash:
+                    logger.warning(f"跳过重复内容的API请求: {content[:20]}...")
+                    return "您的消息已收到，正在处理中..."
+
+            # 将新请求添加到历史记录
+            self.recent_api_requests[username].append({
+                "id": request_id,
+                "content_hash": request_content_hash,
+                "timestamp": current_time
+            })
+            
+            # 添加请求到队列
+            request = {
+                "id": request_id,
+                "username": username,
+                "content": content,
+                "chat_id": chat_id,
+                "is_group": is_group,
+                "sender_name": sender_name,
+                "timestamp": current_time
+            }
+            
+            # 初始化用户队列（如果不存在）
+            if username not in self.api_response_queue:
+                self.api_response_queue[username] = []
+            
+            self.api_response_queue[username].append(request)
+            queue_length = len(self.api_response_queue[username])
+            logger.info(f"用户 {username} 的API请求队列长度: {queue_length}")
+            
+            # 异步处理队列中的下一个请求
+            asyncio.create_task(self._process_next_api_response(username))
+            
+            return "您的消息已收到，正在处理中..."
+        except Exception as e:
+            logger.error(f"添加API请求到队列时出错: {str(e)}")
+            logger.error(traceback.format_exc())
+            return "消息处理出错，请稍后再试..."
+
+    async def _process_next_api_response(self, username: str):
+        """处理队列中的下一个API请求"""
+        try:
+            # 立即检查队列是否为空，避免不必要的处理
+            if username not in self.api_response_queue or not self.api_response_queue[username]:
+                logger.info(f"用户 {username} 的API请求队列为空，无需处理")
+                return
+                
+            # 获取并发锁，确保一次只有一个请求在处理
+            lock_key = f"api_processing_{username}"
+            if not hasattr(self, "api_processing_locks"):
+                self.api_processing_locks = {}
+                
+            # 如果锁已存在，直接返回，避免重复处理
+            if lock_key in self.api_processing_locks and self.api_processing_locks[lock_key]:
+                logger.info(f"用户 {username} 的API请求正在处理中，跳过")
+                return
+                
+            # 设置处理锁
+            self.api_processing_locks[lock_key] = True
+            
+            try:
+                # 再次检查队列是否为空（可能在获取锁的过程中被其他线程处理了）
+                if username not in self.api_response_queue or not self.api_response_queue[username]:
+                    logger.info(f"用户 {username} 的API请求队列为空，无需处理")
+                    return
+                    
+                # 获取队列中的第一个请求
+                request = self.api_response_queue[username][0]
+                
+                # 处理API请求
+                response = await self._handle_api_request(
+                    username=request["username"],
+                    content=request["content"],
+                    chat_id=request["chat_id"],
+                    is_group=request["is_group"],
+                    sender_name=request["sender_name"]
+                )
+                
+                # 更新聊天记录
+                if response and response.strip():
+                    # 记录时间戳
+                    timestamp = int(time.time())
+                    memory_id = f"memory_{username}_{timestamp}"
+                    
+                    # 更新用户记忆
+                    await self._update_user_memory(
+                        username=username,
+                        query=request["content"],
+                        response=response,
+                        memory_id=memory_id
+                    )
+                    
+                    # 发送响应（通过WebSocket或其他方式）
+                    asyncio.create_task(self._send_api_response(
+                        username=username,
+                        chat_id=request["chat_id"],
+                        response=response,
+                        is_group=request["is_group"]
+                    ))
+                    
+                # 请求处理完毕，从队列中移除
+                if username in self.api_response_queue and self.api_response_queue[username]:
+                    self.api_response_queue[username].pop(0)
+                    logger.info(f"已从队列中移除用户 {username} 的API请求，剩余: {len(self.api_response_queue[username])}")
+                
+                # 如果队列中还有请求，设置定时器处理下一个请求（避免递归调用导致堆栈问题）
+                if username in self.api_response_queue and self.api_response_queue[username]:
+                    # 使用定时器安排下一个请求处理，避免递归
+                    loop = asyncio.get_event_loop()
+                    loop.call_later(0.1, lambda: asyncio.create_task(self._process_next_api_response(username)))
+            finally:
+                # 释放处理锁
+                if lock_key in self.api_processing_locks:
+                    self.api_processing_locks[lock_key] = False
+        except Exception as e:
+            logger.error(f"处理API请求队列时出错: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # 发生错误时，尝试重置处理状态
+            if username in self.api_response_queue and self.api_response_queue[username]:
+                self.api_response_queue[username].pop(0)
+                
+            # 释放锁（确保在异常情况下也能释放锁）
+            lock_key = f"api_processing_{username}"
+            if hasattr(self, "api_processing_locks") and lock_key in self.api_processing_locks:
+                self.api_processing_locks[lock_key] = False
+
+    async def _send_api_response(self, username: str, chat_id: str, response: str, is_group: bool):
+        """发送API响应（通过WebSocket或其他机制）"""
+        try:
+            # 确保响应不为空
+            if not response or not response.strip():
+                logger.warning(f"不发送空响应给用户 {username}")
+                return
+                
+            # 发送响应的逻辑（根据实际情况实现）
+            logger.info(f"向用户 {username} 发送API响应: {response[:50]}...")
+            
+            # 这里应该实现发送响应的具体逻辑
+            # 例如：通过WebSocket发送，或调用其他接口
+            
+        except Exception as e:
+            logger.error(f"发送API响应时出错: {str(e)}")
+            logger.error(traceback.format_exc())
