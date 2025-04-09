@@ -132,13 +132,22 @@ class VoiceHandler:
                 
             logger.info(f"开始识别语音消息: {msg_content}")
             
-            # 解析语音长度
-            duration_match = re.search(r'\\[语音\\](\\d+)秒', msg_content)
+            # 解析语音长度 - 使用更严格的正则表达式，适配多种可能的格式
+            # 例如: "[语音]2秒", "[语音]2秒,未播放", "[语音] 2 秒" 等
+            duration_match = re.search(r'\[语音\]\s*(\d+)\s*秒', msg_content)
+            if not duration_match:
+                # 尝试其他可能的格式
+                duration_match = re.search(r'\[语音\]\s*(\d+)', msg_content)
+                
             if duration_match:
                 duration = int(duration_match.group(1))
                 logger.info(f"语音长度: {duration}秒")
             else:
                 logger.warning(f"无法解析语音长度: {msg_content}")
+                # 检查消息内容是否真的是语音消息
+                if "[语音]" not in msg_content:
+                    logger.error(f"提供的内容不是语音消息: {msg_content}")
+                    return None
                 duration = 0  # 默认值
             
             # 获取chat_id对应的窗口句柄，如果没有则直接返回
@@ -197,7 +206,7 @@ class VoiceHandler:
             # pyautogui.doubleClick(width*0.5, height * 0.5)
             # 右键点击
             pyautogui.rightClick(x, y)
-            time.sleep(1.0)  # 增加等待时间，确保右键菜单显示
+            time.sleep(0.2)  # 增加等待时间，确保右键菜单显示
             
             # 定位"转文字"选项 - 固定偏移值
             menu_x = x + 10
@@ -210,14 +219,14 @@ class VoiceHandler:
             # 无论转文字是否成功，都尝试复制可能的文本
             logger.info(f"转文字后右键点击坐标: ({x}, {y+10})")
             pyautogui.rightClick(x, y+10)  # 点击可能的文本位置
-            time.sleep(0.8)
+            time.sleep(0.2)
             
             # 点击"复制"选项 - 固定偏移值
             copy_x = x + 40
             copy_y = y + 20  # 复制选项通常是菜单的第一项
             logger.info(f"点击复制选项，坐标: ({copy_x}, {copy_y})")
             pyautogui.click(copy_x, copy_y)
-            time.sleep(1.0)  # 增加等待时间，确保复制操作完成
+            time.sleep(0.2)  # 增加等待时间，确保复制操作完成
             
             # 检查是否获取到文本，最多重试3次
             max_retries = 3
@@ -233,9 +242,9 @@ class VoiceHandler:
             logger.warning("直接复制失败，尝试备用方案")
             # 再次右键点击并尝试复制
             pyautogui.rightClick(x, y+10)
-            time.sleep(0.5)
+            time.sleep(0.2)
             pyautogui.click(copy_x, copy_y)
-            time.sleep(1.0)
+            time.sleep(0.2)
             
             # 最后检查一次剪贴板
             text = pyperclip.paste()

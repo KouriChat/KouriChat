@@ -260,12 +260,15 @@ class EmojiHandler:
         # 生成0-1之间的随机数
         random_value = random.random()
         
-        # 直接使用调整后的概率进行判断
-        # 如果随机数小于调整后的概率，则发送表情
-        should_send = random_value < adjusted_prob
+        # 计算阈值（1减去调整后的概率）
+        threshold = 1 - adjusted_prob
+        
+        # 修复判断逻辑: 随机数大于阈值时触发表情包发送
+        # 例如: 如果调整后概率为0.6，则阈值为0.4，随机数大于0.4时发送表情
+        should_send = random_value > threshold
         
         # 添加详细日志，帮助诊断问题
-        logger.info(f"表情触发判断 - 用户: {user_id}, 基础概率: {EMOJI_TRIGGER_RATE}, 当前概率: {current_prob:.2f}, 调整后概率 (发送几率): {adjusted_prob:.2f}, 随机数: {random_value:.2f}, 结果: {'发送' if should_send else '不发送'}")
+        logger.info(f"表情触发判断 - 用户: {user_id}, 基础概率: {EMOJI_TRIGGER_RATE}, 当前概率: {current_prob:.2f}, 调整后概率 (发送几率): {adjusted_prob:.2f}, 阈值: {threshold:.2f}, 随机数: {random_value:.2f}, 结果: {'发送' if should_send else '不发送'}")
         
         if should_send:
             self._update_trigger_prob(user_id, True)

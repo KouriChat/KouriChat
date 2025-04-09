@@ -291,6 +291,7 @@ class MemoryProcessor:
         Returns:
             bool: 是否成功保存
         """
+        logger.info(f"开始保存记忆数据到 {self.memory_path}")
         try:
             # 确保目录存在
             memory_dir = os.path.dirname(self.memory_path)
@@ -549,8 +550,10 @@ class MemoryProcessor:
                             })
             
             # 添加到记忆数据 - 以数组形式存储
+            logger.info(f"准备将记忆条目添加到 memory_data (用于 memory.json) - User: {memory_key}")
             self.memory_data[memory_key].append(memory_entry)
             self.memory_count = sum(len(memories) if isinstance(memories, list) else 1 for memories in self.memory_data.values())
+            logger.info(f"已添加记忆条目到 memory_data，当前 memory_count: {self.memory_count}")
             
             # 添加到RAG系统
             if self.rag_manager and not is_auto_message:  # 主动消息不添加到RAG
@@ -592,8 +595,12 @@ class MemoryProcessor:
                 hook(memory_key, memory_entry)
             
             # 保存到文件
-            self.save()
-            logger.info(f"成功记住对话，当前记忆数量: {self.memory_count}")
+            logger.info("准备调用 self.save() 将 memory_data 保存到 memory.json")
+            save_success = self.save()
+            if save_success:
+                logger.info(f"成功调用 self.save() 并保存 memory.json，当前记忆数量: {self.memory_count}")
+            else:
+                logger.error(f"调用 self.save() 失败，memory.json 可能未更新")
             return True
         except Exception as e:
             logger.error(f"记住对话失败: {str(e)}")
