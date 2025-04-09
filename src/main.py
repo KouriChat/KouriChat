@@ -133,7 +133,7 @@ class DebugBot:
                 logger.removeHandler(handler)
         
         # 等待确保日志队列处理完毕
-        time.sleep(0.5)
+        time.sleep(0.1)
         sys.stdout.flush()
         self._is_input_mode = True
         
@@ -624,29 +624,42 @@ class ChatBot:
 
             # 处理语音消息 (添加在图片、文件和表情消息处理之前)
             if content and "[语音]" in content:
-                logger.info(f"检测到语音消息: {content}")
+                # 添加更严格的检测，确保是真正的语音消息
+                # 检查格式是否匹配"[语音]x秒"这样的模式
+                voice_pattern = re.compile(r'\[语音\]\s*(\d+)\s*秒')
+                voice_match = voice_pattern.search(content)
                 
-                # 如果不需要处理消息（非监听列表用户的非@消息），则不继续处理
-                if not should_process_message:
-                    return None
-                
-                # 进行语音识别
-                original_content = content  # 保存原始内容
-                if hasattr(self.message_handler, 'voice_handler') and self.message_handler.voice_handler:
-                    recognized_text = self.message_handler.voice_handler.recognize_voice_message(
-                        content, 
-                        chatName, 
-                        api_client=self.moonshot_ai if hasattr(self, 'moonshot_ai') else None
-                    )
-                    if recognized_text:
-                        logger.info(f"语音识别结果: {recognized_text}")
-                        # 修改原始内容，使其包含识别后的文本
-                        content = f"{original_content} (识别内容: {recognized_text})"
+                if voice_match:
+                    logger.info(f"检测到语音消息: {content}")
+                    
+                    # 如果不需要处理消息（非监听列表用户的非@消息），则不继续处理
+                    if not should_process_message:
+                        return None
+                    
+                    # 提取语音时长
+                    voice_duration = int(voice_match.group(1))
+                    logger.info(f"语音时长: {voice_duration}秒")
+                    
+                    # 进行语音识别
+                    original_content = content  # 保存原始内容
+                    if hasattr(self.message_handler, 'voice_handler') and self.message_handler.voice_handler:
+                        recognized_text = self.message_handler.voice_handler.recognize_voice_message(
+                            content, 
+                            chatName, 
+                            api_client=self.moonshot_ai if hasattr(self, 'moonshot_ai') else None
+                        )
+                        if recognized_text:
+                            logger.info(f"语音识别结果: {recognized_text}")
+                            # 修改原始内容，使其包含识别后的文本
+                            content = f"{original_content} (识别内容: {recognized_text})"
+                        else:
+                            logger.warning(f"语音识别失败: {original_content}")
+                            content = f"{original_content} (识别失败)"
                     else:
-                        logger.warning(f"语音识别失败: {original_content}")
-                        content = f"{original_content} (识别失败)"
+                        logger.warning("语音处理器未初始化，无法识别语音消息")
                 else:
-                    logger.warning("语音处理器未初始化，无法识别语音消息")
+                    # 不符合语音消息格式，可能是一条包含"[语音]"文本的普通消息
+                    logger.warning(f"消息包含[语音]但不符合语音格式，当作普通消息处理: {content}")
                 
                 # 注意：这里不再对语音消息单独保存到记忆
                 # 统一在后面的代码中处理所有消息类型的记忆保存
@@ -1375,7 +1388,7 @@ def initialize_wx_listener(): # <<< 修改：不再创建 wx 实例，只负责�
             else:
                 logger.info(f"已存在监听，跳过: {chat_name}")
             
-            time.sleep(0.5)  # 添加短暂延迟，避免操作过快
+            time.sleep(0.05)  # Reduced from 0.5
         except Exception as e:
             logger.error(f"添加监听失败 {chat_name}: {str(e)}")
             success = False # 标记失败
@@ -1488,12 +1501,26 @@ def main(debug_mode=True):
                 print_status("无法获取机器人微信名称", "warning", "WARNING")
             else:
                  print_status(f"获取到机器人名称: {ROBOT_WX_NAME}", "info", "USER")
+
+            # <<< --- MOVED CODE START --- >>>
+            # 立即尝试添加监听器
+            print_status("添加微信监听器..", "info", "ANTENNA")
+            if not initialize_wx_listener(): # 不再返回wx实例，而是返回bool
+                print_status("添加微信监听器失败! 部分功能可能受影响。", "warning", "CROSS")
+                # 决定是否退出，或者继续运行但监听可能不完整
+                # return # 例如：如果监听失败则退出
+            else:
+                print_status("微信监听器添加完成", "success", "CHECK")
+            # <<< --- MOVED CODE END --- >>>
+
         except Exception as e:
             print_status(f"微信初始化失败: {str(e)}", "error", "CROSS")
             return
     else:
         ROBOT_WX_NAME = "Debuger"
     # <<< 结束新增 >>>
+
+    # --- 后续初始化逻辑 ---
 
     # 修正路径格式，使用正确的路径拼接
     avatar_dir = os.path.join(root_dir, "data", "avatars", config.behavior.context.avatar_dir)
@@ -1523,8 +1550,7 @@ def main(debug_mode=True):
     sentiment_analyzer = SentimentAnalyzer(sentiment_resource_loader)
     logger.info("情感分析模块预热完成")
     
-    # try:
-        # 设置wxauto日志路径
+    # 设置wxauto日志路径
     automation_log_dir = os.path.join(root_dir, "logs", "automation")
     if not os.path.exists(automation_log_dir):
         os.makedirs(automation_log_dir)
@@ -1548,6 +1574,14 @@ def main(debug_mode=True):
         root_dir=root_dir,
         tts_api_url=config.media.text_to_speech.tts_api_url
     )
+
+    # <<< --- MOVED CODE START (Voice Handler Update) --- >>>
+    # 在所有组件初始化后更新 voice_handler 的 wx 实例
+    # 这个需要 voice_handler 和 wx 都已创建
+    if voice_handler and wx:
+        voice_handler.update_wx_instance(wx)
+    # <<< --- MOVED CODE END --- >>>
+
     with open(prompt_path, "r", encoding="utf-8") as f:
         # 添加更多API配置日志
         logger.info("============ LLM服务初始化 ============")
@@ -1646,7 +1680,7 @@ def main(debug_mode=True):
         if config.behavior.context.avatar_dir:
             safe_avatar_name = re.sub(r"[^\w\-_\. ]", "_", config.behavior.context.avatar_dir)
         else:
-            safe_avatar_name = "default_avatar"
+            safe_avatar_name = "unknown"  # 使用unknown而不是default_avatar，避免创建default文件夹
             
         logger.info(f"初始化群聊记忆系统，角色名: {safe_avatar_name}, 群聊列表: {group_chats}")
         
@@ -1693,13 +1727,6 @@ def main(debug_mode=True):
         model=config.media.image_recognition.model
     )
 
-    moonshot_ai = ImageRecognitionService(
-        api_key=config.media.image_recognition.api_key,
-        base_url=config.media.image_recognition.base_url,
-        temperature=config.media.image_recognition.temperature,
-        model=config.media.image_recognition.model
-    )
-
     message_handler = MessageHandler(
         root_dir=root_dir,
         llm=deepseek,
@@ -1732,31 +1759,19 @@ def main(debug_mode=True):
         # 启动控制台交互循环
         while True:
             chat_bot.handle_wxauto_message(None, "debug_chat")
-            time.sleep(1)
+            time.sleep(0.3)
     else:
         # 确保在创建 ChatBot 实例时传递 memory_handler
         chat_bot = ChatBot(message_handler, moonshot_ai, memory_handler, wx)
 
         # 设置监听列表
         global listen_list
-
         listen_list = config.user.listen_list
 
-        # <<< 修改：调用新的 initialize_wx_listener 来添加监听器 >>>
-        print_status("添加微信监听器..", "info", "ANTENNA")
-        if not initialize_wx_listener(): # 不再返回wx实例，而是返回bool
-            print_status("添加微信监听器失败!", "error", "CROSS")
-            # 可以在这里决定是否退出，或者尝试其他逻辑
-            # return # 暂时不退出
-        else:
-            print_status("微信监听器添加完成", "success", "CHECK")
-        # <<< 结束修改 >>>
-        
-        # <<< 新增：在所有组件初始化后更新 voice_handler 的 wx 实例 >>>
-        if voice_handler and wx:
-            voice_handler.update_wx_instance(wx)
-        # <<< 结束新增 >>>
-        
+        # <<< --- 监听器添加代码已移动到前面 --- >>>
+
+        # <<< --- Voice Handler Update 代码已移动到前面 --- >>>
+
         print_status("检查短期记忆..", "info", "SEARCH")
 
         # 启动消息监听线程
@@ -1835,22 +1850,25 @@ def main(debug_mode=True):
                     print_status(f"重新连接失败: {str(e)}", "error", "CROSS")
                     time.sleep(10)  # 失败后等待更长时间
 
-    #     # 设置事件以停止线程
-    #     stop_event.set()
 
-        # 关闭监听线程
-        if listener_thread is not None and listener_thread.is_alive():
-            print_status("正在关闭监听线程...", "info", "SYNC")
-            try:
-                listener_thread.join(timeout=2)
-                if listener_thread.is_alive():
-                    print_status("无法正常停止监听线程", "warning", "WARNING")
-            except Exception as e:
-                print_status(f"清理线程时出错 {str(e)}", "error", "ERROR")
+# <<< --- Original position of listener initialization (removed) --- >>>
+# # <<< 修改：调用新的 initialize_wx_listener 来添加监听器 >>>
+# print_status("添加微信监听器..", "info", "ANTENNA")
+# if not initialize_wx_listener(): # 不再返回wx实例，而是返回bool
+#     print_status("添加微信监听器失败!", "error", "CROSS")
+#     # 可以在这里决定是否退出，或者尝试其他逻辑
+#     # return # 暂时不退出
+# else:
+#     print_status("微信监听器添加完成", "success", "CHECK")
+# # <<< 结束修改 >>>
 
-    #     print_status("正在关闭系统...", "warning", "STOP")
-    #     print_status("系统已退出", "info", "BYE")
-    #     print("\n")
+# <<< --- Original position of voice handler update (removed) --- >>>
+# # <<< 新增：在所有组件初始化后更新 voice_handler 的 wx 实例 >>>
+# if voice_handler and wx:
+#     voice_handler.update_wx_instance(wx)
+# # <<< 结束新增 >>>
+
+# ... rest of the code ...
 
 
 #

@@ -127,7 +127,7 @@ class WeChat:
     
     def _ensure_window_active(self, who: str) -> bool:
         """
-        确保聊天窗口处于活动状态
+        确保聊天窗口处于活动状态 (优化优先级)
         
         Args:
             who: 聊天对象名称
@@ -139,42 +139,77 @@ class WeChat:
             if not self.wx:
                 logger.error("微信接口未初始化")
                 return False
-            
-            # 检查是否有缓存的窗口句柄
+
+            # 检查是否已经是当前聊天
+            if self._current_chat == who:
+                 # 如果是当前聊天，也尝试置顶一下主窗口确保焦点
+                 try:
+                     main_hwnd = win32gui.FindWindow("WeChatMainWndForPC", None)
+                     if main_hwnd:
+                         if win32gui.GetForegroundWindow() != main_hwnd:
+                             win32gui.SetForegroundWindow(main_hwnd)
+                             time.sleep(0.05)
+                 except: pass
+                 return True
+
+            # === 优先级 1: 直接点击 wxauto 侧边栏 ===
+            try:
+                sessiondict = self.wx.GetSessionList(True) # 获取详细会话列表
+                if who in list(sessiondict.keys())[:-1]: # 检查是否在可见列表（排除"文件传输助手"等固定项可能）
+                    session_item = self.wx.SessionBox.ListItemControl(RegexName=who)
+                    if session_item.Exists(0.1): # 快速检查控件是否存在
+                        session_item.Click(simulateMove=False)
+                        self._current_chat = who
+                        logger.info(f"成功通过直接点击侧边栏激活聊天: {who}")
+                        # 点击后短暂置顶主窗口，增加稳定性
+                        try:
+                             main_hwnd = win32gui.FindWindow("WeChatMainWndForPC", None)
+                             if main_hwnd:
+                                 win32gui.SetForegroundWindow(main_hwnd)
+                                 time.sleep(0.05) # 非常短的延迟
+                        except: pass
+                        return True
+                    else:
+                        logger.debug(f"侧边栏找到 '{who}' 但控件未快速定位，继续尝试其他方法")
+            except Exception as direct_click_err:
+                logger.warning(f"尝试直接点击侧边栏 {who} 失败: {str(direct_click_err)}")
+            # === 结束优先级 1 ===
+
+
+            # === 优先级 2: win32gui 句柄缓存/激活 ===
             if who in self._window_handles:
                 hwnd = self._window_handles[who]
-                if win32gui.IsWindow(hwnd):  # 验证窗口句柄是否有效
+                if win32gui.IsWindow(hwnd):
                     try:
-                        # 如果窗口最小化，将其恢复
                         if win32gui.IsIconic(hwnd):
                             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                            time.sleep(0.2)
-                        
-                        # 将窗口置前
+                            time.sleep(0.05)
+                        # 检查是否已经是前台窗口
+                        # if win32gui.GetForegroundWindow() != hwnd: # 减少不必要的置顶
                         win32gui.SetForegroundWindow(hwnd)
-                        time.sleep(0.2)
-                        
-                        # 确保窗口真的在前台
-                        win32gui.BringWindowToTop(hwnd)
-                        time.sleep(0.1)
-                        
+                        time.sleep(0.05)
+                        win32gui.BringWindowToTop(hwnd) # 确保置顶
+                        time.sleep(0.05)
+
                         self._current_chat = who
                         logger.info(f"成功激活缓存的聊天窗口: {who}")
                         return True
                     except Exception as e:
                         logger.warning(f"激活缓存窗口失败: {str(e)}")
                 else:
-                    # 窗口句柄无效，从缓存中移除
                     logger.warning(f"缓存的窗口句柄无效，移除: {who}")
                     del self._window_handles[who]
-            
-            # 如果没有缓存或缓存无效，尝试查找窗口
+            # === 结束优先级 2 ===
+
+
+            # === 优先级 3: win32gui EnumWindows 查找/激活 ===
             def enum_windows_callback(hwnd, results):
                 if win32gui.IsWindowVisible(hwnd):
                     window_text = win32gui.GetWindowText(hwnd)
                     window_class = win32gui.GetClassName(hwnd)
-                    if who in window_text and ("ChatWnd" in window_class or "WeChat" in window_class):
-                        results.append((hwnd, window_class))
+                    # 精确匹配窗口标题，或者类名是ChatWnd
+                    if (window_text == who and "WeChat" in window_class) or ("ChatWnd" in window_class and who in window_text):
+                         results.append((hwnd, window_class))
                 return True
             
             windows = []
@@ -182,33 +217,41 @@ class WeChat:
             
             if windows:
                 hwnd, window_class = windows[0]
-                # 更新缓存
                 self._window_handles[who] = hwnd
                 self._window_classes[who] = window_class
                 
-                # 激活窗口
-                if win32gui.IsIconic(hwnd):
-                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                    time.sleep(0.2)
-                
-                win32gui.SetForegroundWindow(hwnd)
-                time.sleep(0.2)
-                
-                win32gui.BringWindowToTop(hwnd)
-                time.sleep(0.1)
-                
-                self._current_chat = who
-                logger.info(f"成功找到并激活聊天窗口: {who}")
-                return True
-            
-            # 如果找不到小窗口，尝试使用ChatWith
-            logger.warning(f"找不到聊天小窗口 {who}，尝试使用ChatWith")
-            if self.wx.ChatWith(who):
-                time.sleep(0.5)  # 等待窗口切换
-                self._current_chat = who
-                return True
-            
-            logger.error(f"无法激活聊天窗口: {who}")
+                try:
+                    if win32gui.IsIconic(hwnd):
+                        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                        time.sleep(0.05)
+                    # if win32gui.GetForegroundWindow() != hwnd: # 减少不必要的置顶
+                    win32gui.SetForegroundWindow(hwnd)
+                    time.sleep(0.05)
+                    win32gui.BringWindowToTop(hwnd)
+                    time.sleep(0.05)
+                    
+                    self._current_chat = who
+                    logger.info(f"成功找到并激活聊天窗口: {who}")
+                    return True
+                except Exception as e:
+                     logger.warning(f"找到窗口但激活失败 {who}: {str(e)}")
+
+            # === 结束优先级 3 ===
+
+
+            # === 优先级 4: 回退到完整 wxauto.ChatWith ===
+            logger.warning(f"直接点击和窗口查找均失败，尝试完整 ChatWith: {who}")
+            try:
+                if self.wx.ChatWith(who): # 使用内部已优化的 ChatWith
+                    # 内部 ChatWith 后已有 0.1s sleep
+                    self._current_chat = who
+                    logger.info(f"通过完整 ChatWith 激活聊天: {who}")
+                    return True
+            except Exception as chatwith_err:
+                 logger.error(f"完整 ChatWith({who}) 调用失败: {str(chatwith_err)}")
+            # === 结束优先级 4 ===
+
+            logger.error(f"所有方法均无法激活聊天窗口: {who}")
             return False
             
         except Exception as e:
@@ -217,11 +260,11 @@ class WeChat:
     
     def ChatWith(self, who: str) -> bool:
         """
-        切换到指定聊天
-        
+        切换到指定聊天 (现在主要依赖 _ensure_window_active)
+
         Args:
             who: 聊天对象名称
-            
+
         Returns:
             bool: 是否成功
         """
@@ -229,40 +272,11 @@ class WeChat:
             if not self.wx:
                 logger.error("微信接口未初始化")
                 return False
-            
-            # 如果当前聊天已经是目标聊天，无需切换
-            if self._current_chat == who:
-                return True
-            
-            # 优先使用_ensure_window_active方法
-            if self._ensure_window_active(who):
-                return True
-            
-            # 如果上述方法都失败，使用wxauto的ChatWith
-            result = self.wx.ChatWith(who)
-            if result:
-                self._current_chat = who
-                logger.info(f"使用wxauto切换到聊天: {who}")
-                
-                # 尝试获取并缓存窗口句柄
-                time.sleep(0.5)  # 等待窗口切换完成
-                def enum_window_callback(hwnd, results):
-                    if win32gui.IsWindowVisible(hwnd):
-                        window_text = win32gui.GetWindowText(hwnd)
-                        window_class = win32gui.GetClassName(hwnd)
-                        if who in window_text and ("ChatWnd" in window_class or "WeChat" in window_class):
-                            results.append((hwnd, window_class))
-                    return True
-                
-                windows = []
-                win32gui.EnumWindows(enum_window_callback, windows)
-                if windows:
-                    hwnd, window_class = windows[0]
-                    self._window_handles[who] = hwnd
-                    self._window_classes[who] = window_class
-                    logger.info(f"已缓存新的窗口句柄: {who}")
-            
-            return result
+
+            # _ensure_window_active 现在处理所有激活逻辑，包括ChatWith回退
+            # 它在成功时也会更新 self._current_chat
+            return self._ensure_window_active(who)
+
         except Exception as e:
             logger.error(f"切换聊天失败 {who}: {str(e)}")
             return False
@@ -303,14 +317,14 @@ class WeChat:
                                 if attempt == 2:  # 最后一次尝试
                                     logger.error(f"切换到聊天 {who} 失败，无法发送消息")
                                     return False
-                                time.sleep(0.5 * (attempt + 1))  # 逐渐增加等待时间
+                                time.sleep(0.2 * (attempt + 1))  # 逐渐增加等待时间
                                 continue
                         else:
                             logger.info(f"成功切换到聊天: {who}")
                             break
                     
                     # 等待切换完成
-                    time.sleep(0.5)
+                    time.sleep(0.2)
             
             # 尝试激活微信主窗口
             try:
@@ -320,11 +334,11 @@ class WeChat:
                     # 如果窗口最小化，则恢复
                     if win32gui.IsIconic(wx_windows):
                         win32gui.ShowWindow(wx_windows, win32con.SW_RESTORE)
-                        time.sleep(0.3)
+                        time.sleep(0.2)
                     
                     # 将窗口设为前台
                     win32gui.SetForegroundWindow(wx_windows)
-                    time.sleep(0.3)
+                    time.sleep(0.2)
                     logger.info("已激活微信主窗口")
                 else:
                     logger.warning("找不到微信主窗口")
@@ -436,14 +450,14 @@ class WeChat:
                                 if attempt == 2:  # 最后一次尝试
                                     logger.error(f"切换到聊天 {who} 失败，无法发送文件")
                                     return False
-                                time.sleep(0.5 * (attempt + 1))  # 逐渐增加等待时间
+                                time.sleep(0.2 * (attempt + 1))  # 逐渐增加等待时间
                                 continue
                         else:
                             logger.info(f"成功切换到聊天: {who}")
                             break
                     
                     # 等待切换完成
-                    time.sleep(0.5)
+                    time.sleep(0.2)
             
             # 尝试激活微信主窗口
             try:
@@ -519,29 +533,18 @@ class WeChat:
                 logger.error("微信接口未初始化")
                 return False
             
-            # 如果已经在监听，直接返回成功
             if who in self._listen_chats:
                 logger.info(f"聊天 {who} 已在监听列表中")
                 return True
             
-            # 获取并激活聊天窗口
             if not self._ensure_window_active(who):
                 logger.error(f"无法切换到聊天 {who}，监听添加失败")
                 return False
             
-            # 获取当前聊天内容作为基准
-            try:
-                current_content = self.wx.GetAllMessage()
-                if who not in self._last_messages:
-                    self._last_messages[who] = current_content
-            except Exception as e:
-                logger.warning(f"获取初始消息失败，将在下次检查时更新: {str(e)}")
-            
-            # 添加到监听列表
             self._listen_chats.add(who)
-            logger.info(f"成功添加聊天监听: {who}")
+            logger.info(f"成功添加监听: {who}")
+
             return True
-            
         except Exception as e:
             logger.error(f"添加监听失败 {who}: {str(e)}")
             return False
@@ -789,7 +792,7 @@ class WeChat:
                         continue
                     
                     # 短暂暂停确保切换成功
-                    time.sleep(0.5)  
+                    time.sleep(0.2)  
                     
                     # 添加监听
                     result = self.AddListenChat(chat_name, savepic=True, savefile=True)
@@ -992,7 +995,7 @@ class WeChat:
                         self.AddListenChat(who=chat_name, savepic=True, savefile=True)
                         logger.info(f"成功添加监听: {chat_name}")
                         success_count += 1
-                        time.sleep(0.5)  # 添加短暂延迟，避免操作过快
+                        time.sleep(0.05)  # Reduced from 0.2
                     else:
                         logger.info(f"聊天 {chat_name} 已在监听列表中")
                         success_count += 1
