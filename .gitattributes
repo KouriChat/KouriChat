@@ -5,6 +5,8 @@
 *.js text eol=crlf
 *.html text eol=crlf
 *.css text eol=crlf
+*.bat text eol=crlf
+*.sh text eol=lf
 
 # 对二进制文件禁用行尾符转换
 *.png binary
