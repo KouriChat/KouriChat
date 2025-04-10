@@ -406,9 +406,103 @@
                 font-size: 0.75rem;
             }
         }
+
+        /* 全局温度滑块样式 */
+        .temperature-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, 
+                rgb(13, 110, 253) 0%, 
+                rgb(13, 202, 240) 50%, 
+                rgb(253, 126, 20) 100%);
+            outline: none;
+            transition: opacity 0.2s;
+        }
+        
+        .temperature-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid rgb(13, 110, 253);
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .temperature-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+        
+        .temperature-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid rgb(13, 110, 253);
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .temperature-value {
+            transition: all 0.3s ease;
+        }
+        
+        .temperature-value.updating {
+            color: var(--primary-color);
+            transform: scale(1.2);
+        }
     </style>
     <script src="/static/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/dark-mode.js"></script>
+    
+    <!-- 全局统一updateTemperature函数 - 处理所有温度滑块 -->
+    <script>
+    function updateTemperature(key, value) {
+        // 将字符串转换为数字并保留一位小数
+        const numValue = parseFloat(value).toFixed(1);
+        
+        // 更新显示值
+        const displayElement = document.getElementById(key + '_display');
+        if (displayElement) {
+            displayElement.classList.add('updating');
+            displayElement.textContent = numValue;
+            setTimeout(() => {
+                displayElement.classList.remove('updating');
+            }, 300);
+        }
+        
+        // 更新隐藏的实际提交值
+        const inputElement = document.getElementById(key);
+        if (inputElement) {
+            inputElement.value = numValue;
+            // 触发 change 事件以确保表单能捕获到值的变化
+            const event = new Event('change', { bubbles: true });
+            inputElement.dispatchEvent(event);
+        }
+
+        // 更新滑块位置（如果不是从滑块触发的事件）
+        const sliderElement = document.getElementById(key + '_slider');
+        if (sliderElement && sliderElement.value !== numValue) {
+            sliderElement.value = numValue;
+        }
+        
+        // 视觉反馈
+        const container = inputElement?.closest('.mb-3') || displayElement?.closest('.mb-3');
+        if (container) {
+            container.style.transition = 'background-color 0.3s';
+            container.style.backgroundColor = 'rgba(var(--bs-primary-rgb), 0.1)';
+            setTimeout(() => {
+                container.style.backgroundColor = '';
+            }, 300);
+        }
+    }
+    </script>
     
     <!-- 新增宏定义替代 config_item.html -->
     {% macro render_config_item(key, config) %}
@@ -503,6 +597,13 @@
     <div class="mb-3">
         <select class="form-select mb-2" id="api_provider_select" onchange="updateApiProvider(this.value)" aria-label="选择API提供商">
             <option value="">请选择API提供商</option>
+            <!-- 预设常用选项，减少依赖异步加载 -->
+            <option value="kourichat-global" data-url="https://api.ciallo.ac.cn/v1" data-register="https://api.kourichat.com/register">KouriChat API (全球优化)</option>
+            <option value="kourichat-ap" data-url="https://api.kourichat.com/v1" data-register="https://api.kourichat.com/register">KouriChat API (亚太备线)</option>
+            <option value="siliconflow" data-url="https://api.siliconflow.cn/v1/" data-register="https://www.siliconflow.cn">硅基流动 API</option>
+            <option value="deepseek" data-url="https://api.deepseek.com/v1" data-register="https://platform.deepseek.com">DeepSeek API</option>
+            <option value="ollama" data-url="http://localhost:11434/api/chat" data-register="https://ollama.ai">本地 Ollama</option>
+            <option value="custom">自定义API提供商</option>
         </select>
 
         <!-- 添加自定义 API 输入框 -->
@@ -527,60 +628,84 @@
     <script>
     let modelConfigs = null;
     
-    // 获取配置数据
+    // 获取配置数据 - 添加超时控制
     async function fetchModelConfigs() {
         try {
-            const response = await fetch('/get_model_configs');
+            // 设置一个2秒的超时
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            
+            const response = await fetch('/get_model_configs', {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
             const data = await response.json();
             modelConfigs = data;
-            initializeSelects();
+            // 只更新模型列表，不更新提供商列表
+            updateModelSelectsFromConfig();
         } catch (error) {
-            console.error('获取配置失败:', error);
+            console.error('获取配置失败或超时:', error);
+            // 发生错误或超时时，仍然设置初始值
+            setInitialValues();
         }
     }
 
-    // 初始化选择框
-    function initializeSelects() {
-        if (!modelConfigs) return;
-
-        // 初始化API提供商选择框
-        const apiSelect = document.getElementById('api_provider_select');
-        apiSelect.innerHTML = '<option value="">请选择API提供商</option>';
-        
-        // 按优先级排序并添加选项
-        modelConfigs.api_providers
-            .sort((a, b) => a.priority - b.priority)
-            .forEach(provider => {
-                if (provider.status === 'active') {
-                    apiSelect.innerHTML += `<option value="${provider.id}" 
-                        data-url="${provider.url}"
-                        data-register="${provider.register_url}"
-                        >${provider.name}</option>`;
-                }
-            });
-        
-        // 添加自定义API提供商选项
-        apiSelect.innerHTML += `<option value="custom">自定义API提供商</option>`;
-
+    // 设置初始值
+    function setInitialValues() {
         // 根据当前配置设置初始值
         const currentUrl = document.getElementById('DEEPSEEK_BASE_URL').value;
-        const currentProvider = modelConfigs.api_providers.find(p => p.url === currentUrl);
+        const apiSelect = document.getElementById('api_provider_select');
+        const hiddenInput = document.querySelector(`input[name="DEEPSEEK_BASE_URL"]`);
         
-        if (currentProvider) {
-            apiSelect.value = currentProvider.id;
-            updateApiProvider(currentProvider.id);
-        } else if (currentUrl) {
+        // 查找匹配的选项
+        let found = false;
+        for (let i = 0; i < apiSelect.options.length; i++) {
+            const option = apiSelect.options[i];
+            if (option.dataset.url === currentUrl) {
+                apiSelect.value = option.value;
+                updateApiProvider(option.value);
+                found = true;
+                break;
+            }
+        }
+        
+        // 如果没有找到匹配项，使用自定义选项
+        if (!found && currentUrl) {
             apiSelect.value = 'custom';
             showCustomApiInput(currentUrl);
+            updateModelSelect('custom');
+        }
+        
+        // 确保隐藏输入框的值与显示值一致
+        if (hiddenInput) {
+            hiddenInput.value = currentUrl;
+        }
+    }
+    
+    // 从配置更新模型列表
+    function updateModelSelectsFromConfig() {
+        if (!modelConfigs) return;
+        
+        // 获取当前选择的提供商
+        const apiSelect = document.getElementById('api_provider_select');
+        if (apiSelect.value) {
+            updateModelSelect(apiSelect.value);
         }
     }
 
     // 显示自定义API输入框
     function showCustomApiInput(value = '') {
         const customApiInput = document.getElementById('customApiInput');
+        const hiddenInput = document.querySelector(`input[name="DEEPSEEK_BASE_URL"]`);
         customApiInput.style.display = 'block';
         if (value) {
-            customApiInput.querySelector('input').value = value;
+            const input = customApiInput.querySelector('input');
+            input.value = value;
+            // 同时更新隐藏输入框
+            if (hiddenInput) {
+                hiddenInput.value = value;
+            }
         }
     }
 
@@ -589,7 +714,7 @@
         const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
         const customApiInput = document.getElementById('customApiInput');
         const registerLinks = document.getElementById('register_links');
-        const modelSelect = document.getElementById('model_select');
+        const hiddenInput = document.querySelector(`input[name="DEEPSEEK_BASE_URL"]`);
 
         // 重置所有状态
         customApiInput.style.display = 'none';
@@ -616,6 +741,10 @@
         // 更新API URL
         const apiUrl = selectedOption.dataset.url;
         baseUrlInput.value = apiUrl;
+        // 同时更新隐藏输入框
+        if (hiddenInput) {
+            hiddenInput.value = apiUrl;
+        }
         
         // 添加标记是否为 Ollama
         if (value === 'ollama') {
@@ -640,6 +769,27 @@
         // 更新模型选择框
         updateModelSelect(value);
     }
+
+    // 更新自定义API
+    function updateCustomApi(value) {
+        const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+        const hiddenInput = document.querySelector(`input[name="DEEPSEEK_BASE_URL"]`);
+        if (value) {
+            baseUrlInput.value = value;
+            // 同时更新隐藏输入框
+            if (hiddenInput) {
+                hiddenInput.value = value;
+            }
+        }
+    }
+
+    // 页面加载时初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        // 立即设置初始值，不等待异步请求
+        setInitialValues();
+        // 然后异步获取完整配置
+        fetchModelConfigs();
+    });
     </script>
 {% elif key == 'PROMPT_ENHANCEMENT' %}
     <select class="form-select" id="{{ key }}" name="{{ key }}">
@@ -691,6 +841,23 @@
         const modelSelect = document.getElementById('model_select');
         const currentModel = document.getElementById('MODEL').value;
         
+        // 预设一些常用模型选项，确保始终有这些选项
+        const defaultModels = [
+            {id: 'kourichat-v3', name: 'KouriChat V3'},
+            {id: 'deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3'},
+            {id: 'Pro/deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3 Pro'},
+            {id: 'Pro/deepseek-ai/DeepSeek-R1', name: 'DeepSeek R1 Pro'},
+            {id: 'deepseek-chat', name: 'DeepSeek Chat'},
+            {id: 'deepseek-reasoner', name: 'DeepSeek Reasoner'}
+        ];
+        
+        // 添加默认模型选项
+        defaultModels.forEach(model => {
+            if (!modelSelect.querySelector(`option[value="${model.id}"]`)) {
+                modelSelect.innerHTML += `<option value="${model.id}">${model.name}</option>`;
+            }
+        });
+        
         // 确保选择框始终包含自定义选项
         if (!modelSelect.querySelector('option[value="custom"]')) {
             modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
@@ -710,6 +877,8 @@
             } else {
                 // 如果存在，选中它
                 modelSelect.value = currentModel;
+                // 确保自定义输入框隐藏
+                document.getElementById('customModelInput').style.display = 'none';
             }
         }
     }
@@ -821,87 +990,22 @@
     });
     </script>
 {% elif key == 'TEMPERATURE' %}
-    <style>
-        .temperature-slider {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 100%;
-            height: 8px;
-            border-radius: 4px;
-            background: linear-gradient(to right, 
-                #3498db 0%,
-                #3498db 60%,
-                #9b59b6 70%,
-                #e74c3c 80%,
-                #e74c3c 100%
-            );
-            outline: none;
-            transition: all 0.3s ease;
-        }
-        
-        .temperature-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #fff;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 0 4px rgba(0,0,0,0.2);
-            border: 2px solid #0d6efd;
-        }
-        
-        .temperature-slider::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #fff;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 0 4px rgba(0,0,0,0.2);
-            border: 2px solid #0d6efd;
-        }
-        
-        .temperature-value {
-            transition: all 0.2s ease;
-        }
-        .temperature-value.updating {
-            color: #0d6efd;
-            transform: scale(1.1);
-        }
-        
-        .slider-labels {
-            color: #6c757d;
-            font-size: 0.875rem;
-        }
-        .slider-labels .low {
-            color: #3498db;
-        }
-        .slider-labels .high {
-            color: #e74c3c;
-        }
-    </style>
-    
     <div class="mb-3">
-        <div class="d-flex justify-content-between align-items-center">
+        <div class="d-flex justify-content-between align-items-center mb-2">
             <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value }}</strong></span>
+            <span class="badge bg-primary">创造性参数</span>
         </div>
-        <input type="range" 
-            class="temperature-slider" 
-            id="{{ key }}_slider" 
-            min="0.00"
-            max="1.70"
-            step="0.01"
+        <input type="range" id="{{ key }}_slider"
+            class="temperature-slider"
+            min="{{ config.min|default(0) }}"
+            max="{{ config.max|default(2) }}"
+            step="0.1"
             value="{{ config.value }}"
-            oninput="updateTemperature('{{ key }}', this.value)"
-            style="cursor: pointer;"
-            title="温度参数滑动条">
-        <div class="d-flex justify-content-between slider-labels">
-            <span class="low">0.0</span>
-            <span class="high">1.7</span>
+            oninput="updateTemperature('{{ key }}', this.value)">
+        <div class="d-flex justify-content-between mt-1">
+            <span class="small text-muted">低温 (更确定)</span>
+            <span class="small text-muted">高温 (更创意)</span>
         </div>
-        <!-- 隐藏的实际提交值输入框 -->
         <input type="hidden" 
             id="{{ key }}" 
             name="{{ key }}" 
@@ -909,34 +1013,6 @@
     </div>
 
     <script>
-        function updateTemperature(key, value) {
-            // 将字符串转换为数字
-            const numValue = parseFloat(value);
-            
-            // 更新显示值
-            const displayElement = document.getElementById(key + '_display');
-            if (displayElement) {
-                displayElement.classList.add('updating');
-                displayElement.textContent = numValue;
-                setTimeout(() => {
-                    displayElement.classList.remove('updating');
-                }, 300);
-            }
-            
-            // 更新隐藏的实际提交值
-            const inputElement = document.getElementById(key);
-            if (inputElement) {
-                inputElement.value = numValue;
-                // 触发 change 事件以确保表单能捕获到值的变化
-                const event = new Event('change', { bubbles: true });
-                inputElement.dispatchEvent(event);
-            }
-
-            // 调试输出
-            console.log(`Temperature updated - key: ${key}, value: ${numValue}, type: ${typeof numValue}`);
-            console.log(`Hidden input value: ${document.getElementById(key).value}`);
-        }
-
         // 确保页面加载时初始化温度值
         document.addEventListener('DOMContentLoaded', function() {
             const slider = document.getElementById('{{ key }}_slider');
@@ -945,19 +1021,392 @@
             }
         });
     </script>
-{% elif key == 'MOONSHOT_API_KEY' %}
+{% elif key == 'VISION_BASE_URL' %}
     <div class="mb-3">
-        <input type="text" class="form-control mb-2" 
+        <select class="form-select mb-2" id="vision_api_provider_select" onchange="updateVisionApiProvider(this.value)" aria-label="选择图像识别API提供商">
+            <option value="">请选择服务提供商</option>
+            <!-- 预设常用选项，减少依赖异步加载 -->
+            <option value="kourichat_global" data-url="https://api.ciallo.ac.cn" data-register="https://api.ciallo.ac.cn">KouriChat API (全球优化)</option>
+            <option value="kourichat_asia" data-url="https://api.kourichat.com" data-register="https://api.kourichat.com">KouriChat API (亚太地区)</option>
+            <option value="moonshot" data-url="https://api.moonshot.cn/v1" data-register="https://platform.moonshot.cn/console/api-keys">Moonshot AI (推荐)</option>
+            <option value="openai" data-url="https://api.openai.com/v1" data-register="https://platform.openai.com/api-keys">OpenAI</option>
+            <option value="custom">自定义服务提供商</option>
+        </select>
+
+        <!-- 添加自定义 API 输入框 -->
+        <div id="customVisionApiInput" class="mb-2" style="display: none;">
+            <input type="text" class="form-control" 
+                   placeholder="请输入自定义服务地址"
+                   onchange="updateCustomVisionApi(this.value)">
+        </div>
+
+        <!-- 注册链接容器 -->
+        <div id="vision_register_links" class="d-none">
+            <!-- 注册链接将通过JavaScript动态添加 -->
+        </div>
+
+        <input type="text" class="form-control" 
             id="{{ key }}" name="{{ key }}" 
             value="{{ config.value }}"
-            placeholder="请输入 Moonshot API 密钥">
-        <a href="https://platform.moonshot.cn/console/api-keys" 
-            class="btn btn-primary w-100"
-            target="_blank"
-            rel="noopener">
-            <i class="bi bi-box-arrow-up-right me-1"></i>点我注册
-        </a>
+            readonly
+            style="display: none;">
     </div>
+
+    <script>
+    let visionModelConfigs = {
+        api_providers: [
+            {
+                id: "kourichat_global",
+                name: "KouriChat API (全球优化)",
+                url: "https://api.ciallo.ac.cn",
+                register_url: "https://api.ciallo.ac.cn"
+            },
+            {
+                id: "kourichat_asia",
+                name: "KouriChat API (亚太地区)",
+                url: "https://api.kourichat.com",
+                register_url: "https://api.kourichat.com"
+            },
+            {
+                id: "moonshot",
+                name: "Moonshot AI (推荐)",
+                url: "https://api.moonshot.cn/v1",
+                register_url: "https://platform.moonshot.cn/console/api-keys"
+            },
+            {
+                id: "openai",
+                name: "OpenAI",
+                url: "https://api.openai.com/v1",
+                register_url: "https://platform.openai.com/api-keys"
+            }
+        ],
+        models: {
+            "kourichat_global": [
+                {id: "kourichat-vision", name: "KouriChat Vision (推荐)"}
+            ],
+            "kourichat_asia": [
+                {id: "kourichat-vision", name: "KouriChat Vision (推荐)"}
+            ],
+            "moonshot": [
+                {id: "moonshot-v1-8k-vision-preview", name: "Moonshot V1 8K Vision (推荐)"},
+                {id: "moonshot-v1-32k-vision", name: "Moonshot V1 32K Vision"}
+            ],
+            "openai": [
+                {id: "gpt-4o", name: "GPT-4o (推荐)"},
+                {id: "gpt-4-vision-preview", name: "GPT-4 Vision"}
+            ]
+        }
+    };
+    
+    // 获取配置数据 - 添加超时控制，但优先使用预设数据
+    async function fetchVisionModelConfigs() {
+        try {
+            // 设置一个2秒的超时
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            
+            const response = await fetch('/get_vision_api_configs', {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // 合并服务器返回的数据到本地预设数据
+                data.api_providers.forEach(provider => {
+                    // 检查是否已存在相同ID的提供商
+                    const existingIndex = visionModelConfigs.api_providers.findIndex(p => p.id === provider.id);
+                    if (existingIndex >= 0) {
+                        // 更新现有提供商
+                        visionModelConfigs.api_providers[existingIndex] = provider;
+                    } else {
+                        // 添加新提供商
+                        visionModelConfigs.api_providers.push(provider);
+                    }
+                });
+                
+                // 合并模型数据
+                Object.keys(data.models || {}).forEach(providerId => {
+                    visionModelConfigs.models[providerId] = data.models[providerId];
+                });
+            }
+        } catch (error) {
+            console.error('获取图像识别配置失败或超时:', error);
+        } finally {
+            // 无论成功失败都初始化选择框
+            setVisionInitialValues();
+        }
+    }
+
+    // 设置初始值
+    function setVisionInitialValues() {
+        // 根据当前配置设置初始值
+        const currentUrl = document.getElementById('VISION_BASE_URL').value;
+        const apiSelect = document.getElementById('vision_api_provider_select');
+        
+        // 查找匹配的选项
+        let found = false;
+        for (let i = 0; i < apiSelect.options.length; i++) {
+            const option = apiSelect.options[i];
+            if (option.dataset.url === currentUrl) {
+                apiSelect.value = option.value;
+                updateVisionApiProvider(option.value);
+                found = true;
+                break;
+            }
+        }
+        
+        // 如果没有找到匹配项，使用自定义选项
+        if (!found && currentUrl) {
+            apiSelect.value = 'custom';
+            showCustomVisionApiInput(currentUrl);
+            updateVisionModelSelect('custom');
+        }
+    }
+
+    // 显示自定义图像识别API输入框
+    function showCustomVisionApiInput(value = '') {
+        const customApiInput = document.getElementById('customVisionApiInput');
+        customApiInput.style.display = 'block';
+        if (value) {
+            customApiInput.querySelector('input').value = value;
+        }
+    }
+
+    // 更新自定义图像识别API
+    function updateCustomVisionApi(value) {
+        const baseUrlInput = document.getElementById('VISION_BASE_URL');
+        if (value) {
+            baseUrlInput.value = value;
+        }
+    }
+
+    // 更新图像识别API提供商
+    function updateVisionApiProvider(value) {
+        const baseUrlInput = document.getElementById('VISION_BASE_URL');
+        const customApiInput = document.getElementById('customVisionApiInput');
+        const registerLinks = document.getElementById('vision_register_links');
+
+        // 重置所有状态
+        customApiInput.style.display = 'none';
+        registerLinks.classList.add('d-none');
+        registerLinks.innerHTML = '';
+
+        // 处理自定义选项
+        if (value === 'custom') {
+            showCustomVisionApiInput();
+            updateVisionModelSelect('custom');
+            return;
+        }
+
+        // 处理未选择情况
+        if (!value) {
+            updateVisionModelSelect('');
+            return;
+        }
+
+        // 获取选中的提供商配置
+        const selectedOption = document.querySelector(`#vision_api_provider_select option[value="${value}"]`);
+        if (!selectedOption) return;
+
+        // 更新API URL
+        const apiUrl = selectedOption.dataset.url;
+        baseUrlInput.value = apiUrl;
+
+        // 创建注册按钮
+        const registerUrl = selectedOption.dataset.register;
+        if (registerUrl) {
+            const link = document.createElement('a');
+            link.href = registerUrl;
+            link.className = 'btn btn-outline-primary w-100';
+            link.target = '_blank';
+            link.innerHTML = `<i class="bi bi-box-arrow-up-right me-1"></i>前往${selectedOption.textContent.replace(' (推荐)', '').replace(' API', '')}注册`;
+            registerLinks.innerHTML = '';
+            registerLinks.appendChild(link);
+            registerLinks.classList.remove('d-none');
+        }
+
+        // 更新模型选择框
+        updateVisionModelSelect(value);
+    }
+
+    // 页面加载时初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        // 立即设置初始值，不等待异步请求
+        setVisionInitialValues();
+        // 然后异步获取更多配置
+        fetchVisionModelConfigs();
+    });
+    </script>
+
+{% elif key == 'VISION_API_KEY' %}
+    <div class="mb-3">
+        <input type="text" class="form-control" 
+            id="{{ key }}" name="{{ key }}" 
+            value="{{ config.value }}"
+            placeholder="请输入API密钥">
+        <div id="api_key_help" class="mt-2">
+            <p class="small text-muted">API密钥用于访问图像识别服务，请在选择的服务提供商官网获取</p>
+        </div>
+    </div>
+
+{% elif key == 'VISION_MODEL' %}
+    <div class="mb-3">
+        <select class="form-select mb-2" id="vision_model_select" onchange="updateVisionModel(this.value)" aria-label="选择图像识别模型">
+            <option value="">请选择模型</option>
+        </select>
+
+        <!-- 添加自定义模型输入框 -->
+        <div id="customVisionModelInput" class="mb-2" style="display: none;">
+            <input type="text" class="form-control" 
+                   placeholder="请输入自定义模型名称"
+                   onchange="updateCustomVisionModel(this.value)">
+        </div>
+
+        <input type="text" class="form-control" 
+            id="{{ key }}" name="{{ key }}" 
+            value="{{ config.value }}"
+            readonly
+            style="display: none;">
+    </div>
+    
+    <script>
+    // 更新图像识别模型选择框
+    function updateVisionModelSelect(providerId) {
+        const modelSelect = document.getElementById('vision_model_select');
+        const modelInput = document.getElementById('VISION_MODEL');
+        const customModelInput = document.getElementById('customVisionModelInput');
+        
+        // 重置选择框
+        modelSelect.innerHTML = '<option value="">请选择模型</option>';
+        customModelInput.style.display = 'none';
+        
+        // 预设一些常用模型选项，确保始终有这些选项
+        const defaultModels = {
+            "kourichat_asia": [
+                {id: "kourichat-vision", name: "KouriChat Vision (推荐)"}
+            ],
+            "kourichat_global": [
+                {id: "kourichat-vision", name: "KouriChat Vision (推荐)"}
+            ],
+            "moonshot": [
+                {id: "moonshot-v1-8k-vision-preview", name: "Moonshot V1 8K Vision (推荐)"},
+                {id: "moonshot-v1-32k-vision", name: "Moonshot V1 32K Vision"}
+            ],
+            "openai": [
+                {id: "gpt-4o", name: "GPT-4o (推荐)"},
+                {id: "gpt-4-vision-preview", name: "GPT-4 Vision"}
+            ]
+        };
+        
+        // 如果是自定义提供商或没有选择提供商
+        if (providerId === 'custom' || !providerId) {
+            modelSelect.disabled = true;
+            customModelInput.style.display = 'block';
+            return;
+        }
+        
+        // 启用选择框
+        modelSelect.disabled = false;
+        
+        // 获取提供商对应的模型列表
+        let models = [];
+        if (visionModelConfigs && visionModelConfigs.models && visionModelConfigs.models[providerId]) {
+            models = visionModelConfigs.models[providerId];
+        } else if (defaultModels[providerId]) {
+            models = defaultModels[providerId];
+        }
+        
+        // 添加模型选项
+        models.forEach(model => {
+            modelSelect.innerHTML += `<option value="${model.id}">${model.name}</option>`;
+        });
+        
+        // 添加自定义模型选项
+        modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
+        
+        // 设置当前选中的模型
+        const currentModel = modelInput.value;
+        const modelExists = models.some(m => m.id === currentModel);
+        
+        if (modelExists) {
+            modelSelect.value = currentModel;
+        } else if (currentModel) {
+            modelSelect.value = 'custom';
+            customModelInput.style.display = 'block';
+            customModelInput.querySelector('input').value = currentModel;
+        } else if (models.length > 0) {
+            // 默认选择第一个推荐模型
+            const recommendedModel = models.find(m => m.name.includes('推荐'));
+            if (recommendedModel) {
+                modelSelect.value = recommendedModel.id;
+                modelInput.value = recommendedModel.id;
+            } else {
+                // 没有推荐模型，选择第一个
+                modelSelect.value = models[0].id;
+                modelInput.value = models[0].id;
+            }
+        }
+    }
+    
+    // 更新选中的图像识别模型
+    function updateVisionModel(value) {
+        const modelInput = document.getElementById('VISION_MODEL');
+        const customModelInput = document.getElementById('customVisionModelInput');
+        
+        if (value === 'custom') {
+            customModelInput.style.display = 'block';
+            customModelInput.querySelector('input').focus();
+            return;
+        }
+        
+        customModelInput.style.display = 'none';
+        if (value) {
+            modelInput.value = value;
+        }
+    }
+    
+    // 更新自定义图像识别模型
+    function updateCustomVisionModel(value) {
+        const modelInput = document.getElementById('VISION_MODEL');
+        if (value) {
+            modelInput.value = value;
+        }
+    }
+    </script>
+{% elif key == 'VISION_TEMPERATURE' %}
+    <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value }}</strong></span>
+            <span class="badge bg-primary">创造性参数</span>
+        </div>
+        <input type="range" id="{{ key }}_slider"
+            class="temperature-slider"
+            min="{{ config.min|default(0) }}"
+            max="{{ config.max|default(1) }}"
+            step="0.1"
+            value="{{ config.value }}"
+            oninput="updateTemperature('{{ key }}', this.value)">
+        <div class="d-flex justify-content-between mt-1">
+            <span class="small text-muted">低温 (更确定)</span>
+            <span class="small text-muted">高温 (更创意)</span>
+        </div>
+        <input type="hidden" 
+            id="{{ key }}" 
+            name="{{ key }}" 
+            value="{{ config.value }}">
+    </div>
+
+    <script>
+        // 确保页面加载时初始化温度值
+        document.addEventListener('DOMContentLoaded', function() {
+            const slider = document.getElementById('{{ key }}_slider');
+            if (slider) {
+                updateTemperature('{{ key }}', slider.value);
+            }
+        });
+    </script>
 {% else %}
     <input type="text" class="form-control" 
         id="{{ key }}" name="{{ key }}" 
@@ -1561,17 +2010,58 @@
                 }
             }
             
-            console.log("发送配置数据:", config);
+            // 确保API相关配置被正确保存
+            const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+            const modelInput = document.getElementById('MODEL');
+            const apiKeyInput = document.getElementById('DEEPSEEK_API_KEY');
+            
+            if (baseUrlInput) {
+                config['DEEPSEEK_BASE_URL'] = baseUrlInput.value;
+            }
+            if (modelInput) {
+                config['MODEL'] = modelInput.value;
+            }
+            if (apiKeyInput) {
+                config['DEEPSEEK_API_KEY'] = apiKeyInput.value;
+            }
+            
+            // 构建完整的配置数据结构
+            const configData = {
+                categories: {
+                    llm_settings: {
+                        settings: {
+                            base_url: { value: config['DEEPSEEK_BASE_URL'] || '' },
+                            model: { value: config['MODEL'] || '' },
+                            api_key: { value: config['DEEPSEEK_API_KEY'] || '' },
+                            max_tokens: { value: config['MAX_TOKEN'] || 2000 },
+                            temperature: { value: config['TEMPERATURE'] || 1.1 }
+                        }
+                    },
+                    user_settings: {
+                        settings: {
+                            listen_list: { value: config['LISTEN_LIST'] || [] }
+                        }
+                    }
+                }
+            };
+            
+            console.log("发送配置数据:", configData);
             
             // 发送保存请求
             fetch('/save', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
-                body: JSON.stringify(config)
+                body: JSON.stringify(configData)
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.status === 'success') {
                     showSaveNotification(data.message);
@@ -1580,7 +2070,8 @@
                 }
             })
             .catch(error => {
-                showSaveNotification('保存失败：' + error, 'error');
+                console.error('保存配置失败:', error);
+                showSaveNotification('保存配置失败: ' + error.message, 'error');
             });
         }
 
@@ -1590,11 +2081,20 @@
                 // 直接保存为字符串，在最终提交前再转换为数组
                 config[key] = value;
             } 
-            // 处理温度参数等数字类型
-            else if (['TEMPERATURE', 'MAX_TOKEN', 'MOONSHOT_TEMPERATURE', 
+            // 处理数字类型
+            else if (['TEMPERATURE', 'VISION_TEMPERATURE', 'MAX_TOKEN', 'MOONSHOT_TEMPERATURE', 
                      'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS', 'MAX_GROUPS'].includes(key)) {
-                // 先保存为字符串，最终提交前统一处理
-                config[key] = value;
+                // 转换为数字类型
+                const numValue = parseFloat(value);
+                if (!isNaN(numValue)) {
+                    config[key] = numValue;
+                    // 整数类型配置转为整数
+                    if (['MAX_TOKEN', 'MAX_GROUPS'].includes(key)) {
+                        config[key] = Math.round(numValue);
+                    }
+                } else {
+                    config[key] = value; // 如果无法转换，保留原值
+                }
             }
             // 处理任务配置
             else if (key === 'TASKS') {
@@ -1722,18 +2222,6 @@
                 });
             }
         });
-
-        function updateTemperature(key, value) {
-            const displayElement = document.getElementById(key + '_display');
-            if (displayElement) {
-                displayElement.classList.add('updating');
-                displayElement.textContent = parseFloat(value).toFixed(1);
-
-                setTimeout(() => {
-                    displayElement.classList.remove('updating');
-                }, 300);
-            }
-        }
 
         function showSaveNotification(message, type = 'success') {
             const notification = document.getElementById('saveNotification');
@@ -2090,6 +2578,13 @@
 
         // 在用户列表变化时更新发送对象下拉框
         document.addEventListener('DOMContentLoaded', function() {
+            // 初始化所有温度滑块
+            const temperatureSliders = document.querySelectorAll('[id$="_slider"].temperature-slider');
+            temperatureSliders.forEach(slider => {
+                const key = slider.id.replace('_slider', '');
+                updateTemperature(key, slider.value);
+            });
+            
             // 监听用户列表的变化
             const userListElement = document.getElementById('selected_users_LISTEN_LIST');
             if (userListElement) {
@@ -2285,13 +2780,12 @@
                                 }
                                 
                                 // 特别处理滑块
-                                if (key === 'TEMPERATURE') {
+                                if (key === 'TEMPERATURE' || key === 'VISION_TEMPERATURE') {
                                     const slider = document.getElementById(`${key}_slider`);
                                     if (slider) {
                                         slider.value = value;
-                                        // 触发change事件以更新显示
-                                        const event = new Event('input');
-                                        slider.dispatchEvent(event);
+                                        // 使用统一的updateTemperature函数更新显示
+                                        updateTemperature(key, value);
                                     }
                                 }
                             }
@@ -2392,7 +2886,7 @@
         function saveTask() {
             // 获取表单数据
             const taskId = document.getElementById('taskId').value.trim();
-            const chatId = document.getElementById('taskChatId').value.trim();
+            const chatId = document.getElementById('taskChatId').value;
             const content = document.getElementById('taskContent').value.trim();
             const scheduleType = document.getElementById('scheduleType').value;
             let scheduleTime = '';

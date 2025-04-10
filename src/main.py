@@ -8,10 +8,10 @@ import shutil
 from config import config, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, MODEL, MAX_TOKEN, TEMPERATURE, MAX_GROUPS
 from wxauto import WeChat
 import re
-from handlers.emoji import EmojiHandler
-from handlers.image import ImageHandler
-from handlers.message import MessageHandler
-from handlers.voice import VoiceHandler
+from src.handlers.emoji import EmojiHandler
+from src.handlers.image import ImageHandler
+from src.handlers.message import MessageHandler
+from src.handlers.voice import VoiceHandler
 from src.services.ai.llm_service import LLMService
 from src.services.ai.image_recognition_service import ImageRecognitionService
 from modules.memory.memory_service import MemoryService
@@ -19,7 +19,7 @@ from utils.logger import LoggerConfig
 from utils.console import print_status
 from colorama import init, Style
 from src.AutoTasker.autoTasker import AutoTasker
-from handlers.autosend import AutoSendHandler
+from src.handlers.autosend import AutoSendHandler
 
 # 创建一个事件对象来控制线程的终止
 stop_event = threading.Event()
@@ -51,17 +51,21 @@ chat_contexts = {}  # 存储上下文
 # 初始化colorama
 init()
 
+# 消息队列接受消息时间间隔
+wait = 1
+
 class ChatBot:
-    def __init__(self, message_handler, moonshot_ai, auto_sender):
+    def __init__(self, message_handler, moonshot_ai, auto_sender, emoji_handler):
         self.message_handler = message_handler
         self.moonshot_ai = moonshot_ai
         self.auto_sender = auto_sender
+        self.emoji_handler = emoji_handler
         self.user_queues = {}  # 将user_queues移到类的实例变量
         self.queue_lock = threading.Lock()  # 将queue_lock也移到类的实例变量
         
         # 获取机器人的微信名称
         self.wx = WeChat()
-        self.robot_name = self.wx.A_MyIcon.Name  # 移除括号，直接访问Name属性
+        self.robot_name = self.wx.A_MyIcon.Name  # 使用Name属性而非方法
         logger.info(f"机器人名称: {self.robot_name}")
 
     def process_user_messages(self, chat_id):
@@ -121,7 +125,7 @@ class ChatBot:
 
             # 检查动画表情
             if content and "[动画表情]" in content:
-                img_path = emoji_handler.capture_and_save_screenshot(username)
+                img_path = self.emoji_handler.capture_and_save_screenshot(username)
                 is_emoji = True
                 content = None
 
@@ -181,7 +185,7 @@ moonshot_ai = ImageRecognitionService(
 
 # 获取机器人名称
 wx = WeChat()
-ROBOT_WX_NAME = wx.A_MyIcon.Name
+ROBOT_WX_NAME = wx.A_MyIcon.Name  # 使用Name属性而非方法
 logger.info(f"获取到机器人名称: {ROBOT_WX_NAME}")
 
 message_handler = MessageHandler(
@@ -204,20 +208,10 @@ message_handler = MessageHandler(
 auto_sender = AutoSendHandler(message_handler, config, listen_list)
 
 # 创建聊天机器人实例
-chat_bot = ChatBot(message_handler, moonshot_ai, auto_sender)
+chat_bot = ChatBot(message_handler, moonshot_ai, auto_sender, emoji_handler)
 
 # 启动主动消息倒计时
 auto_sender.start_countdown()
-
-# 设置监听列表
-listen_list = config.user.listen_list
-
-# 循环添加监听对象
-for i in listen_list:
-    wx.AddListenChat(who=i, savepic=True)
-
-# 消息队列接受消息时间间隔
-wait = 1
 
 def message_listener():
     wx = None
