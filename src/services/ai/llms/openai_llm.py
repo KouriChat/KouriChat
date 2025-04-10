@@ -2,6 +2,7 @@ from typing import List, Dict
 import logging
 from openai import OpenAI
 from .base_llm import BaseLLM
+import re
 
 class OpenAILLM(BaseLLM):
     """
@@ -47,6 +48,9 @@ class OpenAILLM(BaseLLM):
         
         # OpenAI特有参数
         self.max_tokens = max_tokens
+        
+        # 默认启用流式输出
+        self.stream_enabled = True
         
         try:
             # 添加超时配置和更多初始化参数
@@ -138,35 +142,92 @@ class OpenAILLM(BaseLLM):
             retry_count = 0
             last_error = None
             
+            # 提取用户ID，用于跟踪中断
+            user_id = None
+            for msg in messages:
+                if msg["role"] == "user":
+                    content = msg["content"]
+                    # 尝试从内容中提取用户ID
+                    id_match = re.search(r'\[用户ID\](.*?)\[/用户ID\]', content)
+                    if id_match:
+                        user_id = id_match.group(1).strip()
+                        break
+            
+            if not user_id:
+                user_id = "default"
+            
             while retry_count <= max_retries:
                 try:
                     # 如果是重试，添加重试信息
                     if retry_count > 0:
                         self.logger.info(f"正在进行第 {retry_count} 次重试...")
                     
-                    # 调用API
-                    response = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=messages,
-                        temperature=self.temperature,
-                        max_tokens=self.max_tokens
-                    )
-                    
-                    # 检查响应类型
-                    if isinstance(response, str):
-                        self.logger.error(f"API返回了字符串而不是对象: {response[:100]}...")
-                        return f"API响应格式错误，请检查配置。"
-                    
-                    # 检查响应内容
-                    if not hasattr(response, 'choices') or not response.choices or len(response.choices) == 0:
-                        self.logger.error(f"API返回无效响应: {response}")
-                        raise ValueError("API返回空响应")
+                    # 检查是否应该使用流式输出
+                    if self.stream_enabled:
+                        self.logger.info("使用流式输出模式")
                         
-                    assistant_response = response.choices[0].message.content.strip()
+                        # 使用流式输出调用API
+                        response_stream = self.client.chat.completions.create(
+                            model=self.model_name,
+                            messages=messages,
+                            temperature=self.temperature,
+                            max_tokens=self.max_tokens,
+                            stream=True
+                        )
+                        
+                        # 用于存储完整响应和检测中断
+                        full_response = ""
+                        chunk_count = 0
+                        check_interrupt_interval = 3  # 每收到3个chunk检查一次是否有中断
+                        
+                        for chunk in response_stream:
+                            chunk_count += 1
+                            
+                            # 从chunk中提取内容
+                            if hasattr(chunk, 'choices') and chunk.choices:
+                                delta = chunk.choices[0].delta
+                                if hasattr(delta, 'content') and delta.content is not None:
+                                    content = delta.content
+                                    full_response += content
+                                    
+                                    # 定期更新部分响应内容，以便在中断时使用
+                                    if chunk_count % 5 == 0:
+                                        self.add_partial_response(user_id, full_response)
+                                    
+                                    # 定期检查是否有中断请求
+                                    if chunk_count % check_interrupt_interval == 0:
+                                        if self.interrupts.get(user_id, False):
+                                            self.logger.warning(f"流式生成被中断，已生成 {len(full_response)} 字符")
+                                            # 确保部分响应已更新
+                                            self.add_partial_response(user_id, full_response)
+                                            return "__INTERRUPTED__"
+                        
+                        # 流式输出完成后，返回完整响应
+                        assistant_response = full_response.strip()
+                    else:
+                        # 非流式模式，调用API
+                        response = self.client.chat.completions.create(
+                            model=self.model_name,
+                            messages=messages,
+                            temperature=self.temperature,
+                            max_tokens=self.max_tokens
+                        )
+                        
+                        # 检查响应类型
+                        if isinstance(response, str):
+                            self.logger.error(f"API返回了字符串而不是对象: {response[:100]}...")
+                            return f"API响应格式错误，请检查配置。"
+                        
+                        # 检查响应内容
+                        if not hasattr(response, 'choices') or not response.choices or len(response.choices) == 0:
+                            self.logger.error(f"API返回无效响应: {response}")
+                            raise ValueError("API返回空响应")
+                            
+                        assistant_response = response.choices[0].message.content.strip()
                     
                     # 移除[memory_number:...]标记
-                    import re
-                    assistant_response = re.sub(r'\s*\[memory_number:.*?\]$', '', assistant_response)
+                    import re as regex  # 使用别名避免冲突
+                    assistant_response = regex.sub(r'\s*\[memory_number:.*?\]$', '', assistant_response)
                     
                     self.logger.info("========= API响应信息 =========")
                     self.logger.info(f"响应长度: {len(assistant_response)}")
@@ -229,3 +290,13 @@ class OpenAILLM(BaseLLM):
         except Exception as e:
             self.logger.error(f"生成响应过程中出现未处理异常: {str(e)}")
             return f"API调用过程中出现意外错误: {str(e)}"
+
+    def set_stream_mode(self, enabled: bool) -> None:
+        """
+        设置是否启用流式输出模式
+        
+        Args:
+            enabled: 是否启用流式输出
+        """
+        self.stream_enabled = enabled
+        self.logger.info(f"流式输出模式已{'启用' if enabled else '禁用'}")

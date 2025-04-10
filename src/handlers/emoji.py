@@ -268,7 +268,7 @@ class EmojiHandler:
         should_send = random_value > threshold
         
         # 添加详细日志，帮助诊断问题
-        logger.info(f"表情触发判断 - 用户: {user_id}, 基础概率: {EMOJI_TRIGGER_RATE}, 当前概率: {current_prob:.2f}, 调整后概率 (发送几率): {adjusted_prob:.2f}, 阈值: {threshold:.2f}, 随机数: {random_value:.2f}, 结果: {'发送' if should_send else '不发送'}")
+        logger.info(f"表情触发判断 - 用户: {user_id}, 发送阈值: {threshold:.2f}, 当前值: {random_value:.2f}, 结果: {'发送' if should_send else '不发送'}")
         
         if should_send:
             self._update_trigger_prob(user_id, True)

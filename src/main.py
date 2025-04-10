@@ -27,6 +27,7 @@ from difflib import SequenceMatcher
 import win32gui
 import pyautogui
 import win32con
+import pythoncom
 
 def _run_async(coro):
     """
@@ -72,7 +73,7 @@ chat_bot = None
 countdown_timer = None
 is_countdown_running = False
 countdown_end_time = None
-wait = 0.5  # 消息队列接受消息时间间隔
+wait = 0.2  # 消息队列接受消息时间间隔
 
 # 检查并初始化配置文件
 # config_path = os.path.join(root_dir, 'src', 'config', 'config.json')
@@ -262,6 +263,7 @@ class ChatBot:
             username = ""
             is_group = False
             is_at = False  # 添加is_at标志
+            process_time = time.time()  # 记录处理开始时间
             
             # 先尝试获取群聊消息
             with self.group_queue_lock:
@@ -288,6 +290,39 @@ class ChatBot:
                     is_at = user_data.get('is_at', False)  # 从用户数据中获取is_at标志
 
             logger.info(f"队列信息 - 发送者: {sender_name}, 消息数: {len(messages)}, 是否群聊: {is_group}")
+
+            # 优化：如果只有一条消息，跳过合并和处理步骤
+            if len(messages) == 1:
+                content = messages[0]
+                is_image_recognition = "发送了图片" in content or "发送了表情包：" in content
+                
+                # 直接处理消息，增加处理效率
+                response = self.message_handler.handle_user_message(
+                    content=content,
+                    chat_id=chat_id,
+                    sender_name=sender_name,
+                    username=username,
+                    is_group=is_group,
+                    is_image_recognition=is_image_recognition,
+                    is_at=is_at  # 传递is_at标志
+                )
+                
+                # 记录处理耗时
+                process_elapsed = time.time() - process_time
+                logger.debug(f"单条消息处理完成- 聊天ID: {chat_id}, 耗时: {process_elapsed:.2f}秒")
+                
+                # 记录对话内容和AI最后回复时间
+                if response and isinstance(response, str):
+                    logger.info(f"对话记录 - 用户: {username}\n用户: {content[:100]}...\nAI: {response[:100]}...")
+                    self.ai_last_reply_time[username] = time.time()
+                    
+                    # 重置未回复计数器
+                    if username in self.message_handler.unanswered_counters:
+                        self.message_handler.unanswered_counters[username] = 0
+                        
+                return
+                
+            # 以下为多条消息的处理逻辑，保持原有实现...
 
             # 增强的消息去重处理
             if len(messages) > 1:
@@ -775,7 +810,7 @@ class ChatBot:
                                                 
                                                 # 设置处理延迟
                                                 if len(self.group_message_queues[chatName]['messages']) == 1:
-                                                    threading.Timer(1.0, self.process_user_messages, args=[chatName]).start()
+                                                    threading.Timer(0.3, self.process_user_messages, args=[chatName]).start()
                                         # 如果是私聊，添加到私聊消息队列
                                         elif not is_group:
                                             with self.queue_lock:
@@ -791,7 +826,7 @@ class ChatBot:
                                                 
                                                 # 设置处理延迟
                                                 if len(self.user_queues[chatName]['messages']) == 1:
-                                                    threading.Timer(1.0, self.process_user_messages, args=[chatName]).start()
+                                                    threading.Timer(0.3, self.process_user_messages, args=[chatName]).start()
                                         
                                         logger.info(f"表情包识别结果已添加至消息队列: {recognized_text}")
                                     except Exception as e:
@@ -889,7 +924,7 @@ class ChatBot:
                             
                             # 设置处理延迟
                             if len(self.group_message_queues[chatName]['messages']) == 1:
-                                threading.Timer(1.0, self.process_user_messages, args=[chatName]).start()
+                                threading.Timer(0.3, self.process_user_messages, args=[chatName]).start()
                     else:
                         # 非@消息，已在上面保存到群聊记忆
                         logger.debug(f"非@消息，已保存到群聊记忆但不进行处理: {content[:30]}...")
@@ -908,7 +943,7 @@ class ChatBot:
                         
                         # 设置处理延迟
                         if len(self.user_queues[chatName]['messages']) == 1:
-                            threading.Timer(1.0, self.process_user_messages, args=[chatName]).start()
+                            threading.Timer(0.3, self.process_user_messages, args=[chatName]).start()
 
                 # 处理未回复消息计时器
                 if username in self.message_handler.unanswered_timers:
@@ -1293,6 +1328,7 @@ def message_listener(wx_instance: WeChat): # <<< 修改：接受 wx 实例作为
             message_handler.wx = wx
             chat_bot.wx = wx
 
+            # 立即处理所有收到的消息，无需等待
             for chat in msgs:
                 who = chat.who
                 if not who:
@@ -1307,6 +1343,7 @@ def message_listener(wx_instance: WeChat): # <<< 修改：接受 wx 实例作为
                 if not one_msgs:
                     continue
 
+                # 优先级处理消息，无需等待队列中其他消息
                 for msg in one_msgs:
                     try:
                         msgtype = msg.type
@@ -1337,6 +1374,9 @@ def message_listener(wx_instance: WeChat): # <<< 修改：接受 wx 实例作为
                     except Exception as e:
                         logger.debug(f"处理单条消息失败: {str(e)}")
                         continue
+                        
+            # 处理完消息后不需要额外等待
+            continue
 
         except Exception as e:
             logger.debug(f"消息监听出错: {str(e)}")
@@ -1347,21 +1387,11 @@ def message_listener(wx_instance: WeChat): # <<< 修改：接受 wx 实例作为
 def initialize_wx_listener(): # <<< 修改：不再创建 wx 实例，只负责添加监听 >>>
     """
     初始化微信监听，在传入的 wx 实例上添加监听器
-    Args:
-        wx_instance: 已创建的 WeChat 实例
     Returns:
         bool: 是否成功添加监听
     """
     global wx_listening_chats  # 使用全局变量跟踪已添加的监听集合
     
-    # <<< 修改：移除实例创建 >>>
-    # max_retries = 3
-    # retry_delay = 2  # 秒
-    # for attempt in range(max_retries):
-    #     try:
-    #         wx = WeChat()
-    # <<< 结束修改 >>>
-            
     # <<< 修改：检查传入实例 >>>
     wx = WeChat() # 临时创建 wx 实例以获取信息
     if not wx or not wx.GetSessionList():
@@ -1388,23 +1418,16 @@ def initialize_wx_listener(): # <<< 修改：不再创建 wx 实例，只负责�
             else:
                 logger.info(f"已存在监听，跳过: {chat_name}")
             
-            time.sleep(0.05)  # Reduced from 0.5
+            # 无需在添加监听后等待，减少延迟
+            # 只有在处理多个聊天时才短暂等待防止操作过快
+            if len(listen_list) > 3:
+                time.sleep(0.02)  # 极短的延迟，仅用于多聊天情况
         except Exception as e:
             logger.error(f"添加监听失败 {chat_name}: {str(e)}")
             success = False # 标记失败
             continue
 
     return success # 返回成功状态
-
-    # <<< 修改：移除外部循环和异常处理 >>>
-    #     except Exception as e:
-    #         logger.error(f"初始化微信失败(尝试 {attempt + 1}/{max_retries}): {str(e)}")
-    #         if attempt < max_retries - 1:
-    #             time.sleep(retry_delay)
-    #         else:
-    #             raise Exception("微信初始化失败，请检查微信是否正常运行")
-    # return None
-    # <<< 结束修改 >>>
 
 
 def initialize_auto_tasks(message_handler):
@@ -1477,7 +1500,7 @@ def initialize_auto_tasks(message_handler):
         return AutoTasker(message_handler, auto_load=False)
 
 
-def main(debug_mode=True):
+def main(debug_mode=False):
     global files_handler, emoji_handler, image_handler, \
         voice_handler, memory_handler, group_chat_memory, moonshot_ai, \
         message_handler, listener_thread, chat_bot, wx, ROBOT_WX_NAME
