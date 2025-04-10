@@ -22,15 +22,16 @@
                     "is_secret": true
                 },
                 "base_url": {
-                    "value": "https://api.siliconflow.cn/v1/",
+                    "value": "https://api.kourichat.com/v1",
                     "type": "string",
                     "description": "DeepSeek API基础URL"
                 },
                 "model": {
-                    "value": "Pro/deepseek-ai/DeepSeek-V3",
+                    "value": "kourichat-v3",
                     "type": "string",
                     "description": "使用的AI模型名称",
                     "options": [
+                        "kourichat-v3",
                         "deepseek-ai/DeepSeek-V3",
                         "Pro/deepseek-ai/DeepSeek-V3",
                         "Pro/deepseek-ai/DeepSeek-R1"
@@ -57,23 +58,23 @@
                     "api_key": {
                         "value": "",
                         "type": "string",
-                        "description": "Moonshot AI API密钥（用于图片和表情包识别）",
+                        "description": "图像识别API密钥",
                         "is_secret": true
                     },
                     "base_url": {
-                        "value": "https://api.moonshot.cn/v1",
+                        "value": "https://api.kourichat.com",
                         "type": "string",
-                        "description": "Moonshot API基础URL"
+                        "description": "图像识别API基础URL"
                     },
                     "temperature": {
                         "value": 0.7,
                         "type": "number",
-                        "description": "Moonshot AI的温度值",
+                        "description": "图像识别温度参数",
                         "min": 0,
                         "max": 2
                     },
                     "model": {
-                        "value": "moonshot-v1-8k-vision-preview",
+                        "value": "kourichat-vision",
                         "type": "string",
                         "description": "图像识别 AI 模型"
                     }

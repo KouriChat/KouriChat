@@ -25,7 +25,7 @@ from config import config
 from modules.reminder.time_recognition import TimeRecognitionService
 from modules.reminder import ReminderService
 # 导入调试命令处理器
-from src.handlers.debug import DebugCommandHandler
+from .debug import DebugCommandHandler
 
 # 修改logger获取方式，确保与main模块一致
 logger = logging.getLogger('main')
