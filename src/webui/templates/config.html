@@ -558,6 +558,12 @@
     <script src="/static/js/dark-mode.js"></script>
 </head>
 <body>
+    {% if version_info and version_info.version != 'N/A' %}
+    <div style="position: fixed; top: 5px; left: 5px; font-size: 0.75rem; color: grey; z-index: 9999; background-color: rgba(240, 240, 240, 0.8); padding: 5px; border-radius: 3px; max-width: 300px; line-height: 1.2;">
+        <span>{{ version_info.last_update }} &nbsp; v{{ version_info.version }}</span><br>
+        <span>{{ version_info.description | replace("维护开源环境！", "维护开源环境！<br>") | safe }}</span>
+    </div>
+    {% endif %}
     {% include 'navbar.html' %}
     
     <main class="container-fluid py-4">
@@ -4104,5 +4110,49 @@
             }, 1000);
         });
     </script>
+
+    <!-- 页脚 -->
+    <footer class="mt-5 mb-3 text-center">
+        <p>KouriChat © 2023-2025 | 当前版本: {{ version_info.version }}</p>
+    </footer>
+
+    {% if debug_info %}
+    <!-- 调试信息区域 -->
+    <div class="container mt-3 mb-5">
+        <div class="accordion" id="debugAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" 
+                            data-bs-toggle="collapse" data-bs-target="#debugInfo"
+                            style="background-color: rgba(80, 80, 80, 0.1);">
+                        <i class="bi bi-bug me-2"></i> 配置调试信息
+                    </button>
+                </h2>
+                <div id="debugInfo" class="accordion-collapse collapse" data-bs-parent="#debugAccordion">
+                    <div class="accordion-body">
+                        <h5>配置组信息:</h5>
+                        {% if debug_info.group_stats %}
+                            <ul class="list-group mb-3">
+                                {% for group_name, count in debug_info.group_stats.items() %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    {{ group_name }}
+                                    <span class="badge bg-primary rounded-pill">{{ count }} 个配置项</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                        
+                        {% if debug_info.error %}
+                            <div class="alert alert-danger">
+                                <h6>错误信息:</h6>
+                                <pre>{{ debug_info.error }}</pre>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </body>
 </html>

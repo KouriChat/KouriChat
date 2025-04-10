@@ -5,6 +5,7 @@ from logging import Logger
 from .llm import online_llm
 from datetime import datetime
 import re
+import threading
 
 
 class BaseLLM(online_llm):
@@ -69,8 +70,20 @@ class BaseLLM(online_llm):
         else:
             self.system_prompt = None
         
+        # 初始化用户上下文字典，用于管理不同用户的对话上下文
+        self.user_contexts = {}
+        
         # 2025-03-17 修复适配获取最近时间
         self.user_recent_chat_time = {}
+        
+        # 添加流式输出和打断相关的属性
+        self.stream_enabled = True  # 是否启用流式输出
+        self.interrupts = {}  # 用户ID -> 是否需要打断当前生成
+        self.partial_responses = {}  # 用户ID -> 已生成的部分响应
+        self.interrupt_lock = threading.Lock()  # 打断操作的线程锁
+        
+        # 用于处理二次合并的分隔符
+        self.message_separator = "\n---\n"
     
     def context_handler(self, func: Callable[[str, str, str], None]):
         """
@@ -84,44 +97,74 @@ class BaseLLM(online_llm):
     
     def _build_prompt(self, current_prompt: str) -> List[Dict[str, str]]:
         """
-        构建完整的提示消息列表
+        构建提示词，处理一些特殊的命令前缀标记
         
         Args:
-            current_prompt: 当前用户输入的提示
+            current_prompt: 当前输入的提示词
             
         Returns:
-            包含上下文历史和当前提示的消息列表
+            处理后的提示词列表，包含角色和内容
         """
-        messages = self.context.copy()
-        messages.append({"role": "user", "content": current_prompt})
-        
-        # 添加详细日志
-        self.logger.debug(f"[上下文跟踪] 构建提示，当前上下文消息数: {len(messages)}")
-        for idx, msg in enumerate(messages):
-            # 限制长度以免日志过长
-            content_preview = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
-            self.logger.debug(f"[上下文消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
-        
-        return messages
+        try:
+            # 检查是否有命令前缀（例如system:）
+            commands = {
+                "system:": "system",
+                "assistant:": "assistant",
+                "user:": "user"
+            }
+            
+            role = "user"  # 默认角色
+            content = current_prompt
+            
+            # 检查命令前缀
+            for prefix, cmd_role in commands.items():
+                if current_prompt.lower().startswith(prefix):
+                    role = cmd_role
+                    content = current_prompt[len(prefix):].lstrip()
+                    break
+                    
+            # 如果是用户角色，可以添加用户ID标记以便在流式输出中识别
+            if role == "user" and hasattr(self, 'current_user_id') and self.current_user_id:
+                # 在消息中嵌入用户ID，以便在处理时识别
+                content = f"[用户ID]{self.current_user_id}[/用户ID]\n{content}"
+                    
+            # 返回处理后的提示词列表
+            return [(role, content)]
+            
+        except Exception as e:
+            self.logger.error(f"构建提示词失败: {str(e)}")
+            # 返回默认格式的提示词
+            return [("user", current_prompt)]
     
-    def _update_context(self, user_prompt: str, assistant_response: str) -> None:
+    def _update_context(self, user_prompt: str, assistant_response: str, user_id: str = None) -> None:
         """
         更新上下文历史
         
         Args:
             user_prompt: 用户输入
             assistant_response: 助手回复
+            user_id: 用户ID，默认为None表示使用默认用户
         """
+        # 使用默认用户ID，如果未提供
+        context_key = user_id if user_id else "default"
+        
+        # 确保用户上下文存在
+        if context_key not in self.user_contexts:
+            self.user_contexts[context_key] = []
+            # 如果有系统提示词，添加到上下文
+            if self.system_prompt:
+                self.user_contexts[context_key].append({"role": "system", "content": self.system_prompt})
+                
         # 添加新的对话到上下文
-        self.context.append({"role": "user", "content": user_prompt})
-        self.context.append({"role": "assistant", "content": assistant_response})
+        self.user_contexts[context_key].append({"role": "user", "content": user_prompt})
+        self.user_contexts[context_key].append({"role": "assistant", "content": assistant_response})
         
         # 计算当前对话对数量（不包括system prompt）
-        message_count = len(self.context)
-        system_offset = 1 if self.system_prompt else 0
+        message_count = len(self.user_contexts[context_key])
+        system_offset = 1 if any(msg["role"] == "system" for msg in self.user_contexts[context_key]) else 0
         pair_count = (message_count - system_offset) // 2
         
-        self.logger.debug(f"[上下文管理] 更新后上下文总消息数: {message_count}, 对话对数: {pair_count}, 最大限制: {self.max_context_messages}")
+        self.logger.debug(f"[上下文管理] 用户 {context_key} 更新后上下文总消息数: {message_count}, 对话对数: {pair_count}, 最大限制: {self.max_context_messages}")
         
         # 如果超出对话对数量限制，移除最早的对话对
         if pair_count > self.max_context_messages:
@@ -130,11 +173,11 @@ class BaseLLM(online_llm):
             # 每对包含两条消息
             excess_messages = excess_pairs * 2
             
-            self.logger.warning(f"[上下文截断] 超出限制，需要移除 {excess_pairs} 对对话（{excess_messages} 条消息）")
+            self.logger.warning(f"[上下文截断] 用户 {context_key} 超出限制，需要移除 {excess_pairs} 对对话（{excess_messages} 条消息）")
             
             # 保存被移除的消息用于处理
             start_idx = system_offset
-            removed_messages = self.context[start_idx:start_idx+excess_messages]
+            removed_messages = self.user_contexts[context_key][start_idx:start_idx+excess_messages]
             
             # 记录被移除的消息
             for idx, msg in enumerate(removed_messages):
@@ -142,10 +185,10 @@ class BaseLLM(online_llm):
                 self.logger.debug(f"[移除消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
             
             # 更新上下文，保留system prompt
-            if self.system_prompt:
-                self.context = [self.context[0]] + self.context[start_idx+excess_messages:]
+            if system_offset > 0:
+                self.user_contexts[context_key] = [self.user_contexts[context_key][0]] + self.user_contexts[context_key][start_idx+excess_messages:]
             else:
-                self.context = self.context[excess_messages:]
+                self.user_contexts[context_key] = self.user_contexts[context_key][excess_messages:]
             
             # 如果设置了上下文处理函数，处理被移除的消息
             if self._context_handler and removed_messages:
@@ -155,48 +198,155 @@ class BaseLLM(online_llm):
                         user_msg = removed_messages[i]["content"]
                         ai_msg = removed_messages[i+1]["content"]
                         try:
-                            self._context_handler(user_msg, ai_msg)
+                            self._context_handler(context_key, user_msg, ai_msg)
                         except Exception as e:
                             self.logger.error(f"上下文处理函数执行失败: {str(e)}")
     
-    def handel_prompt(self, prompt: str, user_id: str = None) -> str:
+    def handle_interrupt(self, user_id: str, new_message: str) -> None:
         """
-        处理用户输入并返回响应
+        处理用户的中断请求，保存部分生成的内容以供后续处理
         
         Args:
-            prompt: 用户输入
+            user_id: 用户ID
+            new_message: 用户的新消息
+        """
+        with self.interrupt_lock:
+            # 设置中断标志
+            self.interrupts[user_id] = True
+            
+            # 记录新消息，用于后续合并处理
+            if user_id not in self.partial_responses:
+                self.partial_responses[user_id] = {
+                    "partial_response": "",
+                    "new_messages": []
+                }
+            
+            self.partial_responses[user_id]["new_messages"].append(new_message)
+            self.logger.info(f"用户 {user_id} 的生成过程被新消息中断，已保存新消息")
+
+    def get_merged_prompt(self, user_id: str, original_prompt: str) -> str:
+        """
+        获取合并了部分响应和新消息的提示词
+        
+        Args:
+            user_id: 用户ID
+            original_prompt: 原始提示词
+            
+        Returns:
+            合并后的提示词
+        """
+        if user_id not in self.partial_responses:
+            return original_prompt
+            
+        partial_data = self.partial_responses[user_id]
+        partial_response = partial_data.get("partial_response", "")
+        new_messages = partial_data.get("new_messages", [])
+        
+        if not partial_response or not new_messages:
+            return original_prompt
+            
+        # 合并部分响应和所有新消息
+        merged_prompt = f"""以下是一次未完成的回复和用户的新消息，请综合考虑所有内容后给出完整回复：
+
+AI助手之前的回复(未完成): 
+{partial_response}
+
+用户的新消息: 
+{self.message_separator.join(new_messages)}
+
+请综合考虑上述对话，生成一个完整且连贯的回复。
+"""
+        self.logger.info(f"为用户 {user_id} 创建了合并后的提示词，包含 {len(new_messages)} 条新消息和部分响应")
+        
+        # 清除已处理的数据
+        self.partial_responses[user_id] = {
+            "partial_response": "",
+            "new_messages": []
+        }
+        
+        return merged_prompt
+
+    def check_and_clear_interrupt(self, user_id: str) -> bool:
+        """
+        检查并清除用户的中断标志
+        
+        Args:
             user_id: 用户ID
             
         Returns:
-            str: 助手回复
+            是否有中断
+        """
+        with self.interrupt_lock:
+            interrupted = self.interrupts.get(user_id, False)
+            if interrupted:
+                self.interrupts[user_id] = False
+            return interrupted
+
+    def add_partial_response(self, user_id: str, content: str) -> None:
+        """
+        添加部分生成的响应
+        
+        Args:
+            user_id: 用户ID
+            content: 部分响应内容
+        """
+        with self.interrupt_lock:
+            if user_id not in self.partial_responses:
+                self.partial_responses[user_id] = {
+                    "partial_response": "",
+                    "new_messages": []
+                }
+            self.partial_responses[user_id]["partial_response"] = content
+
+    def handel_prompt(self, prompt: str, user_id: str = None) -> str:
+        """
+        处理聊天提示，构建请求上下文并调用API获取响应
+        
+        Args:
+            prompt: 用户提交的提示文本
+            user_id: 用户ID，默认为None表示使用默认用户
+        
+        Returns:
+            API响应文本
         """
         try:
-            self.logger.debug(f"[处理提示] 收到输入: {prompt}")
+            # 设置默认用户ID
+            if user_id is None:
+                user_id = "default"
+                
+            # 存储当前用户ID，用于_build_prompt方法使用
+            self.current_user_id = user_id
+                
+            # 检查是否需要处理之前的中断
+            merged_prompt = prompt
+            if user_id in self.partial_responses and self.partial_responses[user_id].get("new_messages"):
+                merged_prompt = self.get_merged_prompt(user_id, prompt)
+                self.logger.info(f"检测到用户 {user_id} 有未处理的中断，使用合并后的提示词")
             
-            # 使用用户ID构建上下文键
-            context_key = user_id if user_id else "default"
+            # 将用户ID添加到上下文键中
+            context_key = user_id
             
-            # 如果没有为此用户初始化上下文，则创建
-            if not hasattr(self, 'user_contexts'):
-                self.user_contexts = {}
-            
-            # 获取或创建此用户的上下文
+            # 构建或获取用户上下文
             if context_key not in self.user_contexts:
-                # 新用户，初始化上下文
+                self.user_contexts[context_key] = []
+                # 添加系统提示词（如果存在）
                 if self.system_prompt:
-                    self.user_contexts[context_key] = [{"role": "system", "content": self.system_prompt}]
-                else:
-                    self.user_contexts[context_key] = []
+                    self.user_contexts[context_key].append({"role": "system", "content": self.system_prompt})
+                
+            # 构建完整提示（处理命令前缀标记）
+            processed_prompt = self._build_prompt(merged_prompt)
             
-            # 获取当前用户的上下文
+            # 复制一份当前上下文用于API请求
             current_context = self.user_contexts[context_key].copy()
             
-            # 添加用户请求前的识别标记，帮助模型区分新旧内容
-            prompt_with_marker = f"[当前用户问题] {prompt}"
-            current_context.append({"role": "user", "content": prompt_with_marker})
+            # 添加用户当前提问
+            for role, content in processed_prompt:
+                current_context.append({"role": role, "content": content})
             
-            # 构建完整提示
-            self.logger.debug(f"[上下文跟踪] 构建提示，当前上下文消息数: {len(current_context)}")
+            # 日志记录当前上下文
+            self.logger.debug(f"[API请求] 用户: {user_id}, 提示: {merged_prompt[:100]}...")
+            self.logger.debug(f"[上下文] 当前上下文消息数: {len(current_context)}")
+            
             for idx, msg in enumerate(current_context):
                 content_preview = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
                 self.logger.debug(f"[上下文消息 {idx}] 角色: {msg['role']}, 内容: {content_preview}")
@@ -209,6 +359,12 @@ class BaseLLM(online_llm):
             
             while retry_count < max_retries:
                 try:
+                    # 检查是否有中断请求
+                    if self.check_and_clear_interrupt(user_id):
+                        self.logger.warning(f"用户 {user_id} 的生成过程被新消息中断")
+                        # 返回特殊标记，告知调用方这是一个中断，不应直接使用此响应
+                        return "__INTERRUPTED__"
+                    
                     # 这里需要子类实现具体的API调用逻辑
                     response = self.generate_response(current_context)
                     
@@ -248,9 +404,8 @@ class BaseLLM(online_llm):
             
             # 只有在成功获取有效响应时才更新上下文
             if not any(error_text in response for error_text in ["API调用失败", "Connection error", "服务暂时不可用", "多次尝试后仍然失败"]):
-                # 更新用户上下文，用原始prompt而不是带标记的
-                self.user_contexts[context_key].append({"role": "user", "content": prompt})
-                self.user_contexts[context_key].append({"role": "assistant", "content": response})
+                # 使用_update_context方法更新上下文
+                self._update_context(prompt, response, user_id)
                 
                 # 关键修复点：立即调用上下文管理，确保每次对话后检查并截断上下文
                 self.logger.debug(f"[上下文管理] 开始管理上下文长度，最大允许对话对数: {self.max_context_messages}")
