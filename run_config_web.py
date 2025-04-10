@@ -115,6 +115,25 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # 生成密钥用于session加密
 app.secret_key = secrets.token_hex(16)
 
+# 上下文处理器，注入版本信息到所有模板
+@app.context_processor
+def inject_version_info():
+    version_file_path = os.path.join(ROOT_DIR, 'version.json')
+    version_info = {}
+    try:
+        with open(version_file_path, 'r', encoding='utf-8') as f:
+            version_data = json.load(f)
+            version_info['version'] = version_data.get('version', 'N/A')
+            version_info['last_update'] = version_data.get('last_update', 'N/A')
+            version_info['description'] = version_data.get('description', '')
+    except FileNotFoundError:
+        logger.error(f"Version file not found at {version_file_path}")
+    except json.JSONDecodeError:
+        logger.error(f"Error decoding version file: {version_file_path}")
+    except Exception as e:
+        logger.error(f"Error reading version file: {e}")
+    return {'version_info': version_info}
+
 # 在 app 初始化后添加
 app.register_blueprint(avatar_manager)
 app.register_blueprint(avatar_bp)
@@ -265,41 +284,108 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
 
         # 主动消息配置
         try:
+            # 打印更详细的调试信息
+            logger.debug("开始填充主动消息配置")
+            
+            # 打印配置对象属性，帮助调试
+            has_behavior = hasattr(config, 'behavior')
+            has_auto_message = has_behavior and hasattr(config.behavior, 'auto_message')
+            has_countdown = has_auto_message and hasattr(config.behavior.auto_message, 'countdown')
+            has_quiet_time = has_behavior and hasattr(config.behavior, 'quiet_time')
+            
+            logger.debug(f"配置检查: behavior={has_behavior}, auto_message={has_auto_message}, countdown={has_countdown}, quiet_time={has_quiet_time}")
+            
+            # 安全获取值
+            auto_message_content = ''
+            min_hours = 1
+            max_hours = 3
+            quiet_start = '22:00'
+            quiet_end = '08:00'
+            
+            if has_behavior:
+                if has_auto_message:
+                    auto_message_content = getattr(config.behavior.auto_message, 'content', '')
+                    if has_countdown:
+                        min_hours = getattr(config.behavior.auto_message.countdown, 'min_hours', 1)
+                        max_hours = getattr(config.behavior.auto_message.countdown, 'max_hours', 3)
+                if has_quiet_time:
+                    quiet_start = getattr(config.behavior.quiet_time, 'start', '22:00')
+                    quiet_end = getattr(config.behavior.quiet_time, 'end', '08:00')
+            
+            # 创建配置对象
             auto_msg_config = {
                 "AUTO_MESSAGE": {
-                    "value": getattr(config.behavior.auto_message, 'content', ''),
+                    "value": auto_message_content,
                     "description": "自动消息内容",
                     "type": "textarea" # 设为文本区域以便输入长内容
                 },
                 "MIN_COUNTDOWN_HOURS": {
-                    "value": getattr(config.behavior.auto_message.countdown, 'min_hours', 1),
+                    "value": min_hours,
                     "description": "最小倒计时时间（小时）",
                     "type": "number",
                     "min": 0
                 },
                 "MAX_COUNTDOWN_HOURS": {
-                    "value": getattr(config.behavior.auto_message.countdown, 'max_hours', 3),
+                    "value": max_hours,
                     "description": "最大倒计时时间（小时）",
                     "type": "number",
                     "min": 0
                 },
                 "QUIET_TIME_START": {
-                    "value": getattr(config.behavior.quiet_time, 'start', '22:00'),
+                    "value": quiet_start,
                     "description": "安静时间开始 (HH:MM格式)",
                     "type": "time"
                 },
                 "QUIET_TIME_END": {
-                    "value": getattr(config.behavior.quiet_time, 'end', '08:00'),
+                    "value": quiet_end,
                     "description": "安静时间结束 (HH:MM格式)",
                     "type": "time"
                 },
             }
             config_groups["主动消息配置"].update(auto_msg_config)
-            logger.debug(f"填充 '主动消息配置': {auto_msg_config}")
+            logger.info(f"成功填充主动消息配置: {len(auto_msg_config)}项")
         except AttributeError as e:
-            logger.error(f"填充 '主动消息配置' 时出错: {e}")
+            logger.error(f"填充主动消息配置时出错 (AttributeError): {e}")
+            logger.error(f"错误追踪: {e.__traceback__.tb_lineno}行")
+            
+            # 尝试填充默认值
+            try:
+                default_auto_msg_config = {
+                    "AUTO_MESSAGE": {
+                        "value": "请你模拟系统设置的角色，在微信上结合上下文找对方聊天",
+                        "description": "自动消息内容",
+                        "type": "textarea"
+                    },
+                    "MIN_COUNTDOWN_HOURS": {
+                        "value": 1,
+                        "description": "最小倒计时时间（小时）",
+                        "type": "number",
+                        "min": 0
+                    },
+                    "MAX_COUNTDOWN_HOURS": {
+                        "value": 3,
+                        "description": "最大倒计时时间（小时）",
+                        "type": "number",
+                        "min": 0
+                    },
+                    "QUIET_TIME_START": {
+                        "value": "22:00",
+                        "description": "安静时间开始 (HH:MM格式)",
+                        "type": "time"
+                    },
+                    "QUIET_TIME_END": {
+                        "value": "08:00",
+                        "description": "安静时间结束 (HH:MM格式)",
+                        "type": "time"
+                    },
+                }
+                config_groups["主动消息配置"].update(default_auto_msg_config)
+                logger.info("使用默认值填充主动消息配置")
+            except Exception as default_err:
+                logger.error(f"使用默认值填充主动消息配置失败: {default_err}")
         except Exception as e:
-            logger.error(f"填充 '主动消息配置' 时发生未知错误: {e}")
+            logger.error(f"填充主动消息配置时发生未知错误: {e}")
+            logger.exception("详细错误信息:", exc_info=True)
 
 
         # 人设配置
@@ -353,6 +439,48 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
         _config_cache = config_groups
         _config_cache_time = current_time
         logger.info("成功解析并缓存了配置组")
+        
+        # 打印各个配置组的状态
+        for group_name, configs in config_groups.items():
+            logger.info(f"配置组 '{group_name}' 包含 {len(configs)} 个配置项")
+            
+        # 检查主动消息配置是否为空
+        if '主动消息配置' in config_groups and not config_groups['主动消息配置']:
+            logger.warning("主动消息配置组为空，将添加默认值")
+            
+            # 添加默认配置
+            default_auto_msg_config = {
+                "AUTO_MESSAGE": {
+                    "value": "请你模拟系统设置的角色，在微信上结合上下文找对方聊天",
+                    "description": "自动消息内容",
+                    "type": "textarea"
+                },
+                "MIN_COUNTDOWN_HOURS": {
+                    "value": 1,
+                    "description": "最小倒计时时间（小时）",
+                    "type": "number",
+                    "min": 0
+                },
+                "MAX_COUNTDOWN_HOURS": {
+                    "value": 3,
+                    "description": "最大倒计时时间（小时）",
+                    "type": "number",
+                    "min": 0
+                },
+                "QUIET_TIME_START": {
+                    "value": "22:00",
+                    "description": "安静时间开始 (HH:MM格式)",
+                    "type": "time"
+                },
+                "QUIET_TIME_END": {
+                    "value": "08:00",
+                    "description": "安静时间结束 (HH:MM格式)",
+                    "type": "time"
+                },
+            }
+            config_groups['主动消息配置'].update(default_auto_msg_config)
+            logger.info("已添加主动消息配置默认值")
+        
         logger.debug(f"最终 config_groups: {json.dumps(config_groups, indent=2, ensure_ascii=False)}") # 打印最终结果
 
         return config_groups
@@ -1104,16 +1232,40 @@ def config():
     except Exception as e:
         logger.error(f"读取任务数据失败: {str(e)}")
 
-    config_groups = parse_config_groups()  # 获取配置组
+    # 获取配置组并记录过程中的信息
+    debug_info = {}
+    try:
+        config_groups = parse_config_groups()  # 获取配置组
+        
+        # 收集配置组信息
+        group_stats = {}
+        for group_name, configs in config_groups.items():
+            group_stats[group_name] = len(configs)
+        
+        debug_info['group_stats'] = group_stats
+        debug_info['success'] = True
+    except Exception as e:
+        logger.error(f"解析配置组失败: {str(e)}")
+        debug_info['error'] = str(e)
+        debug_info['success'] = False
+        config_groups = {
+            "基础配置": {},
+            "图像识别API配置": {},
+            "主动消息配置": {},
+            "人设配置": {},
+            "定时任务配置": {},
+        }
 
     logger.debug(f"传递给前端的任务列表: {tasks}")
+    logger.info(f"传递给前端的配置组: {list(config_groups.keys())}")
 
     return render_template(
         'config.html',
         config_groups=config_groups,  # 传递配置组
         tasks_json=json.dumps(tasks, ensure_ascii=False),  # 直接传递任务列表JSON
         is_local=is_local_network(),
-        active_page='config'
+        active_page='config',
+        debug_info=debug_info  # 传递调试信息
     )
 
 
@@ -3274,6 +3426,81 @@ def fix_config_file():
     except Exception as e:
         logging.error(f"修复配置文件失败: {str(e)}")
         return False
+
+
+# 添加配置调试端点
+@app.route('/debug/config')
+def debug_config():
+    """返回完整的配置树结构以便调试"""
+    if not session.get('logged_in'):
+        return jsonify({"error": "未登录"}), 401
+        
+    try:
+        from src.config import config
+        
+        # 将配置对象转换为字典
+        config_dict = {}
+        
+        # 检查顶级属性
+        if hasattr(config, 'behavior'):
+            behavior = {}
+            
+            # 检查behavior属性
+            if hasattr(config.behavior, 'auto_message'):
+                auto_message = {}
+                
+                # 获取content值
+                if hasattr(config.behavior.auto_message, 'content'):
+                    auto_message['content'] = config.behavior.auto_message.content
+                    
+                # 检查countdown属性
+                if hasattr(config.behavior.auto_message, 'countdown'):
+                    countdown = {}
+                    
+                    # 获取min_hours和max_hours值
+                    if hasattr(config.behavior.auto_message.countdown, 'min_hours'):
+                        countdown['min_hours'] = config.behavior.auto_message.countdown.min_hours
+                    if hasattr(config.behavior.auto_message.countdown, 'max_hours'):
+                        countdown['max_hours'] = config.behavior.auto_message.countdown.max_hours
+                        
+                    auto_message['countdown'] = countdown
+                    
+                behavior['auto_message'] = auto_message
+                
+            # 检查quiet_time属性
+            if hasattr(config.behavior, 'quiet_time'):
+                quiet_time = {}
+                
+                # 获取start和end值
+                if hasattr(config.behavior.quiet_time, 'start'):
+                    quiet_time['start'] = config.behavior.quiet_time.start
+                if hasattr(config.behavior.quiet_time, 'end'):
+                    quiet_time['end'] = config.behavior.quiet_time.end
+                    
+                behavior['quiet_time'] = quiet_time
+                
+            config_dict['behavior'] = behavior
+            
+        # 加载配置文件内容
+        config_yaml = {}
+        try:
+            import yaml
+            config_path = os.path.join(ROOT_DIR, 'src/config/config.yaml')
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_yaml = yaml.safe_load(f)
+        except Exception as e:
+            config_yaml = {"error": str(e)}
+            
+        # 返回配置和配置组信息
+        config_groups = parse_config_groups()
+        
+        return jsonify({
+            "loaded_config": config_dict,
+            "yaml_config": config_yaml,
+            "config_groups": config_groups
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':

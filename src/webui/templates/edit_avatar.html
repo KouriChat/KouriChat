@@ -243,6 +243,12 @@
     </style>
 </head>
 <body>
+    {% if version_info and version_info.version != 'N/A' %}
+    <div style="position: fixed; top: 5px; left: 5px; font-size: 0.75rem; color: grey; z-index: 9999; background-color: rgba(240, 240, 240, 0.8); padding: 5px; border-radius: 3px; max-width: 300px; line-height: 1.2;">
+        <span>{{ version_info.last_update }} &nbsp; v{{ version_info.version }}</span><br>
+        <span>{{ version_info.description | replace("维护开源环境！", "维护开源环境！<br>") | safe }}</span>
+    </div>
+    {% endif %}
     {% include 'navbar.html' %}
     
     <div class="container py-4">
