@@ -167,11 +167,59 @@ def get_available_avatars() -> List[str]:
 
     return avatars
 
+def ensure_default_avatar_exists():
+    """确保默认的人设目录和文件存在"""
+    avatar_base_dir = os.path.join(ROOT_DIR, "data/avatars")
+    default_avatar_dir = os.path.join(avatar_base_dir, "MONO")
+    default_emojis_dir = os.path.join(default_avatar_dir, "emojis")
+    default_avatar_file = os.path.join(default_avatar_dir, "avatar.md")
+    
+    # 创建目录
+    os.makedirs(avatar_base_dir, exist_ok=True)
+    os.makedirs(default_avatar_dir, exist_ok=True)
+    os.makedirs(default_emojis_dir, exist_ok=True)
+    
+    # 创建默认的avatar.md文件
+    if not os.path.exists(default_avatar_file):
+        default_content = """# 任务
+请在此处描述角色的任务和目标
+
+# 角色
+请在此处描述角色的基本信息
+
+# 外表
+请在此处描述角色的外表特征
+
+# 经历
+请在此处描述角色的经历和背景故事
+
+# 性格
+请在此处描述角色的性格特点
+
+# 经典台词
+请在此处列出角色的经典台词
+
+# 喜好
+请在此处描述角色的喜好
+
+# 备注
+其他需要补充的信息"""
+        try:
+            with open(default_avatar_file, "w", encoding="utf-8") as f:
+                f.write(default_content)
+            logger.info(f"创建默认人设文件: {default_avatar_file}")
+        except Exception as e:
+            logger.error(f"创建默认人设文件失败: {str(e)}")
+    
+    logger.info("已确保默认人设目录和文件存在")
 
 # 添加配置缓存
 _config_cache = {}
 _config_cache_time = 0
 _cache_ttl = 5  # 缓存有效期（秒）
+
+# 确保默认人设目录存在
+ensure_default_avatar_exists()
 
 def parse_config_groups() -> Dict[str, Dict[str, Any]]:
     """解析配置文件，将配置项按组分类"""
