@@ -116,12 +116,9 @@ class AutoTasker:
             def task_func():
                 try:
                     if self.tasks[task_id]['is_active']:
-                        self.message_handler.handle_user_message(
-                            content=content,
+                        self.message_handler.add_to_auto_task_queue(
                             chat_id=chat_id,
-                            sender_name="System",
-                            username="AutoTasker",
-                            is_group=False
+                            content=content
                         )
                         logger.info(f"执行定时任务 {task_id}")
                 except Exception as e:

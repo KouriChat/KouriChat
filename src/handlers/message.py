@@ -273,6 +273,13 @@ class MessageHandler:
         
         logger.info(f"消息处理器初始化完成，机器人名称：{self.robot_name}")
 
+        # API中断追踪器
+        self.api_interrupt_tracker = {}
+
+        # 初始化自动任务消息处理线程
+        self._init_auto_task_message()
+        logger.info("自动任务消息处理线程已初始化")
+
     def load_and_summarize_memories(self, username=None):
         """
         在程序启动时加载和总结记忆，解决记忆断层问题
@@ -2995,6 +3002,7 @@ class MessageHandler:
         if not hasattr(self, "recent_sent_messages"):
             self.recent_sent_messages = {}
 
+            
         # 计算当前消息的内容哈希
         message_hash = hash(str(messages["parts"]))
         current_time = time.time()
@@ -3091,8 +3099,7 @@ class MessageHandler:
 
                 # 发送消息
                 logger.info(f"发送消息片段 {i+1}/{len(processed_parts)}")
-                self.wx.SendMsg(send_content, chat_id)
-                sent_messages.add(original_part)
+
 
                 # 根据消息长度动态调整下一条消息的等待时间
                 wait_time = base_interval + random.uniform(0.3, 0.7) * (
@@ -3959,12 +3966,34 @@ class MessageHandler:
                                 chat_id = message_dict["chat_id"]
                                 content = message_dict["content"]
                                 
+
+                                
                                 # 记录消息处理，包含更多细节有助于调试
-                                logger.info(f"处理自动任务消息: {message_dict}")
+                                logger.info(f"处理自动任务消息: chat_id={chat_id}, content_length={len(content)}")
                                 
                                 # 分割并发送消息
                                 messages = self._split_message_for_sending(content)
-                                self._send_split_messages(messages, chat_id)
+                                success = self._send_split_messages(messages, chat_id)
+                                
+                                # 检查发送结果
+                                if not success:
+                                    logger.warning(f"发送自动任务消息失败，将重新排队: chat_id={chat_id}")
+                                    # 失败重试：将消息重新添加到队列末尾
+                                    with self.auto_task_queue_lock:
+                                        # 添加失败次数记录
+                                        if "retry_count" not in message_dict:
+                                            message_dict["retry_count"] = 1
+                                        else:
+                                            message_dict["retry_count"] += 1
+                                            
+                                        # 如果重试次数小于最大重试次数，则重新添加到队列
+                                        max_retries = 3  # 最大重试次数
+                                        if message_dict["retry_count"] <= max_retries:
+                                            self.auto_task_message_queue.append(message_dict)
+                                        else:
+                                            logger.error(f"自动任务消息发送失败，已达到最大重试次数: {message_dict}")
+                                else:
+                                    logger.info(f"自动任务消息发送成功: chat_id={chat_id}")
                                 
                             except Exception as e:
                                 # 单独处理每条消息的异常，不影响其他消息
