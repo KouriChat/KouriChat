@@ -193,9 +193,7 @@ cython_debug/
 .cursorrules
 
 data/avatars/Lucy
-data/avatars/MONO
-data/avatars/Nijiko
-data/avatars/ATRI
+
 data/images
 temp/emoji
 debug_images
