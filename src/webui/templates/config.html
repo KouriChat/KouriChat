@@ -565,7 +565,7 @@
         <div class="input-group mb-2">
             <input type="text" class="form-control" 
                 id="input_{{ key }}" 
-                placeholder="请输入要监听的用户">
+                placeholder="请输入要监听的用户（用户昵称或群名，尽量不要带符号）">
             <button class="btn btn-primary" type="button" 
                 onclick="addNewUser('{{ key }}')"
                 title="添加用户">
@@ -599,7 +599,7 @@
             <option value="">请选择API提供商</option>
             <!-- 预设常用选项，减少依赖异步加载 -->
             <option value="kourichat-global" data-url="https://api.ciallo.ac.cn/v1" data-register="https://api.kourichat.com/register">KouriChat API (全球优化)</option>
-            <option value="kourichat-ap" data-url="https://api.kourichat.com/v1" data-register="https://api.kourichat.com/register">KouriChat API (亚太备线)</option>
+            <option value="kourichat-asia" data-url="https://api.kourichat.com/v1" data-register="https://api.ciallo.ac.cn//register">KouriChat API (亚太备线)</option>
             <option value="siliconflow" data-url="https://api.siliconflow.cn/v1/" data-register="https://www.siliconflow.cn">硅基流动 API</option>
             <option value="deepseek" data-url="https://api.deepseek.com/v1" data-register="https://platform.deepseek.com">DeepSeek API</option>
             <option value="ollama" data-url="http://localhost:11434/api/chat" data-register="https://ollama.ai">本地 Ollama</option>
@@ -630,6 +630,7 @@
     
     // 获取配置数据 - 添加超时控制
     async function fetchModelConfigs() {
+        console.log("fetchModelConfigs: Starting fetch..."); // Log start
         try {
             // 设置一个2秒的超时
             const controller = new AbortController();
@@ -639,15 +640,57 @@
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`获取主模型配置失败: ${response.status} ${response.statusText}`);
+            }
             
             const data = await response.json();
+            
+            if (!data || !data.models || Object.keys(data.models).length === 0) {
+                console.warn('获取的模型配置为空或无效，尝试备用');
+                throw new Error('主模型配置为空'); // 抛出错误以触发catch
+            }
+            
             modelConfigs = data;
-            // 只更新模型列表，不更新提供商列表
+            console.log("fetchModelConfigs: Successfully loaded MAIN config. modelConfigs:", modelConfigs); // Log success + data
+            // 更新API提供商和相应的模型列表
             updateModelSelectsFromConfig();
+            // // 不再需要这部分，updateModelSelectsFromConfig 会处理
+            // const currentProvider = document.getElementById('api_provider_select').value;
+            // if (currentProvider) {
+            //     updateModelSelect(currentProvider);
+            // }
+
         } catch (error) {
-            console.error('获取配置失败或超时:', error);
-            // 发生错误或超时时，仍然设置初始值
-            setInitialValues();
+            console.error('fetchModelConfigs: Get MAIN config failed:', error); // Log main fetch error
+            // 尝试从备用JSON加载
+            try {
+                const backupResponse = await fetch('/get_models_json');
+                if (!backupResponse.ok) {
+                    throw new Error(`获取备用模型配置失败: ${backupResponse.status} ${backupResponse.statusText}`);
+                }
+                const backupData = await backupResponse.json();
+                if (!backupData || !backupData.models || Object.keys(backupData.models).length === 0) {
+                     console.warn('备用模型配置也为空或无效');
+                     throw new Error('备用模型配置为空');
+                }
+                modelConfigs = backupData;
+                console.log("fetchModelConfigs: Successfully loaded BACKUP config. modelConfigs:", modelConfigs); // Log backup success + data
+                // 更新API提供商和相应的模型列表
+                updateModelSelectsFromConfig();
+                // // 不再需要这部分，updateModelSelectsFromConfig 会处理
+                // const currentProvider = document.getElementById('api_provider_select').value;
+                // if (currentProvider) {
+                //     updateModelSelect(currentProvider);
+                // }
+            } catch (backupError) {
+                 console.error('fetchModelConfigs: Get BACKUP config failed:', backupError); // Log backup fetch error
+                 console.warn('fetchModelConfigs: ALL config loading failed.'); // Log total failure
+                 // 触发一次模型更新，即使没有数据，以显示正确的空状态或自定义状态
+                 const currentProvider = document.getElementById('api_provider_select').value;
+                 updateModelSelect(currentProvider || 'custom');
+            }
         }
     }
 
@@ -676,22 +719,60 @@
             showCustomApiInput(currentUrl);
             updateModelSelect('custom');
         }
-        
-        // 确保隐藏输入框的值与显示值一致
-        if (hiddenInput) {
-            hiddenInput.value = currentUrl;
-        }
     }
     
     // 从配置更新模型列表
     function updateModelSelectsFromConfig() {
-        if (!modelConfigs) return;
-        
-        // 获取当前选择的提供商
-        const apiSelect = document.getElementById('api_provider_select');
-        if (apiSelect.value) {
-            updateModelSelect(apiSelect.value);
+        console.log("updateModelSelectsFromConfig: Starting. modelConfigs available?", !!(modelConfigs && modelConfigs.models)); // Log start and data status
+        if (!modelConfigs || !modelConfigs.models) {
+             console.log("updateModelSelectsFromConfig: modelConfigs not ready, returning."); // Log early return
+            return;
         }
+        
+        const apiSelect = document.getElementById('api_provider_select');
+        
+        // 更新API提供商选项
+        if (modelConfigs.api_providers) {
+            // 保存当前选中值 (需要在清空前获取)
+            const currentValue = apiSelect.value;
+            
+            // 清空现有选项（保留前两个："请选择"和"自定义"）
+            while (apiSelect.options.length > 2) {
+                apiSelect.remove(2); // 移除索引为2的选项，直到只剩前两个
+            }
+
+            // 添加从配置加载的提供商选项
+            modelConfigs.api_providers.forEach(provider => {
+                if (provider.status === 'active') {
+                    // 检查是否已存在具有相同值的选项，避免重复添加（虽然清空逻辑应该足够）
+                    if (!apiSelect.querySelector(`option[value="${provider.id}"]`)) {
+                        const option = document.createElement('option');
+                        option.value = provider.id;
+                        option.textContent = provider.name;
+                        option.dataset.url = provider.url;
+                        option.dataset.register = provider.register_url;
+                        // 在 "自定义API提供商" 选项之前插入
+                        apiSelect.insertBefore(option, apiSelect.options[apiSelect.options.length - 1]);
+                    }
+                }
+            });
+            
+            // 尝试恢复选中值
+            if (currentValue && apiSelect.querySelector(`option[value="${currentValue}"]`)) {
+                apiSelect.value = currentValue;
+            } else if (apiSelect.options.length > 2) {
+                // 如果无法恢复旧值，并且有其他选项，默认选中第一个实际的提供商
+                // apiSelect.value = apiSelect.options[1].value; // 取决于是否需要默认选择
+            } else {
+                 apiSelect.value = ""; // 回到"请选择"
+            }
+        }
+        
+        // 获取（可能已更新的）当前选中的提供商
+        const currentProvider = apiSelect.value;
+        console.log(`updateModelSelectsFromConfig: Calling updateModelSelect for provider: ${currentProvider}`); // Log before calling updateModelSelect
+        // 总是调用 updateModelSelect 来更新模型列表（即使提供商为空）
+        updateModelSelect(currentProvider);
     }
 
     // 显示自定义API输入框
@@ -823,10 +904,19 @@
         <!-- 添加自定义模型输入框 -->
         <div id="customModelInput" class="mb-2" style="display: none;">
             <input type="text" class="form-control" 
-                   placeholder="请输入自定义模型名称"
-                   onchange="updateCustomModel(this.value)"
-                   value="{{ config.value if not config.value in ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Pro/deepseek-ai/DeepSeek-V3', 'Pro/deepseek-ai/DeepSeek-R1', 'deepseek-chat', 'deepseek-reasoner'] else '' }}">
+                placeholder="请输入自定义模型名称"
+                onchange="updateCustomModel(this.value)"
+                value="{{ config.value if not config.value in [
+                    'kourichat-v3', 'kourichat-r1',
+                    'deepseek-v3', 'deepseek-r1', 'deepseek-chat', 'deepseek-reasoner',
+                    'grok-2-latest', 'grok-3-latest', 'grok-3', 'grok-3-reasoning',
+                    'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-pro', 'gemini-2.5-pro',
+                    'claude-3-5-sonnet-20240620', 'claude-3-5-sonnet-20241022',
+                    'command-r-plus', 'qwq-32b',
+                    'gpt-4.5-preview', 'gpt-4o', 'gpt-4o-mini'
+                ] else '' }}">
         </div>
+
 
         <input type="text" class="form-control" 
             id="{{ key }}" name="{{ key }}" 
@@ -836,125 +926,124 @@
     </div>
     
     <script>
-    // 初始化模型选择框 - 直接显示当前模型，不依赖API调用
-    function initializeModelSelect() {
-        const modelSelect = document.getElementById('model_select');
-        const currentModel = document.getElementById('MODEL').value;
-        
-        // 预设一些常用模型选项，确保始终有这些选项
-        const defaultModels = [
-            {id: 'kourichat-v3', name: 'KouriChat V3'},
-            {id: 'deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3'},
-            {id: 'Pro/deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3 Pro'},
-            {id: 'Pro/deepseek-ai/DeepSeek-R1', name: 'DeepSeek R1 Pro'},
-            {id: 'deepseek-chat', name: 'DeepSeek Chat'},
-            {id: 'deepseek-reasoner', name: 'DeepSeek Reasoner'}
-        ];
-        
-        // 添加默认模型选项
-        defaultModels.forEach(model => {
-            if (!modelSelect.querySelector(`option[value="${model.id}"]`)) {
-                modelSelect.innerHTML += `<option value="${model.id}">${model.name}</option>`;
-            }
-        });
-        
-        // 确保选择框始终包含自定义选项
-        if (!modelSelect.querySelector('option[value="custom"]')) {
-            modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
-        }
-        
-        // 如果有当前值，且不是已知的预定义模型，显示为自定义模型
-        if (currentModel) {
-            // 检查当前值是否在选择框中已存在
-            const existingOption = Array.from(modelSelect.options).find(opt => opt.value === currentModel);
-            
-            if (!existingOption) {
-                // 如果不存在，设置为自定义模型
-                modelSelect.value = 'custom';
-                const customModelInput = document.getElementById('customModelInput');
-                customModelInput.style.display = 'block';
-                customModelInput.querySelector('input').value = currentModel;
-            } else {
-                // 如果存在，选中它
-                modelSelect.value = currentModel;
-                // 确保自定义输入框隐藏
-                document.getElementById('customModelInput').style.display = 'none';
-            }
-        }
-    }
-    
     // 更新模型选择框
     async function updateModelSelect(providerId) {
+        // Log entry state
+        console.log(`updateModelSelect: Called for providerId: '${providerId}'. modelConfigs valid?`, !!(modelConfigs && modelConfigs.models));
         const modelSelect = document.getElementById('model_select');
-        modelSelect.innerHTML = '<option value="">请选择模型</option>';
+        const customModelInputDiv = document.getElementById('customModelInput');
+        const modelInput = document.getElementById('MODEL'); // Hidden input holding the actual value
+        const currentModel = modelInput.value; // Get value from hidden input
 
+        // Reset model select state
+        modelSelect.innerHTML = '<option value="">请选择模型</option>';
+        modelSelect.disabled = true; // Disable until options are loaded
+        customModelInputDiv.style.display = 'none';
+        customModelInputDiv.querySelector('input').value = ''; // Clear custom input
+
+        // Handle Custom Provider selection
         if (providerId === 'custom') {
             modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
             modelSelect.value = 'custom';
-            document.getElementById('customModelInput').style.display = 'block';
+            modelSelect.disabled = false;
+            customModelInputDiv.style.display = 'block';
+            // If there's a current model value that isn't a known default, populate the custom input
+            if (currentModel && !Array.from(modelSelect.options).some(opt => opt.value === currentModel)) {
+                 customModelInputDiv.querySelector('input').value = currentModel;
+            }
             return;
         }
 
-        if (!providerId) return;
+        // Handle No Provider selected
+        if (!providerId) {
+            modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
+            return; // Keep it disabled and show only default + custom
+        }
 
-        // 添加自定义选项
+        // Re-enable select now that a provider is chosen (but might still be loading)
+        modelSelect.disabled = false;
         modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
-
-        // 保存当前选中的模型，以便后面恢复
-        const currentModel = document.getElementById('MODEL').value;
         
         try {
-            // 如果是 Ollama，尝试获取本地模型列表
+            // Handle Ollama Provider
             if (providerId === 'ollama') {
                 try {
                     const response = await fetch('http://localhost:11434/api/tags');
                     if (response.ok) {
                         const data = await response.json();
                         const ollamaModels = data.models || [];
-                        ollamaModels.forEach(model => {
-                            modelSelect.innerHTML += `
-                                <option value="${model.name}" 
-                                    data-type="chat"
-                                    data-context-length="16000"
-                                    >${model.name}</option>`;
-                        });
+                        if (ollamaModels.length > 0) {
+                            ollamaModels.forEach(model => {
+                                modelSelect.innerHTML += `
+                                    <option value="${model.name}" data-type="chat" data-context-length="16000">
+                                        ${model.name}
+                                    </option>`;
+                            });
+                        } else {
+                            modelSelect.innerHTML += '<option value="" disabled>本地Ollama无可用模型</option>';
+                        }
+                    } else {
+                        modelSelect.innerHTML += '<option value="" disabled>无法连接本地Ollama</option>';
                     }
                 } catch (error) {
                     console.error('获取Ollama模型列表失败:', error);
-                    // 获取失败不会影响页面显示当前模型
+                    modelSelect.innerHTML += '<option value="" disabled>获取Ollama模型失败</option>';
                 }
-            } else if (modelConfigs && modelConfigs.models) {
-                // 其他提供商使用配置文件中的模型列表
-                const providerModels = modelConfigs.models[providerId] || [];
-                providerModels.forEach(model => {
-                    if (model.status === 'active') {
-                        modelSelect.innerHTML += `
-                            <option value="${model.id}" 
-                                data-type="${model.type}"
-                                data-context-length="${model.context_length}"
-                                >${model.name}</option>`;
+            } 
+            // Handle other providers (only if modelConfigs is loaded)
+            else if (modelConfigs && modelConfigs.models) {
+                 console.log(`updateModelSelect: modelConfigs IS valid. Checking for providerId '${providerId}' within modelConfigs.models.`); // Log check
+                  if (modelConfigs.models[providerId]) {
+                    const modelsToShow = modelConfigs.models[providerId];
+                    if (modelsToShow.length > 0) {
+                        let activeModelsAdded = false;
+                        modelsToShow.forEach(model => {
+                            if (model.status === 'active') {
+                                modelSelect.innerHTML += `
+                                    <option value="${model.id}" 
+                                        data-type="${model.type || 'chat'}"
+                                        data-context-length="${model.context_length || 16000}">
+                                        ${model.name}
+                                    </option>`;
+                                activeModelsAdded = true;
+                            }
+                        });
+                        if (!activeModelsAdded) {
+                             modelSelect.innerHTML += '<option value="" disabled>该提供商无活动模型</option>';
+                        }
+                    } else {
+                        modelSelect.innerHTML += '<option value="" disabled>该提供商无可用模型</option>';
                     }
-                });
-            }
-        } catch (error) {
-            console.error('更新模型选择框失败:', error);
-            // 错误处理：即使出错，也能显示当前模型
-        }
-
-        // 无论是否成功获取模型列表，都尝试设置当前值
-        if (currentModel) {
-            // 首先检查当前模型是否在列表中
-            const modelExists = Array.from(modelSelect.options).some(opt => opt.value === currentModel);
-            
-            if (modelExists) {
-                modelSelect.value = currentModel;
+                 } else {
+                    console.log(`updateModelSelect: providerId '${providerId}' NOT found in modelConfigs.models.`); // Log provider not found
+                    modelSelect.innerHTML += '<option value="" disabled>该提供商无模型定义</option>';
+                 }
             } else {
-                // 如果不在列表中，显示为自定义模型
-                modelSelect.value = 'custom';
-                const customModelInput = document.getElementById('customModelInput');
-                customModelInput.style.display = 'block';
-                customModelInput.querySelector('input').value = currentModel;
+                console.log("updateModelSelect: modelConfigs is NOT valid or ready yet."); // Log modelConfigs not ready
+                modelSelect.innerHTML += '<option value="" disabled>模型列表加载中...</option>';
+                return; // Exit early, wait for fetchModelConfigs to call again
             }
+
+            // --- Value Restoration Logic (only runs if options were populated) ---
+            if (currentModel) {
+                const modelExists = Array.from(modelSelect.options).some(opt => opt.value === currentModel);
+                if (modelExists) {
+                    modelSelect.value = currentModel;
+                    customModelInputDiv.style.display = 'none'; 
+                } else {
+                    // Only set to custom if the currentModel isn't empty and isn't literally 'custom'
+                    if (currentModel && currentModel !== 'custom') { 
+                        modelSelect.value = 'custom';
+                        customModelInputDiv.style.display = 'block';
+                        customModelInputDiv.querySelector('input').value = currentModel;
+                    }
+                }
+            }
+            // --- End Value Restoration ---
+            
+        } catch (error) {
+            console.error('更新模型选择框时发生错误:', error);
+            modelSelect.innerHTML += '<option value="" disabled>加载模型出错</option>';
         }
     }
 
@@ -983,10 +1072,10 @@
 
     // 页面加载时获取配置
     document.addEventListener('DOMContentLoaded', function() {
-        // 首先初始化模型选择框，确保当前模型值能正确显示
-        initializeModelSelect();
+        // // 首先初始化模型选择框，确保当前模型值能正确显示 - REMOVED as it caused errors
+        // initializeModelSelect(); 
         // 然后获取更多模型配置数据（如果可用）
-        fetchModelConfigs();
+        // fetchModelConfigs(); // fetchModelConfigs is now called by setInitialValues/updateApiProvider logic implicitly
     });
     </script>
 {% elif key == 'TEMPERATURE' %}
@@ -1003,7 +1092,7 @@
             value="{{ config.value }}"
             oninput="updateTemperature('{{ key }}', this.value)">
         <div class="d-flex justify-content-between mt-1">
-            <span class="small text-muted">低温 (更确定)</span>
+            <span class="small text-muted">低温 (更精准)</span>
             <span class="small text-muted">高温 (更创意)</span>
         </div>
         <input type="hidden" 
@@ -1026,8 +1115,8 @@
         <select class="form-select mb-2" id="vision_api_provider_select" onchange="updateVisionApiProvider(this.value)" aria-label="选择图像识别API提供商">
             <option value="">请选择服务提供商</option>
             <!-- 预设常用选项，减少依赖异步加载 -->
-            <option value="kourichat_global" data-url="https://api.ciallo.ac.cn" data-register="https://api.ciallo.ac.cn">KouriChat API (全球优化)</option>
-            <option value="kourichat_asia" data-url="https://api.kourichat.com" data-register="https://api.kourichat.com">KouriChat API (亚太地区)</option>
+            <option value="kourichat-global" data-url="https://api.ciallo.ac.cn/v1" data-register="https://api.ciallo.ac.cn">KouriChat API (全球优化)</option>
+            <option value="kourichat-asia" data-url="https://api.kourichat.com/v1" data-register="https://api.kourichat.com">KouriChat API (亚太地区)</option>
             <option value="moonshot" data-url="https://api.moonshot.cn/v1" data-register="https://platform.moonshot.cn/console/api-keys">Moonshot AI (推荐)</option>
             <option value="openai" data-url="https://api.openai.com/v1" data-register="https://platform.openai.com/api-keys">OpenAI</option>
             <option value="custom">自定义服务提供商</option>
@@ -1056,13 +1145,13 @@
     let visionModelConfigs = {
         api_providers: [
             {
-                id: "kourichat_global",
+                id: "kourichat-global",
                 name: "KouriChat API (全球优化)",
                 url: "https://api.ciallo.ac.cn",
                 register_url: "https://api.ciallo.ac.cn"
             },
             {
-                id: "kourichat_asia",
+                id: "kourichat-asia",
                 name: "KouriChat API (亚太地区)",
                 url: "https://api.kourichat.com",
                 register_url: "https://api.kourichat.com"
@@ -1081,10 +1170,10 @@
             }
         ],
         models: {
-            "kourichat_global": [
+            "kourichat-global": [
                 {id: "kourichat-vision", name: "KouriChat Vision (推荐)"}
             ],
-            "kourichat_asia": [
+            "kourichat-asia": [
                 {id: "kourichat-vision", name: "KouriChat Vision (推荐)"}
             ],
             "moonshot": [
@@ -1156,8 +1245,7 @@
                 break;
             }
         }
-        
-        // 如果没有找到匹配项，使用自定义选项
+                // 如果没有找到匹配项，使用自定义选项
         if (!found && currentUrl) {
             apiSelect.value = 'custom';
             showCustomVisionApiInput(currentUrl);
@@ -1284,10 +1372,10 @@
         
         // 预设一些常用模型选项，确保始终有这些选项
         const defaultModels = {
-            "kourichat_asia": [
+            "kourichat-asia": [
                 {id: "kourichat-vision", name: "KouriChat Vision (推荐)"}
             ],
-            "kourichat_global": [
+            "kourichat-global": [
                 {id: "kourichat-vision", name: "KouriChat Vision (推荐)"}
             ],
             "moonshot": [
@@ -1988,90 +2076,49 @@
 
         // 保存配置的函数
         function saveConfig(config) {
-            // 在发送前进行最终数据格式检查
-            for (const key in config) {
-                // 确保列表类型的数据是数组而非字符串
-                if (key === 'LISTEN_LIST' && typeof config[key] === 'string') {
-                    config[key] = config[key].split(',')
-                        .map(item => item.trim())
-                        .filter(item => item);
-                }
-                // 确保数字类型的数据是数字而非字符串
-                else if (['MAX_TOKEN', 'TEMPERATURE', 'MOONSHOT_TEMPERATURE', 
-                          'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS', 'MAX_GROUPS'].includes(key)) {
-                    const numValue = parseFloat(config[key]);
-                    if (!isNaN(numValue)) {
-                        config[key] = numValue;
-                        // 对于整数类型配置，转为整数
-                        if (['MAX_TOKEN', 'MAX_GROUPS'].includes(key)) {
-                            config[key] = Math.round(numValue);
-                        }
-                    }
-                }
-            }
+            // // 在发送前进行最终数据格式检查 - 这部分应该在后端完成
+            // for (const key in config) { ... }
             
-            // 确保API相关配置被正确保存
-            const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
-            const modelInput = document.getElementById('MODEL');
-            const apiKeyInput = document.getElementById('DEEPSEEK_API_KEY');
+            // // 确保API相关配置被正确保存 - 这应该由 processFormValue 处理
+            // const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+            // ...
             
-            if (baseUrlInput) {
-                config['DEEPSEEK_BASE_URL'] = baseUrlInput.value;
-            }
-            if (modelInput) {
-                config['MODEL'] = modelInput.value;
-            }
-            if (apiKeyInput) {
-                config['DEEPSEEK_API_KEY'] = apiKeyInput.value;
-            }
+            // // 不再在前端构建嵌套结构，直接发送扁平的 config 对象
+            // const configData = { ... }; 
             
-            // 构建完整的配置数据结构
-            const configData = {
-                categories: {
-                    llm_settings: {
-                        settings: {
-                            base_url: { value: config['DEEPSEEK_BASE_URL'] || '' },
-                            model: { value: config['MODEL'] || '' },
-                            api_key: { value: config['DEEPSEEK_API_KEY'] || '' },
-                            max_tokens: { value: config['MAX_TOKEN'] || 2000 },
-                            temperature: { value: config['TEMPERATURE'] || 1.1 }
-                        }
-                    },
-                    user_settings: {
-                        settings: {
-                            listen_list: { value: config['LISTEN_LIST'] || [] }
-                        }
-                    }
-                }
-            };
+            console.log("准备发送配置数据 (扁平):", config);
             
-            console.log("发送配置数据:", configData);
-            
-            // 发送保存请求
+            // 发送保存请求，body直接使用扁平的config对象
             fetch('/save', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify(configData)
+                body: JSON.stringify(config) // 直接发送扁平对象
             })
             .then(response => {
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    // 尝试读取错误信息
+                    return response.json().then(errData => {
+                        throw new Error(`HTTP ${response.status}: ${errData.message || response.statusText}`);
+                    }).catch(() => {
+                        // 如果无法解析JSON，抛出通用错误
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    });
                 }
                 return response.json();
             })
             .then(data => {
                 if (data.status === 'success') {
-                    showSaveNotification(data.message);
+                    showSaveNotification(data.message || '配置已成功保存');
                 } else {
-                    showSaveNotification(data.message, 'error');
+                    showSaveNotification(data.message || '保存配置时发生未知错误', 'error');
                 }
             })
             .catch(error => {
                 console.error('保存配置失败:', error);
-                showSaveNotification('保存配置失败: ' + error.message, 'error');
+                showSaveNotification(`保存配置失败: ${error.message}`, 'error');
             });
         }
 
@@ -3068,3 +3115,4 @@
     </script>
 </body>
 </html>
+

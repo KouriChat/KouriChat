@@ -1,12 +1,20 @@
 {
     "api_providers": [
         {
-            "id": "kourichat",
-            "name": "KouriChat API",
-            "url": "https://api.kourichat.com/v1",
+            "id": "kourichat-global",
+            "name": "KouriChat API (全球优化)",
+            "url": "https://api.ciallo.ac.cn/v1",
             "register_url": "https://api.kourichat.com/register",
             "status": "active",
             "priority": 1
+        },
+        {
+            "id": "kourichat-asia",
+            "name": "KouriChat API (亚太备线)",
+            "url": "https://api.kourichat.com/v1",
+            "register_url": "https://api.kourichat.com/register",
+            "status": "active",
+            "priority": 2
         },
         {
             "id": "siliconflow",
@@ -14,7 +22,7 @@
             "url": "https://api.siliconflow.cn/v1/",
             "register_url": "https://www.siliconflow.cn",
             "status": "active",
-            "priority": 2
+            "priority": 3
         },
         {
             "id": "deepseek",
@@ -22,7 +30,7 @@
             "url": "https://api.deepseek.com/v1",
             "register_url": "https://platform.deepseek.com",
             "status": "active",
-            "priority": 3
+            "priority": 4
         },
         {
             "id": "ollama",
@@ -30,7 +38,7 @@
             "url": "http://localhost:11434/api/chat",
             "register_url": "https://ollama.ai",
             "status": "active",
-            "priority": 4
+            "priority": 5
         },
         {
             "id": "sealos",
@@ -38,11 +46,11 @@
             "url": "https://aiproxy.bja.sealos.run/v1",
             "register_url": "https://bja.sealos.run/?uid=xTYRWw1vvT",
             "status": "active",
-            "priority": 5
+            "priority": 6
         }
     ],
     "models": {
-        "kourichat": [
+        "kourichat-global": [
             {
                 "id": "kourichat-v3",
                 "name": "KouriChat V3",
@@ -58,6 +66,34 @@
                 "context_length": 16000
             },
             {
+                "id": "deepseek-v3",
+                "name": "DeepSeek V3",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-r1",
+                "name": "DeepSeek R1",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-chat",
+                "name": "DeepSeek Chat",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-reasoner",
+                "name": "DeepSeek Reasoning",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
                 "id": "grok-2-latest",
                 "name": "Grok 2代模型",
                 "status": "active",
@@ -65,18 +101,251 @@
                 "context_length": 16000
             },
             {
-                "id": "glm-4-air",
-                "name": "智谱 GLM-4-Air模型（低费率）",
+                "id": "grok-3-latest",
+                "name": "Grok 3代模型(网页逆向)",
                 "status": "active",
                 "type": "chat",
                 "context_length": 16000
             },
             {
-                "id": "glm-4-flash",
-                "name": "智谱 GLM-4-Flash模型（免费）",
+                "id": "grok-3",
+                "name": "Grok 3 (官方版本)",
                 "status": "active",
                 "type": "chat",
                 "context_length": 16000
+            },
+            {
+                "id": "grok-3-reasoning",
+                "name": "Grok 3 (推理增强版)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-1.5-pro",
+                "name": "Gemini 1.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-1.5-flash",
+                "name": "Gemini 1.5 Flash模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.0-pro",
+                "name": "Gemini 2.0 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "claude-3-5-sonnet-20240620",
+                "name": "Claude 3.5 Sonnet (2024/06)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "claude-3-5-sonnet-20241022",
+                "name": "Claude 3.5 Sonnet (2024/10)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "command-r-plus",
+                "name": "Command R+",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "qwq-32b",
+                "name": "QWQ-32B (开源大模型)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gpt-4.5-preview",
+                "name": "GPT-4.5 Preview",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            },
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4.0",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            },
+            {
+                "id": "gpt-4o-mini",
+                "name": "GPT-4o Mini",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            }
+        ],
+        "kourichat-asia": [
+            {
+                "id": "kourichat-v3",
+                "name": "KouriChat V3",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "kourichat-r1",
+                "name": "KouriChat R1",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-v3",
+                "name": "DeepSeek V3",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-r1",
+                "name": "DeepSeek R1",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-chat",
+                "name": "DeepSeek Chat",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-reasoner",
+                "name": "DeepSeek Reasoning",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "grok-2-latest",
+                "name": "Grok 2代模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "grok-3-latest",
+                "name": "Grok 3代模型(网页逆向)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "grok-3",
+                "name": "Grok 3 (官方版本)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "grok-3-reasoning",
+                "name": "Grok 3 (推理增强版)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-1.5-pro",
+                "name": "Gemini 1.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-1.5-flash",
+                "name": "Gemini 1.5 Flash模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.0-pro",
+                "name": "Gemini 2.0 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "claude-3-5-sonnet-20240620",
+                "name": "Claude 3.5 Sonnet (2024/06)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "claude-3-5-sonnet-20241022",
+                "name": "Claude 3.5 Sonnet (2024/10)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "command-r-plus",
+                "name": "Command R+",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "qwq-32b",
+                "name": "QWQ-32B (开源大模型)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gpt-4.5-preview",
+                "name": "GPT-4.5 Preview",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            },
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4.0",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            },
+            {
+                "id": "gpt-4o-mini",
+                "name": "GPT-4o Mini",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
             }
         ],
         "siliconflow": [

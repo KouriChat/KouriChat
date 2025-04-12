@@ -166,8 +166,10 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
         config_groups = {
             "基础配置": {},
             "图像识别API配置": {},
+            # "图像生成配置": {},  # 注释掉图像生成配置
             "时间配置": {},
-            "Prompt配置": {},
+            # "语音配置": {},  # 注释掉语音配置
+            "人设配置": {},
         }
 
         # 基础配置
@@ -175,7 +177,7 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             {
                 "LISTEN_LIST": {
                     "value": config.user.listen_list,
-                    "description": "用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！)",
+                    "description": "用户列表(AI进行对话的用户昵称或者群名，尽量不要带符号)",
                 },
                 "DEEPSEEK_BASE_URL": {
                     "value": config.llm.base_url,
@@ -204,30 +206,40 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
         # 图像识别API配置
         config_groups["图像识别API配置"].update(
             {
-                "VISION_BASE_URL": {
-                    "value": config.media.image_recognition.base_url,
-                    "description": "服务地址",
-                    "has_provider_options": True
-                },
-                "VISION_API_KEY": {
+                "MOONSHOT_API_KEY": {
                     "value": config.media.image_recognition.api_key,
-                    "description": "API密钥",
-                    "is_secret": False
+                    "description": "识图模块API密钥（用于图片和表情包识别）\n API申请https://api.ciallo.ac.cn",
                 },
-                "VISION_MODEL": {
-                    "value": config.media.image_recognition.model,
-                    "description": "模型名称",
-                    "has_model_options": True
+                "MOONSHOT_BASE_URL": {
+                    "value": config.media.image_recognition.base_url,
+                    "description": "识图API基础URL",
                 },
-                "VISION_TEMPERATURE": {
-                    "value": float(config.media.image_recognition.temperature),
+                "MOONSHOT_TEMPERATURE": {
+                    "value": config.media.image_recognition.temperature,
                     "description": "温度参数",
-                    "type": "number",
-                    "min": 0.0,
-                    "max": 2.0
+                },
+                "MOONSHOT_MODEL": {
+                    "value": config.media.image_recognition.model,
+                    "description": "识图AI模型",
                 }
             }
         )
+
+        # 图像生成配置
+        '''
+        config_groups["图像生成配置"].update(
+            {
+                "IMAGE_MODEL": {
+                    "value": config.media.image_generation.model,
+                    "description": "图像生成模型",
+                },
+                "TEMP_IMAGE_DIR": {
+                    "value": config.media.image_generation.temp_dir,
+                    "description": "临时图片目录",
+                },
+            }
+        )
+        '''
 
         # 时间配置
         config_groups["时间配置"].update(
@@ -255,9 +267,25 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             }
         )
 
-        # Prompt配置
+        # 语音配置
+        '''
+        config_groups["语音配置"].update(
+            {
+                "TTS_API_URL": {
+                    "value": config.media.text_to_speech.tts_api_url,
+                    "description": "语音服务API地址",
+                },
+                "VOICE_DIR": {
+                    "value": config.media.text_to_speech.voice_dir,
+                    "description": "语音文件目录",
+                },
+            }
+        )
+        '''
+
+        # 人设配置
         available_avatars = get_available_avatars()
-        config_groups["Prompt配置"].update(
+        config_groups["人设配置"].update(
             {
                 "MAX_GROUPS": {
                     "value": config.behavior.context.max_groups,
@@ -312,31 +340,34 @@ def index():
 def save_config():
     """保存配置"""
     try:
-        # 检查Content-Type
-        if not request.is_json:
-            return jsonify({
-                "status": "error",
-                "message": "请求Content-Type必须是application/json",
-                "title": "错误"
-            }), 415
-
-        # 获取JSON数据
-        config_data = request.get_json()
-        if not config_data:
-            return jsonify({
-                "status": "error",
-                "message": "无效的JSON数据",
-                "title": "错误"
-            }), 400
-
+        data = request.get_json()
+        logger.debug(f"接收到的配置数据: {data}")
+        
         # 读取当前配置
         config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
         with open(config_path, 'r', encoding='utf-8') as f:
             current_config = json.load(f)
-
-        # 处理配置更新
-        for key, value in config_data.items():
-            # 处理任务配置
+        
+        # 确保 categories 存在
+        if 'categories' not in current_config:
+            current_config['categories'] = {}
+            
+        # 确保 schedule_settings 存在且结构正确
+        if 'schedule_settings' not in current_config['categories']:
+            current_config['categories']['schedule_settings'] = {
+                "title": "定时任务配置",
+                "settings": {
+                    "tasks": {
+                        "value": [],
+                        "type": "array",
+                        "description": "定时任务列表"
+                    }
+                }
+            }
+        
+        # 更新配置
+        for key, value in data.items():
+            # 特殊处理定时任务配置
             if key == 'TASKS':
                 try:
                     tasks = value if isinstance(value, list) else (json.loads(value) if isinstance(value, str) else [])
@@ -344,20 +375,13 @@ def save_config():
                     current_config['categories']['schedule_settings']['settings']['tasks']['value'] = tasks
                 except Exception as e:
                     logger.error(f"处理定时任务配置失败: {str(e)}")
-                    return jsonify({
-                        "status": "error",
-                        "message": f"处理定时任务配置失败: {str(e)}",
-                        "title": "错误"
-                    }), 400
             # 处理其他配置项
             elif key in ['LISTEN_LIST', 'DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY', 'MAX_TOKEN', 'TEMPERATURE',
-                       'VISION_API_KEY', 'VISION_BASE_URL', 'VISION_TEMPERATURE', 'VISION_MODEL',
+                       'MOONSHOT_API_KEY', 'MOONSHOT_BASE_URL', 'MOONSHOT_TEMPERATURE', 'MOONSHOT_MODEL',
                        'IMAGE_MODEL', 'TEMP_IMAGE_DIR', 'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
                        'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR']:
                 update_config_value(current_config, key, value)
-            else:
-                logger.warning(f"未知的配置项: {key}")
-
+        
         # 保存配置
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(current_config, f, ensure_ascii=False, indent=4)
@@ -388,7 +412,7 @@ def save_config():
             "status": "error",
             "message": f"保存失败: {str(e)}",
             "title": "错误"
-        }), 500
+        })
 
 def update_config_value(config_data, key, value):
     """更新配置值到正确的位置"""
@@ -401,10 +425,10 @@ def update_config_value(config_data, key, value):
             'DEEPSEEK_API_KEY': ['categories', 'llm_settings', 'settings', 'api_key', 'value'],
             'MAX_TOKEN': ['categories', 'llm_settings', 'settings', 'max_tokens', 'value'],
             'TEMPERATURE': ['categories', 'llm_settings', 'settings', 'temperature', 'value'],
-            'VISION_API_KEY': ['categories', 'media_settings', 'settings', 'image_recognition', 'api_key', 'value'],
-            'VISION_BASE_URL': ['categories', 'media_settings', 'settings', 'image_recognition', 'base_url', 'value'],
-            'VISION_TEMPERATURE': ['categories', 'media_settings', 'settings', 'image_recognition', 'temperature', 'value'],
-            'VISION_MODEL': ['categories', 'media_settings', 'settings', 'image_recognition', 'model', 'value'],
+            'MOONSHOT_API_KEY': ['categories', 'media_settings', 'settings', 'image_recognition', 'api_key', 'value'],
+            'MOONSHOT_BASE_URL': ['categories', 'media_settings', 'settings', 'image_recognition', 'base_url', 'value'],
+            'MOONSHOT_TEMPERATURE': ['categories', 'media_settings', 'settings', 'image_recognition', 'temperature', 'value'],
+            'MOONSHOT_MODEL': ['categories', 'media_settings', 'settings', 'image_recognition', 'model', 'value'],
             'IMAGE_MODEL': ['categories', 'media_settings', 'settings', 'image_generation', 'model', 'value'],
             'TEMP_IMAGE_DIR': ['categories', 'media_settings', 'settings', 'image_generation', 'temp_dir', 'value'],
             'TTS_API_URL': ['categories', 'media_settings', 'settings', 'text_to_speech', 'tts_api_url', 'value'],
@@ -427,25 +451,6 @@ def update_config_value(config_data, key, value):
                 value = value.split(',')
                 value = [item.strip() for item in value if item.strip()]
             
-            # 特殊处理API相关配置
-            if key in ['DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY']:
-                # 确保llm_settings结构存在
-                if 'categories' not in current:
-                    current['categories'] = {}
-                if 'llm_settings' not in current['categories']:
-                    current['categories']['llm_settings'] = {'title': '大语言模型配置', 'settings': {}}
-                if 'settings' not in current['categories']['llm_settings']:
-                    current['categories']['llm_settings']['settings'] = {}
-                
-                # 更新对应的配置项
-                if key == 'DEEPSEEK_BASE_URL':
-                    current['categories']['llm_settings']['settings']['base_url'] = {'value': value}
-                elif key == 'MODEL':
-                    current['categories']['llm_settings']['settings']['model'] = {'value': value}
-                elif key == 'DEEPSEEK_API_KEY':
-                    current['categories']['llm_settings']['settings']['api_key'] = {'value': value}
-                return
-            
             # 遍历路径直到倒数第二个元素
             for part in path[:-1]:
                 if part not in current:
@@ -453,7 +458,7 @@ def update_config_value(config_data, key, value):
                 current = current[part]
             
             # 设置最终值，确保类型正确
-            if isinstance(value, str) and key in ['MAX_TOKEN', 'TEMPERATURE', 'VISION_TEMPERATURE', 
+            if isinstance(value, str) and key in ['MAX_TOKEN', 'TEMPERATURE', 'MOONSHOT_TEMPERATURE', 
                                                'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS', 'MAX_GROUPS']:
                 try:
                     # 尝试转换为数字
@@ -638,28 +643,20 @@ def confirm_update():
     """确认是否更新"""
     try:
         choice = (request.json or {}).get('choice', '').lower()
-        logger.info(f"收到用户更新选择: {choice}")
-        
-        if choice in ('y', 'yes', '是', '确认', '确定'):
-            logger.info("用户确认更新，开始执行更新过程")
+        if choice in ('y', 'yes'):
             updater = Updater()
-            result = updater.update(
-                callback=lambda msg: logger.info(f"更新进度: {msg}")
-            )
+            result = updater.update()
             
-            logger.info(f"更新完成，结果: {result['success']}")
             return jsonify({
                 'status': 'success' if result['success'] else 'error',
                 'console_output': result['output']
             })
         else:
-            logger.info("用户取消更新")
             return jsonify({
                 'status': 'success',
                 'console_output': '用户取消更新'
             })
     except Exception as e:
-        logger.error(f"更新失败: {str(e)}", exc_info=True)
         return jsonify({
             'status': 'error',
             'console_output': f'更新失败: {str(e)}'
@@ -842,42 +839,198 @@ def stop_bot():
 
 @app.route('/config')
 def config():
-    """配置页面"""
+    """配置页面 - 实时读取配置并渲染"""
     if not session.get('logged_in'):
         return redirect(url_for('login'))
         
-    # 直接从配置文件读取任务数据
+    config_groups = {}
     tasks = []
+    config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
+
     try:
-        config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
-            if 'categories' in config_data and 'schedule_settings' in config_data['categories']:
-                if 'settings' in config_data['categories']['schedule_settings'] and 'tasks' in config_data['categories']['schedule_settings']['settings']:
-                    tasks = config_data['categories']['schedule_settings']['settings']['tasks'].get('value', [])
+
+        # --- 构建 config_groups --- 
+        # 这个逻辑需要仔细映射 config.json 结构到模板期望的扁平键名和分组
+        
+        if 'categories' in config_data:
+            categories = config_data['categories']
+
+            # 基础配置 (User + LLM)
+            config_groups['基础配置'] = {}
+            if 'user_settings' in categories and 'settings' in categories['user_settings']:
+                user_settings = categories['user_settings']['settings']
+                if 'listen_list' in user_settings:
+                    config_groups['基础配置']['LISTEN_LIST'] = {
+                        'value': user_settings['listen_list'].get('value', []),
+                        'description': user_settings['listen_list'].get('description', '要监听的用户列表')
+                    }
+            if 'llm_settings' in categories and 'settings' in categories['llm_settings']:
+                llm_settings = categories['llm_settings']['settings']
+                if 'api_key' in llm_settings:
+                    config_groups['基础配置']['DEEPSEEK_API_KEY'] = {
+                        'value': llm_settings['api_key'].get('value', ''),
+                        'description': llm_settings['api_key'].get('description', 'API密钥'),
+                        'is_secret': llm_settings['api_key'].get('is_secret', False)
+                    }
+                if 'base_url' in llm_settings:
+                     config_groups['基础配置']['DEEPSEEK_BASE_URL'] = {
+                        'value': llm_settings['base_url'].get('value', ''),
+                        'description': llm_settings['base_url'].get('description', 'API基础URL')
+                    }
+                if 'model' in llm_settings:
+                     config_groups['基础配置']['MODEL'] = {
+                        'value': llm_settings['model'].get('value', ''),
+                        'description': llm_settings['model'].get('description', '使用的AI模型')
+                    }
+                if 'max_tokens' in llm_settings:
+                     config_groups['基础配置']['MAX_TOKEN'] = {
+                        'value': llm_settings['max_tokens'].get('value', 2000),
+                        'description': llm_settings['max_tokens'].get('description', '回复最大token数')
+                    }
+                if 'temperature' in llm_settings:
+                     config_groups['基础配置']['TEMPERATURE'] = {
+                        'value': llm_settings['temperature'].get('value', 1.1),
+                        'description': llm_settings['temperature'].get('description', 'AI回复的温度值'),
+                        'min': llm_settings['temperature'].get('min', 0.0),
+                        'max': llm_settings['temperature'].get('max', 2.0)
+                    }
+
+            # 媒体设置 (需要细分为 图像识别, 图像生成, TTS)
+            if 'media_settings' in categories and 'settings' in categories['media_settings']:
+                media = categories['media_settings']['settings']
+                
+                # 图像识别API配置
+                config_groups['图像识别API配置'] = {}
+                if 'image_recognition' in media:
+                    img_recog = media['image_recognition']
+                    if 'api_key' in img_recog:
+                        config_groups['图像识别API配置']['VISION_API_KEY'] = { # 注意键名变化
+                            'value': img_recog['api_key'].get('value', ''),
+                            'description': img_recog['api_key'].get('description', '图像识别 API密钥'),
+                            'is_secret': img_recog['api_key'].get('is_secret', False)
+                        }
+                    if 'base_url' in img_recog:
+                        config_groups['图像识别API配置']['VISION_BASE_URL'] = { # 注意键名变化
+                            'value': img_recog['base_url'].get('value', ''),
+                            'description': img_recog['base_url'].get('description', '图像识别 API基础URL')
+                        }
+                    if 'model' in img_recog:
+                        config_groups['图像识别API配置']['VISION_MODEL'] = { # 注意键名变化
+                            'value': img_recog['model'].get('value', ''),
+                            'description': img_recog['model'].get('description', '图像识别 AI模型')
+                        }
+                    if 'temperature' in img_recog:
+                        config_groups['图像识别API配置']['VISION_TEMPERATURE'] = { # 注意键名变化
+                            'value': img_recog['temperature'].get('value', 0.7),
+                            'description': img_recog['temperature'].get('description', '图像识别温度参数'),
+                            'min': img_recog['temperature'].get('min', 0.0),
+                            'max': img_recog['temperature'].get('max', 1.0) 
+                        }
+                
+                # 图像生成配置 (如果模板中有对应项)
+                config_groups['图像生成配置'] = {}
+                if 'image_generation' in media:
+                    img_gen = media['image_generation']
+                    if 'model' in img_gen:
+                        config_groups['图像生成配置']['IMAGE_MODEL'] = { # 假设键名
+                             'value': img_gen['model'].get('value', ''),
+                             'description': img_gen['model'].get('description', '图像生成模型')
+                         }
+                    if 'temp_dir' in img_gen:
+                         config_groups['图像生成配置']['TEMP_IMAGE_DIR'] = { # 假设键名
+                             'value': img_gen['temp_dir'].get('value', ''),
+                             'description': img_gen['temp_dir'].get('description', '临时图片存储目录')
+                         }
+
+                # 语音配置 (如果模板中有对应项)
+                config_groups['语音配置'] = {}
+                if 'text_to_speech' in media:
+                     tts = media['text_to_speech']
+                     # ... (根据模板中的键名添加) ...
+            
+            # 行为设置 (需要细分为 时间配置, 人设配置)
+            if 'behavior_settings' in categories and 'settings' in categories['behavior_settings']:
+                 behavior = categories['behavior_settings']['settings']
+                 
+                 # 时间配置
+                 config_groups['时间配置'] = {}
+                 if 'auto_message' in behavior:
+                     auto = behavior['auto_message']
+                     if 'content' in auto:
+                         config_groups['时间配置']['AUTO_MESSAGE'] = {
+                             'value': auto['content'].get('value', ''),
+                             'description': auto['content'].get('description', '自动消息内容')
+                         }
+                     # ... (添加倒计时min/max hours, 如果模板中有)
+                 if 'quiet_time' in behavior:
+                     quiet = behavior['quiet_time']
+                     if 'start' in quiet:
+                         config_groups['时间配置']['QUIET_TIME_START'] = {
+                            'value': quiet['start'].get('value', ''),
+                            'description': quiet['start'].get('description', '安静时段开始')
+                         }
+                     if 'end' in quiet:
+                         config_groups['时间配置']['QUIET_TIME_END'] = {
+                            'value': quiet['end'].get('value', ''),
+                            'description': quiet['end'].get('description', '安静时段结束')
+                         }
+                
+                 # 人设配置
+                 config_groups['人设配置'] = {}
+                 if 'context' in behavior:
+                     context = behavior['context']
+                     if 'max_groups' in context:
+                         config_groups['人设配置']['MAX_GROUPS'] = {
+                             'value': context['max_groups'].get('value', 15),
+                             'description': context['max_groups'].get('description', '最多记忆群聊数')
+                         }
+                     if 'avatar_dir' in context:
+                         # 需要获取可用的 avatar 目录选项
+                         available_avatars = []
+                         try:
+                            avatar_base_dir = os.path.join(ROOT_DIR, "data", "avatars")
+                            if os.path.exists(avatar_base_dir):
+                                for item in os.listdir(avatar_base_dir):
+                                     avatar_dir_path = os.path.join(avatar_base_dir, item)
+                                     if os.path.isdir(avatar_dir_path) and os.path.exists(os.path.join(avatar_dir_path, "avatar.md")):
+                                         available_avatars.append(f"data/avatars/{item}")
+                         except Exception as avatar_e:
+                            logger.error(f"获取人设目录时出错: {avatar_e}")
+                            
+                         config_groups['人设配置']['AVATAR_DIR'] = {
+                             'value': context['avatar_dir'].get('value', ''),
+                             'description': context['avatar_dir'].get('description', '当前使用人设'),
+                             'options': available_avatars # 传递选项列表
+                         }
+
+            # 定时任务数据提取 (与之前逻辑相同)
+            if 'schedule_settings' in categories and 'settings' in categories['schedule_settings']:
+                if 'tasks' in categories['schedule_settings']['settings']:
+                    tasks = categories['schedule_settings']['settings']['tasks'].get('value', [])
+
+    except FileNotFoundError:
+        logger.error(f"配置文件未找到: {config_path}")
+        # 可以选择渲染一个错误页面或带有默认值的页面
+        return "配置文件未找到", 404
+    except json.JSONDecodeError:
+        logger.error(f"配置文件格式错误: {config_path}")
+        return "配置文件格式错误", 500
     except Exception as e:
-        logger.error(f"读取任务数据失败: {str(e)}")
+        logger.error(f"处理配置时出错: {str(e)}")
+        return f"处理配置时出错: {str(e)}", 500
     
-    config_groups = parse_config_groups()  # 获取配置组
-    
+    logger.debug(f"实时构建的 config_groups: {config_groups}")
     logger.debug(f"传递给前端的任务列表: {tasks}")
     
     return render_template(
         'config.html',
-        config_groups=config_groups,  # 传递配置组
-        tasks_json=json.dumps(tasks, ensure_ascii=False),  # 直接传递任务列表JSON
+        config_groups=config_groups,  # 传递实时构建的配置组
+        tasks_json=json.dumps(tasks, ensure_ascii=False),  
         is_local=is_local_network(),
         active_page='config'
     )
-
-# 在 app 初始化后添加
-@app.route('/static/<path:filename>')
-def serve_static(filename):
-    """提供静态文件服务"""
-    static_folder = app.static_folder
-    if static_folder is None:
-        static_folder = os.path.join(ROOT_DIR, 'src/webui/static')
-    return send_from_directory(static_folder, filename)
 
 @app.route('/execute_command', methods=['POST'])
 def execute_command():
@@ -1735,6 +1888,18 @@ def get_model_configs():
         with open(models_path, 'r', encoding='utf-8') as f:
             configs = json.load(f)
 
+        # 检查云端更新
+        if configs.get('update_url'):
+            try:
+                response = requests.get(configs['update_url'], timeout=5)
+                if response.status_code == 200:
+                    cloud_configs = response.json()
+                    if cloud_configs.get('version', '0') > configs.get('version', '0'):
+                        configs = cloud_configs
+                        with open(models_path, 'w', encoding='utf-8') as f:
+                            json.dump(configs, f, indent=4, ensure_ascii=False)
+            except:
+                pass
 
         # 过滤和排序提供商
         active_providers = [p for p in configs['api_providers'] 
@@ -1763,6 +1928,30 @@ def get_model_configs():
             'status': 'error',
             'message': str(e)
         })
+
+@app.route('/get_models_json')
+def get_models_json():
+    """直接提供models.json文件，用于前端备用加载"""
+    try:
+        models_path = os.path.join(ROOT_DIR, 'src/config/models.json')
+        
+        if not os.path.exists(models_path):
+            logger.error(f"/get_models_json: 文件未找到 - {models_path}")
+            return jsonify({
+                'status': 'error',
+                'message': '模型配置文件 (models.json) 不存在'
+            }), 404
+
+        # 使用 send_from_directory 更安全地提供文件
+        config_dir = os.path.join(ROOT_DIR, 'src/config')
+        return send_from_directory(config_dir, 'models.json', as_attachment=False, mimetype='application/json')
+        
+    except Exception as e:
+        logger.error(f"/get_models_json: 处理文件时出错: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'读取模型配置时出错: {str(e)}'
+        }), 500
 
 @app.route('/save_quick_setup', methods=['POST'])
 def save_quick_setup():
@@ -1793,7 +1982,7 @@ def save_quick_setup():
             current_config["categories"]["user_settings"]["settings"]["listen_list"] = {
                 "value": new_config["listen_list"],
                 "type": "array",
-                "description": "要监听的用户列表（请使用微信昵称，不要使用备注名）"
+                "description": "要监听的用户列表（用户昵称或群名（需要@)，尽量不要带符号）"
             }
             
         # 更新API设置
@@ -1813,13 +2002,13 @@ def save_quick_setup():
             # 如果没有设置其他必要的LLM配置，设置默认值
             if "base_url" not in current_config["categories"]["llm_settings"]["settings"]:
                 current_config["categories"]["llm_settings"]["settings"]["base_url"] = {
-                    "value": "https://api.moonshot.cn/v1",
+                    "value": "https://api.ciallo.ac.cn/v1",
                     "type": "string",
                     "description": "API基础URL"
                 }
             if "model" not in current_config["categories"]["llm_settings"]["settings"]:
                 current_config["categories"]["llm_settings"]["settings"]["model"] = {
-                    "value": "moonshot-v1-8k",
+                    "value": "deepseek-chat",
                     "type": "string",
                     "description": "使用的模型"
                 }
@@ -1831,7 +2020,7 @@ def save_quick_setup():
                 }
             if "temperature" not in current_config["categories"]["llm_settings"]["settings"]:
                 current_config["categories"]["llm_settings"]["settings"]["temperature"] = {
-                    "value": 1.1,
+                    "value": 0.7,
                     "type": "number",
                     "description": "温度参数"
                 }
@@ -2191,13 +2380,13 @@ def get_all_configs():
                 if 'image_recognition' in media_settings:
                     img_recog = media_settings['image_recognition']
                     if 'api_key' in img_recog:
-                        configs['图像识别API配置']['VISION_API_KEY'] = {'value': img_recog['api_key'].get('value', '')}
+                        configs['图像识别API配置']['MOONSHOT_API_KEY'] = {'value': img_recog['api_key'].get('value', '')}
                     if 'base_url' in img_recog:
-                        configs['图像识别API配置']['VISION_BASE_URL'] = {'value': img_recog['base_url'].get('value', '')}
+                        configs['图像识别API配置']['MOONSHOT_BASE_URL'] = {'value': img_recog['base_url'].get('value', '')}
                     if 'temperature' in img_recog:
-                        configs['图像识别API配置']['VISION_TEMPERATURE'] = {'value': img_recog['temperature'].get('value', 0.7)}
+                        configs['图像识别API配置']['MOONSHOT_TEMPERATURE'] = {'value': img_recog['temperature'].get('value', 0.7)}
                     if 'model' in img_recog:
-                        configs['图像识别API配置']['VISION_MODEL'] = {'value': img_recog['model'].get('value', '')}
+                        configs['图像识别API配置']['MOONSHOT_MODEL'] = {'value': img_recog['model'].get('value', '')}
                 
                 # 图像生成设置
                 '''
@@ -2244,14 +2433,14 @@ def get_all_configs():
                     if 'end' in quiet:
                         configs['时间配置']['QUIET_TIME_END'] = {'value': quiet['end'].get('value', '')}
                 
-                # Prompt配置
-                configs['Prompt配置'] = {}
+                # 人设配置
+                configs['人设配置'] = {}
                 if 'context' in behavior:
                     context = behavior['context']
                     if 'max_groups' in context:
-                        configs['Prompt配置']['MAX_GROUPS'] = {'value': context['max_groups'].get('value', 15)}
+                        configs['人设配置']['MAX_GROUPS'] = {'value': context['max_groups'].get('value', 15)}
                     if 'avatar_dir' in context:
-                        configs['Prompt配置']['AVATAR_DIR'] = {'value': context['avatar_dir'].get('value', '')}
+                        configs['人设配置']['AVATAR_DIR'] = {'value': context['avatar_dir'].get('value', '')}
             
             # 定时任务
             if 'schedule_settings' in config_data['categories'] and 'settings' in config_data['categories']['schedule_settings']:
@@ -2283,10 +2472,11 @@ def get_announcement():
             default_announcement = {
                 "enabled": True,
                 "title": "系统公告",
-                "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。",
+                "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。1.4.1版本增加了稳定性，修复了部分已知bug。",
                 "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "version": "1.0.0",
-                "type": "info"
+                "version": "1.4.1",
+                "type": "info",
+                "show_once_per_day": False
             }
             
             # 写入默认配置
@@ -2303,79 +2493,6 @@ def get_announcement():
     except Exception as e:
         logger.error(f"获取公告配置失败: {str(e)}")
         return jsonify({"enabled": False, "title": "", "content": "", "type": "info"})
-
-@app.route('/get_vision_api_configs')
-def get_vision_api_configs():
-    """获取图像识别API配置"""
-    try:
-        # 构建图像识别API提供商列表
-        vision_providers = [
-            {
-                "id": "kourichat_global",
-                "name": "KouriChat API (全球优化)",
-                "url": "https://api.ciallo.ac.cn",
-                "register_url": "https://api.ciallo.ac.cn",
-                "status": "active",
-                "priority": 1
-            },
-            {
-                "id": "kourichat_asia",
-                "name": "KouriChat API (亚太备线)",
-                "url": "https://api.kourichat.com",
-                "register_url": "https://api.kourichat.com",
-                "status": "active",
-                "priority": 2
-            },
-            {
-                "id": "moonshot",
-                "name": "Moonshot（月之暗面）",
-                "url": "https://api.moonshot.cn/v1",
-                "register_url": "https://platform.moonshot.cn/console/api-keys",
-                "status": "active",
-                "priority": 3
-            },
-            {
-                "id": "openai",
-                "name": "OpenAI",
-                "url": "https://api.openai.com/v1",
-                "register_url": "https://platform.openai.com/api-keys",
-                "status": "active",
-                "priority": 4
-            },
-            {
-                "id": "zhipu",
-                "name": "智谱 AI",
-                "url": "https://open.bigmodel.cn/api/paas/v4",
-                "register_url": "https://open.bigmodel.cn/usercenter/apikeys",
-                "status": "active",
-                "priority": 5
-            }
-        ]
-        
-        # 构建模型配置 - 只包含支持图像识别的模型
-        vision_models = {
-            "kourichat_global": [
-                {"id": "kourichat-vision", "name": "KouriChat Vision", "status": "active"}
-            ],
-            "kourichat_asia": [
-                {"id": "kourichat-vision", "name": "kourichat-vision"}
-            ],
-            "moonshot": [
-                {"id": "moonshot-v1-8k-vision-preview", "name": "moonshot-v1-8k-vision-preview"}
-            ]
-        }
-        
-        return jsonify({
-            "status": "success",
-            "api_providers": vision_providers,
-            "models": vision_models
-        })
-    except Exception as e:
-        logger.error(f"获取图像识别API配置失败: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        })
 
 if __name__ == '__main__':
     try:

@@ -8,7 +8,7 @@
                         ""
                     ],
                     "type": "array",
-                    "description": "要监听的用户列表（请使用微信昵称，不要使用备注名）"
+                    "description": "要监听的用户列表（用户昵称或群名（需要@)，尽量不要带符号）"
                 }
             }
         },
@@ -22,12 +22,12 @@
                     "is_secret": true
                 },
                 "base_url": {
-                    "value": "https://api.kourichat.com/v1",
+                    "value": "https://api.ciallo.ac.cn/v1",
                     "type": "string",
                     "description": "DeepSeek API基础URL"
                 },
                 "model": {
-                    "value": "kourichat-v3",
+                    "value": "deepseek-chat",
                     "type": "string",
                     "description": "使用的AI模型名称",
                     "options": [
@@ -62,7 +62,7 @@
                         "is_secret": true
                     },
                     "base_url": {
-                        "value": "https://api.kourichat.com",
+                        "value": "https://api.ciallo.ac.cn/v1",
                         "type": "string",
                         "description": "图像识别API基础URL"
                     },
@@ -81,7 +81,7 @@
                 },
                 "image_generation": {
                     "model": {
-                        "value": "deepseek-ai/Janus-Pro-7B",
+                        "value": "grok-3-imageGen",
                         "type": "string",
                         "description": "图像生成模型"
                     },
@@ -110,7 +110,7 @@
             "settings": {
                 "auto_message": {
                     "content": {
-                        "value": "请你模拟系统设置的角色，在微信上找对方发消息想知道对方在做什么",
+                        "value": "请你模拟系统设置的角色，在微信上结合上下文找对方发消息聊天",
                         "type": "string",
                         "description": "自动消息内容"
                     },

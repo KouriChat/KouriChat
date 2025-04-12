@@ -1,9 +1,9 @@
 {
-    "version": "1.0.2",
+    "version": "1.4.1",
     "update_url": "https://static.kourichat.com/models/latest.json",
     "api_providers": [
         {
-            "id": "kourichat-ap",
+            "id": "kourichat-asia",
             "name": "KouriChat API (亚太备线)",
             "url": "https://api.kourichat.com/v1",
             "register_url": "https://api.kourichat.com/register",
@@ -11,7 +11,6 @@
             "priority": 1
         },
         {
-           
             "id": "kourichat-global",
             "name": "KouriChat API (全球优化)",
             "url": "https://api.ciallo.ac.cn/v1",
@@ -83,69 +82,6 @@
                 "context_length": 16000
             },
             {
-                "id": "grok-2-latest",
-                "name": "Grok 2代模型",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "grok-3-latest",
-                "name": "Grok 3代模型(网页逆向)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "gemini-1.5-pro",
-                "name": "Gemini 1.5 Pro模型",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "gemini-2.0-flash",
-                "name": "Gemini 2.0 Flash模型",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "gemini-2.0-pro",
-                "name": "Gemini 2.0 Pro模型",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "claude-3-5-sonnet-20240620",
-                "name": "Claude 3.5 Sonnet (2024/06)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "claude-3-5-sonnet-20241022",
-                "name": "Claude 3.5 Sonnet (2024/10)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "claude-3-7-sonnet-20250219",
-                "name": "Claude 3.7 Sonnet (2025/02)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "claude-r1-thinking",
-                "name": "Claude R1 (思维优化版)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
                 "id": "deepseek-chat",
                 "name": "DeepSeek Chat",
                 "status": "active",
@@ -160,8 +96,15 @@
                 "context_length": 16000
             },
             {
-                "id": "gemini-2.5-pro",
-                "name": "Gemini 2.5 Pro模型",
+                "id": "grok-2-latest",
+                "name": "Grok 2代模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "grok-3-latest",
+                "name": "Grok 3代模型(网页逆向)",
                 "status": "active",
                 "type": "chat",
                 "context_length": 16000
@@ -181,14 +124,84 @@
                 "context_length": 16000
             },
             {
+                "id": "gemini-1.5-pro",
+                "name": "Gemini 1.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-1.5-flash",
+                "name": "Gemini 1.5 Flash模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.0-pro",
+                "name": "Gemini 2.0 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "claude-3-5-sonnet-20240620",
+                "name": "Claude 3.5 Sonnet (2024/06)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "claude-3-5-sonnet-20241022",
+                "name": "Claude 3.5 Sonnet (2024/10)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "command-r-plus",
+                "name": "Command R+",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
                 "id": "qwq-32b",
                 "name": "QWQ-32B (开源大模型)",
                 "status": "active",
                 "type": "chat",
                 "context_length": 16000
+            },
+            {
+                "id": "gpt-4.5-preview",
+                "name": "GPT-4.5 Preview",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            },
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4.0",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            },
+            {
+                "id": "gpt-4o-mini",
+                "name": "GPT-4o Mini",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
             }
         ],
-              "kourichat-ap": [
+        "kourichat-asia": [
             {
                 "id": "kourichat-v3",
                 "name": "KouriChat V3",
@@ -218,69 +231,6 @@
                 "context_length": 16000
             },
             {
-                "id": "grok-2-latest",
-                "name": "Grok 2代模型",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "grok-3-latest",
-                "name": "Grok 3代模型(网页逆向)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "gemini-1.5-pro",
-                "name": "Gemini 1.5 Pro模型",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "gemini-2.0-flash",
-                "name": "Gemini 2.0 Flash模型",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "gemini-2.0-pro",
-                "name": "Gemini 2.0 Pro模型",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "claude-3-5-sonnet-20240620",
-                "name": "Claude 3.5 Sonnet (2024/06)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "claude-3-5-sonnet-20241022",
-                "name": "Claude 3.5 Sonnet (2024/10)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "claude-3-7-sonnet-20250219",
-                "name": "Claude 3.7 Sonnet (2025/02)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
-                "id": "claude-r1-thinking",
-                "name": "Claude R1 (思维优化版)",
-                "status": "active",
-                "type": "chat",
-                "context_length": 16000
-            },
-            {
                 "id": "deepseek-chat",
                 "name": "DeepSeek Chat",
                 "status": "active",
@@ -295,8 +245,15 @@
                 "context_length": 16000
             },
             {
-                "id": "gemini-2.5-pro",
-                "name": "Gemini 2.5 Pro模型",
+                "id": "grok-2-latest",
+                "name": "Grok 2代模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "grok-3-latest",
+                "name": "Grok 3代模型(网页逆向)",
                 "status": "active",
                 "type": "chat",
                 "context_length": 16000
@@ -316,8 +273,108 @@
                 "context_length": 16000
             },
             {
+                "id": "gemini-1.5-pro",
+                "name": "Gemini 1.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-1.5-flash",
+                "name": "Gemini 1.5 Flash模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.0-pro",
+                "name": "Gemini 2.0 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro模型",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "claude-3-5-sonnet-20240620",
+                "name": "Claude 3.5 Sonnet (2024/06)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "claude-3-5-sonnet-20241022",
+                "name": "Claude 3.5 Sonnet (2024/10)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "command-r-plus",
+                "name": "Command R+",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
                 "id": "qwq-32b",
                 "name": "QWQ-32B (开源大模型)",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "gpt-4.5-preview",
+                "name": "GPT-4.5 Preview",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            },
+            {
+                "id": "gpt-4o",
+                "name": "GPT-4.0",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            },
+            {
+                "id": "gpt-4o-mini",
+                "name": "GPT-4o Mini",
+                "status": "active",
+                "type": "chat",
+                "context_length": 128000
+            }
+        ],
+        "siliconflow": [
+            {
+                "id": "deepseek-ai/DeepSeek-V3",
+                "name": "硅基格式V3模型（免费额度版）",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "deepseek-ai/DeepSeek-R1",
+                "name": "硅基格式R1模型（免费额度版）",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "Pro/deepseek-ai/DeepSeek-V3",
+                "name": "硅基格式V3模型（付费版）",
+                "status": "active",
+                "type": "chat",
+                "context_length": 16000
+            },
+            {
+                "id": "Pro/deepseek-ai/DeepSeek-R1",
+                "name": "硅基格式R1模型（付费版）",
                 "status": "active",
                 "type": "chat",
                 "context_length": 16000
@@ -329,14 +386,14 @@
                 "name": "deepseek官方V3模型",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
                 "id": "deepseek-reasoner",
                 "name": "deepseek官方R1模型",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             }
         ],
         "sealos": [
@@ -345,14 +402,14 @@
                 "name": "DeepSeek Chat",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
                 "id": "deepseek-reasoner",
                 "name": "DeepSeek Reasoner",
                 "status": "active",
                 "type": "chat",
-                "context_length": 4096
+                "context_length": 16000
             },
             {
                 "id": "charglm-4",

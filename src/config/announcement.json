@@ -1,8 +1,9 @@
 {
     "enabled": true,
     "title": "系统公告",
-    "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。",
+    "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。1.4.1版本增加了稳定性，修复了部分已知bug。",
     "updated_at": "2023-04-07 00:00:00",
-    "version": "1.0.0",
-    "type": "info"
+    "version": "1.4.1",
+    "type": "info",
+    "show_once_per_day": false
 } 

@@ -963,7 +963,13 @@
                 <div class="modal-body">
                     <p id="announcementContent"></p>
                 </div>
-                <div class="modal-footer justify-content-end">
+                <div class="modal-footer justify-content-between">
+                    <div class="form-check ms-2">
+                        <input class="form-check-input" type="checkbox" id="doNotShowAgainToday">
+                        <label class="form-check-label" for="doNotShowAgainToday">
+                            今日不再显示
+                        </label>
+                    </div>
                     <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="announcementOkBtn">我知道了</button>
                 </div>
             </div>
@@ -1810,9 +1816,13 @@
         document.addEventListener('DOMContentLoaded', function() {
             // 检查是否在当前会话中已经显示过公告
             const hasShownAnnouncement = sessionStorage.getItem('announcement_shown');
+            // 检查是否选择了今日不再显示
+            const lastShownDate = localStorage.getItem('announcement_last_shown_date');
+            const today = new Date().toDateString();
+            const skipForToday = lastShownDate === today;
             
-            // 如果在当前会话中没有显示过公告，则显示
-            if (!hasShownAnnouncement) {
+            // 如果在当前会话中没有显示过公告，且不是选择了今日不再显示
+            if (!hasShownAnnouncement && !skipForToday) {
                 fetch('/get_announcement')
                     .then(response => response.json())
                     .then(data => {
@@ -1833,6 +1843,16 @@
                                 modalHeader.classList.add('bg-success', 'text-white');
                             }
                             
+                            // 根据配置决定是否显示"今日不再显示"选项
+                            const doNotShowCheckbox = document.getElementById('doNotShowAgainToday');
+                            const doNotShowContainer = doNotShowCheckbox.closest('.form-check');
+                            
+                            if (data.show_once_per_day !== undefined && data.show_once_per_day) {
+                                doNotShowContainer.style.display = 'block';
+                            } else {
+                                doNotShowContainer.style.display = 'none';
+                            }
+                            
                             // 显示模态框
                             const announcementModal = new bootstrap.Modal(document.getElementById('announcementModal'));
                             announcementModal.show();
@@ -1846,7 +1866,13 @@
             
             // 处理"我知道了"按钮点击事件
             document.getElementById('announcementOkBtn').addEventListener('click', function() {
-                // 无需额外处理，因为已在获取公告时设置了 sessionStorage
+                // 检查是否勾选了"今日不再显示"
+                const doNotShowAgain = document.getElementById('doNotShowAgainToday').checked;
+                if (doNotShowAgain) {
+                    // 将当前日期保存到localStorage，表示今天已经显示过
+                    const today = new Date().toDateString();
+                    localStorage.setItem('announcement_last_shown_date', today);
+                }
             });
         });
     </script>
