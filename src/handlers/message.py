@@ -3099,7 +3099,14 @@ class MessageHandler:
 
                 # 发送消息
                 logger.info(f"发送消息片段 {i+1}/{len(processed_parts)}")
-
+                
+                # 调用微信API发送消息
+                if not self._safe_send_msg(send_content, chat_id):
+                    logger.error(f"发送消息片段 {i+1}/{len(processed_parts)} 失败")
+                    return False
+                
+                # 记录已发送的消息
+                sent_messages.add(original_part)
 
                 # 根据消息长度动态调整下一条消息的等待时间
                 wait_time = base_interval + random.uniform(0.3, 0.7) * (
@@ -3966,7 +3973,16 @@ class MessageHandler:
                                 chat_id = message_dict["chat_id"]
                                 content = message_dict["content"]
                                 
-
+                                # 发送消息到微信
+                                try:
+                                    logger.info(f"发送自动任务消息到微信: chat_id={chat_id}, content_length={len(content)}")
+                                    if hasattr(self, 'wx') and self.wx:
+                                        # 直接发送消息到微信
+                                        self._safe_send_msg(content, chat_id)
+                                    else:
+                                        logger.error("wx实例不可用，无法发送消息")
+                                except Exception as e:
+                                    logger.error(f"发送自动任务消息到微信失败: {str(e)}")
                                 
                                 # 记录消息处理，包含更多细节有助于调试
                                 logger.info(f"处理自动任务消息: chat_id={chat_id}, content_length={len(content)}")
