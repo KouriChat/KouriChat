@@ -928,44 +928,44 @@
     <script>
     // 更新模型选择框
     async function updateModelSelect(providerId) {
-        // Log entry state
+        // 记录入口状态
         console.log(`updateModelSelect: Called for providerId: '${providerId}'. modelConfigs valid?`, !!(modelConfigs && modelConfigs.models));
         const modelSelect = document.getElementById('model_select');
         const customModelInputDiv = document.getElementById('customModelInput');
-        const modelInput = document.getElementById('MODEL'); // Hidden input holding the actual value
-        const currentModel = modelInput.value; // Get value from hidden input
+        const modelInput = document.getElementById('MODEL'); // 存储实际值的隐藏输入框
+        const currentModel = modelInput.value; // 从隐藏输入框获取值
 
-        // Reset model select state
+        // 重置模型选择状态
         modelSelect.innerHTML = '<option value="">请选择模型</option>';
-        modelSelect.disabled = true; // Disable until options are loaded
+        modelSelect.disabled = true; // 在加载选项之前禁用
         customModelInputDiv.style.display = 'none';
-        customModelInputDiv.querySelector('input').value = ''; // Clear custom input
+        customModelInputDiv.querySelector('input').value = ''; // 清空自定义输入
 
-        // Handle Custom Provider selection
+        // 处理自定义提供商选择
         if (providerId === 'custom') {
             modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
             modelSelect.value = 'custom';
             modelSelect.disabled = false;
             customModelInputDiv.style.display = 'block';
-            // If there's a current model value that isn't a known default, populate the custom input
+            // 如果当前模型值存在且不是已知的默认值，则填充自定义输入框
             if (currentModel && !Array.from(modelSelect.options).some(opt => opt.value === currentModel)) {
                  customModelInputDiv.querySelector('input').value = currentModel;
             }
             return;
         }
 
-        // Handle No Provider selected
+        // 处理未选择提供商的情况
         if (!providerId) {
             modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
-            return; // Keep it disabled and show only default + custom
+            return; // 保持禁用状态，仅显示默认 + 自定义
         }
 
-        // Re-enable select now that a provider is chosen (but might still be loading)
+        // 既然已选择提供商，重新启用选择框（但可能仍在加载中）
         modelSelect.disabled = false;
         modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
-        
+
         try {
-            // Handle Ollama Provider
+            // 处理 Ollama 提供商
             if (providerId === 'ollama') {
                 try {
                     const response = await fetch('http://localhost:11434/api/tags');
@@ -989,10 +989,10 @@
                     console.error('获取Ollama模型列表失败:', error);
                     modelSelect.innerHTML += '<option value="" disabled>获取Ollama模型失败</option>';
                 }
-            } 
-            // Handle other providers (only if modelConfigs is loaded)
+            }
+            // 处理其他提供商 (仅当 modelConfigs 已加载时)
             else if (modelConfigs && modelConfigs.models) {
-                 console.log(`updateModelSelect: modelConfigs IS valid. Checking for providerId '${providerId}' within modelConfigs.models.`); // Log check
+                 console.log(`updateModelSelect: modelConfigs 有效. 正在 modelConfigs.models 中检查 providerId '${providerId}'.`); // 记录检查日志
                   if (modelConfigs.models[providerId]) {
                     const modelsToShow = modelConfigs.models[providerId];
                     if (modelsToShow.length > 0) {
@@ -1000,7 +1000,7 @@
                         modelsToShow.forEach(model => {
                             if (model.status === 'active') {
                                 modelSelect.innerHTML += `
-                                    <option value="${model.id}" 
+                                    <option value="${model.id}"
                                         data-type="${model.type || 'chat'}"
                                         data-context-length="${model.context_length || 16000}">
                                         ${model.name}
@@ -1015,31 +1015,30 @@
                         modelSelect.innerHTML += '<option value="" disabled>该提供商无可用模型</option>';
                     }
                  } else {
-                    console.log(`updateModelSelect: providerId '${providerId}' NOT found in modelConfigs.models.`); // Log provider not found
+                    console.log(`updateModelSelect: 在 modelConfigs.models 中未找到 providerId '${providerId}'.`); // 记录提供商未找到日志
                     modelSelect.innerHTML += '<option value="" disabled>该提供商无模型定义</option>';
                  }
             } else {
-                console.log("updateModelSelect: modelConfigs is NOT valid or ready yet."); // Log modelConfigs not ready
+                console.log("updateModelSelect: modelConfigs 无效或尚未准备好."); // 记录 modelConfigs 未准备好日志
                 modelSelect.innerHTML += '<option value="" disabled>模型列表加载中...</option>';
-                return; // Exit early, wait for fetchModelConfigs to call again
+                return; // 提前退出, 等待 fetchModelConfigs 再次调用
             }
 
-            // --- Value Restoration Logic (only runs if options were populated) ---
+            // --- 值恢复逻辑 (仅在选项已填充时运行) ---
             if (currentModel) {
                 const modelExists = Array.from(modelSelect.options).some(opt => opt.value === currentModel);
                 if (modelExists) {
                     modelSelect.value = currentModel;
-                    customModelInputDiv.style.display = 'none'; 
+                    customModelInputDiv.style.display = 'none';
                 } else {
-                    // Only set to custom if the currentModel isn't empty and isn't literally 'custom'
-                    if (currentModel && currentModel !== 'custom') { 
+                    // 仅当 currentModel 不为空且不等于 'custom' 时才设置为自定义
+                    if (currentModel && currentModel !== 'custom') {
                         modelSelect.value = 'custom';
                         customModelInputDiv.style.display = 'block';
                         customModelInputDiv.querySelector('input').value = currentModel;
                     }
                 }
             }
-            // --- End Value Restoration ---
             
         } catch (error) {
             console.error('更新模型选择框时发生错误:', error);
@@ -1072,10 +1071,10 @@
 
     // 页面加载时获取配置
     document.addEventListener('DOMContentLoaded', function() {
-        // // 首先初始化模型选择框，确保当前模型值能正确显示 - REMOVED as it caused errors
+        // // 首先初始化模型选择框，确保当前模型值能正确显示 - 已移除，因为它导致了错误
         // initializeModelSelect(); 
         // 然后获取更多模型配置数据（如果可用）
-        // fetchModelConfigs(); // fetchModelConfigs is now called by setInitialValues/updateApiProvider logic implicitly
+        // fetchModelConfigs(); // fetchModelConfigs 现在由 setInitialValues/updateApiProvider 逻辑隐式调用
     });
     </script>
 {% elif key == 'TEMPERATURE' %}

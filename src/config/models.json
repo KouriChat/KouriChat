@@ -1,5 +1,5 @@
 {
-    "version": "1.4.1",
+    "version": "1.4.0",
     "update_url": "https://static.kourichat.com/models/latest.json",
     "api_providers": [
         {
