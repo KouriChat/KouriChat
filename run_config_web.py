@@ -944,11 +944,11 @@ def config():
                              'description': img_gen['temp_dir'].get('description', '临时图片存储目录')
                          }
 
-                # 语音配置 (如果模板中有对应项)
-                config_groups['语音配置'] = {}
-                if 'text_to_speech' in media:
-                     tts = media['text_to_speech']
-                     # ... (根据模板中的键名添加) ...
+                # # 语音配置 (如果模板中有对应项)
+                # config_groups['语音配置'] = {}
+                # if 'text_to_speech' in media:
+                #      tts = media['text_to_speech']
+                #      # ... (根据模板中的键名添加) ...
             
             # 行为设置 (需要细分为 时间配置, 人设配置)
             if 'behavior_settings' in categories and 'settings' in categories['behavior_settings']:
@@ -958,12 +958,22 @@ def config():
                  config_groups['时间配置'] = {}
                  if 'auto_message' in behavior:
                      auto = behavior['auto_message']
+                     countdown = auto['countdown']
                      if 'content' in auto:
                          config_groups['时间配置']['AUTO_MESSAGE'] = {
                              'value': auto['content'].get('value', ''),
                              'description': auto['content'].get('description', '自动消息内容')
                          }
-                     # ... (添加倒计时min/max hours, 如果模板中有)
+                 if 'min_hours' in countdown:
+                     config_groups['时间配置']['MIN_COUNTDOWN_HOURS'] = {
+                        'value': countdown['min_hours'].get('value', 1.0),
+                        'description': countdown['min_hours'].get('description', '最小倒计时（小时）')
+                     }
+                 if 'max_hours' in countdown:
+                     config_groups['时间配置']['MAX_COUNTDOWN_HOURS'] = {
+                        'value': countdown['max_hours'].get('value', 3.0),
+                        'description': countdown['max_hours'].get('description', '最大倒计时（小时）')
+                     }
                  if 'quiet_time' in behavior:
                      quiet = behavior['quiet_time']
                      if 'start' in quiet:
@@ -984,7 +994,7 @@ def config():
                      if 'max_groups' in context:
                          config_groups['人设配置']['MAX_GROUPS'] = {
                              'value': context['max_groups'].get('value', 15),
-                             'description': context['max_groups'].get('description', '最多记忆群聊数')
+                             'description': context['max_groups'].get('description', '最大上下文轮数')
                          }
                      if 'avatar_dir' in context:
                          # 需要获取可用的 avatar 目录选项
@@ -2232,18 +2242,31 @@ def save_task():
         # 获取当前任务列表
         tasks = config_data['categories']['schedule_settings']['settings']['tasks']['value']
         
-        # 检查是否存在相同ID的任务
-        task_index = None
-        for i, task in enumerate(tasks):
-            if task.get('task_id') == task_data['task_id']:
-                task_index = i
-                break
+        # 检查是否为ID变更的任务编辑
+        original_task_id = task_data.get('original_task_id', None)
+        current_task_id = task_data['task_id']
         
-        # 更新或添加任务
-        if task_index is not None:
-            tasks[task_index] = task_data
-        else:
+        # 如果有原始ID且与当前ID不同，表示任务ID已更改
+        if original_task_id and original_task_id != current_task_id:
+            # 先删除旧ID的任务
+            tasks = [task for task in tasks if task.get('task_id') != original_task_id]
+            # 然后添加新ID的任务
             tasks.append(task_data)
+            logger.info(f"任务ID已从 {original_task_id} 更改为 {current_task_id}")
+        else:
+            # 常规的更新或添加
+            # 检查是否存在相同ID的任务
+            task_index = None
+            for i, task in enumerate(tasks):
+                if task.get('task_id') == current_task_id:
+                    task_index = i
+                    break
+            
+            # 更新或添加任务
+            if task_index is not None:
+                tasks[task_index] = task_data
+            else:
+                tasks.append(task_data)
         
         # 更新配置
         config_data['categories']['schedule_settings']['settings']['tasks']['value'] = tasks
@@ -2472,9 +2495,9 @@ def get_announcement():
             default_announcement = {
                 "enabled": True,
                 "title": "系统公告",
-                "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。1.4.1版本增加了稳定性，修复了部分已知bug。",
+                "content": "欢迎使用KouriChat！这是一个基于人工智能的微信聊天机器人，能够实现角色扮演、智能对话、图像生成与识别、语音消息和持久化记忆等功能。1.4.0版本增加了稳定性，修复了部分已知bug。",
                 "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "version": "1.4.1",
+                "version": "1.4.0",
                 "type": "info",
                 "show_once_per_day": False
             }

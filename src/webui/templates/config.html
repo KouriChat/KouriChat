@@ -895,6 +895,18 @@
             {{ '启用' if config.value else '停用' }}
         </label>
     </div>
+{% elif key == 'MIN_COUNTDOWN_HOURS' or key == 'MAX_COUNTDOWN_HOURS' %}
+    <input type="number" class="form-control" 
+        id="{{ key }}" name="{{ key }}" 
+        value="{{ config.value }}"
+        min="1" max="72" step="1">
+    <small class="form-text text-muted">
+        {% if key == 'MIN_COUNTDOWN_HOURS' %}
+        最小倒计时时间（小时）
+        {% else %}
+        最大倒计时时间（小时）
+        {% endif %}
+    </small>
 {% elif key == 'MODEL' %}
     <div class="mb-3">
         <select class="form-select mb-2" id="model_select" onchange="updateModel(this.value)" aria-label="选择模型">
@@ -1198,6 +1210,13 @@
             });
             clearTimeout(timeoutId);
             
+            // 如果请求失败，直接使用默认配置
+            if (!response.ok) {
+                // 静默失败，使用默认配置
+                setVisionInitialValues();
+                return;
+            }
+            
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -1220,7 +1239,8 @@
                 });
             }
         } catch (error) {
-            console.error('获取图像识别配置失败或超时:', error);
+            // 静默失败，不显示错误信息
+            console.log('使用默认图像识别配置');
         } finally {
             // 无论成功失败都初始化选择框
             setVisionInitialValues();
@@ -2412,85 +2432,78 @@
 
         // 修改保存任务的函数
         function saveTask() {
+            // 获取表单数据
             const taskId = document.getElementById('taskId').value.trim();
             const chatId = document.getElementById('taskChatId').value;
             const content = document.getElementById('taskContent').value.trim();
             const scheduleType = document.getElementById('scheduleType').value;
+            let scheduleTime = '';
             
-            // 验证必填字段
-            if (!taskId || !chatId || !content) {
-                showSaveNotification('请填写所有必填字段', 'error');
+            // 获取原始任务ID（如果是编辑模式）
+            const originalTaskId = document.getElementById('addTaskModal').getAttribute('data-original-task-id');
+            
+            // 根据任务类型获取调度时间
+            if (scheduleType === 'cron') {
+                scheduleTime = document.getElementById('cronExpression').value.trim();
+            } else {
+                const intervalValue = document.getElementById('intervalValue').value.trim();
+                const intervalUnit = document.getElementById('intervalUnit').value;
+                scheduleTime = `${intervalValue}${intervalUnit}`;
+            }
+            
+            // 验证表单
+            if (!taskId || !chatId || !content || !scheduleTime) {
+                showToast('请填写所有必要字段', 'error');
                 return;
             }
             
+            // 创建任务对象
             const task = {
                 task_id: taskId,
                 chat_id: chatId,
                 content: content,
                 schedule_type: scheduleType,
+                schedule_time: scheduleTime,
                 is_active: true
             };
             
-            // 根据调度类型设置相应的值
-            if (scheduleType === 'cron') {
-                const cronExp = document.getElementById('cronExpression').value;
-                if (!cronExp) {
-                    showSaveNotification('请设置执行时间', 'error');
-                    return;
-                }
-                // 验证cron表达式格式
-                const [minute, hour, day, month, weekday] = cronExp.split(' ');
-                if (!/^\d+$/.test(minute) || !/^\d+$/.test(hour) || !/^[\d,]+$/.test(weekday)) {
-                    showSaveNotification('Cron表达式格式不正确', 'error');
-                    return;
-                }
-                task.schedule_time = cronExp;
-            } else {
-                const value = document.getElementById('intervalValue').value;
-                const unit = document.getElementById('intervalUnit').value;
-                
-                if (!value) {
-                    showSaveNotification('请设置间隔时间', 'error');
-                    return;
-                }
-                
-                // 计算总秒数
-                const totalSeconds = parseInt(value) * parseInt(unit);
-                task.schedule_time = totalSeconds.toString();
-                task.interval = totalSeconds.toString();
+            // 如果是编辑模式且ID变更了，添加原始ID
+            if (originalTaskId && originalTaskId !== taskId) {
+                task.original_task_id = originalTaskId;
             }
             
-            // 获取现有的任务列表
-            let tasks = [];
-            try {
-                const tasksInput = document.getElementById('TASKS');
-                if (tasksInput && tasksInput.value) {
-                    tasks = JSON.parse(tasksInput.value);
+            // 发送保存请求
+            fetch('/save_task', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(task)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // 隐藏模态框
+                    bootstrap.Modal.getInstance(document.getElementById('addTaskModal')).hide();
+                    
+                    // 重新加载任务列表
+                    loadTasks();
+                    
+                    // 显示成功提示
+                    showToast(data.message, 'success');
+                    
+                    // 重置表单
+                    document.getElementById('taskForm').reset();
+                    
+                    // 清除原始任务ID
+                    document.getElementById('addTaskModal').removeAttribute('data-original-task-id');
+                } else {
+                    showToast(data.message, 'error');
                 }
-            } catch (e) {
-                console.error('解析任务列表失败:', e);
-            }
-            
-            // 更新任务列表
-            const existingIndex = tasks.findIndex(t => t.task_id === taskId);
-            if (existingIndex >= 0) {
-                tasks[existingIndex] = task;
-            } else {
-                tasks.push(task);
-            }
-            
-            // 更新隐藏输入框的值
-            document.getElementById('TASKS').value = JSON.stringify(tasks);
-            
-            // 关闭模态框
-            const modal = bootstrap.Modal.getInstance(document.getElementById('addTaskModal'));
-            modal.hide();
-            
-            // 显示成功提示
-            showSaveNotification('任务已添加，请点击底部的"保存所有设置"按钮保存更改');
-            
-            // 刷新任务列表
-            updateTaskList();
+            })
+            .catch(error => {
+                showToast('保存任务失败: ' + error, 'error');
+            });
         }
 
         // 修改更新任务列表的函数
@@ -2908,7 +2921,7 @@
                         <p class="mb-1">内容: ${task.content}</p>
                         <div class="d-flex justify-content-end mt-2">
                             <button class="btn btn-sm btn-outline-primary me-2" onclick="editTask('${task.task_id}')">
-                                <i class="bi bi-pencil"></i> 编辑
+                                <i class="bi bi-pencil"></i> 新增（可覆盖）
                             </button>
                             <button class="btn btn-sm btn-outline-danger" onclick="confirmDeleteTask('${task.task_id}')">
                                 <i class="bi bi-trash"></i> 删除
@@ -3045,7 +3058,11 @@
             
             // 填充表单
             document.getElementById('taskId').value = task.task_id;
-            document.getElementById('taskId').readOnly = true; // 编辑模式下不允许修改ID
+            document.getElementById('taskId').readOnly = false; // 编辑模式下允许修改ID
+            
+            // 存储原始任务ID，用于跟踪ID变化
+            document.getElementById('addTaskModal').setAttribute('data-original-task-id', task.task_id);
+            
             document.getElementById('taskChatId').value = task.chat_id;
             document.getElementById('taskContent').value = task.content;
             document.getElementById('scheduleType').value = task.schedule_type;
