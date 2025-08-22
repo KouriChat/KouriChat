@@ -40,7 +40,7 @@ class MessageHandler:
 
         # 使用 DeepSeekAI 替换直接的 OpenAI 客户端
         from config.proxy_config import get_proxy_config
-        proxy_config = get_proxy_config('default')
+        proxy_config = get_proxy_config()  # 使用自动检测系统代理
 
         self.deepseek = LLMService(
             api_key=api_key,

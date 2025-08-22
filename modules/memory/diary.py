@@ -37,7 +37,7 @@ class DiaryService:
         """获取或创建LLM客户端"""
         if not self.llm_client:
             from src.config.proxy_config import get_proxy_config
-            proxy_config = get_proxy_config('default')
+            proxy_config = get_proxy_config()  # 使用自动检测系统代理
 
             self.llm_client = LLMService(
                 api_key=self.api_key,

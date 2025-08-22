@@ -31,7 +31,7 @@ class ImageHandler:
         from config import config
         from config.proxy_config import get_proxy_config
 
-        proxy_config = get_proxy_config('default')
+        proxy_config = get_proxy_config()  # 使用自动检测系统代理
 
         self.text_ai = LLMService(
             api_key=api_key,

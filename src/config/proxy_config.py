@@ -15,11 +15,8 @@ class ProxyConfig:
     """
 
     def __init__(self):
-        # 默认代理配置
-        self._proxy_config = {
-            'http': 'http://127.0.0.1:7890',
-            'https': 'http://127.0.0.1:7890'
-        }
+        # 默认代理配置（仅作为备用）
+        self._proxy_config = {}
 
         # 代理服务器列表
         self._proxy_servers = {
