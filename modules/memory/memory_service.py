@@ -56,13 +56,17 @@ class MemoryService:
     def _get_llm_client(self):
         """获取或创建LLM客户端"""
         if not self.llm_client:
+            from src.config.proxy_config import get_proxy_config
+            proxy_config = get_proxy_config('default')
+
             self.llm_client = LLMService(
                 api_key=self.api_key,
                 base_url=self.base_url,
                 model=self.model,
                 max_token=self.max_token,
                 temperature=self.temperature,
-                max_groups=self.max_groups  # 使用初始化时传入的值
+                max_groups=self.max_groups,
+                proxy_config=proxy_config
             )
             logger.info(f"创建LLM客户端，上下文大小设置为: {self.max_groups}轮对话")
         return self.llm_client
@@ -307,4 +311,4 @@ class MemoryService:
 
     def _get_timestamp(self) -> str:
         """获取当前时间戳"""
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S") 
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

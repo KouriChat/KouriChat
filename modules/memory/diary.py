@@ -36,13 +36,17 @@ class DiaryService:
     def _get_llm_client(self):
         """获取或创建LLM客户端"""
         if not self.llm_client:
+            from src.config.proxy_config import get_proxy_config
+            proxy_config = get_proxy_config('default')
+
             self.llm_client = LLMService(
                 api_key=self.api_key,
                 base_url=self.base_url,
                 model=self.model,
                 max_token=self.max_token,
                 temperature=self.temperature,
-                max_groups=5  # 这里只需要较小的上下文
+                max_groups=5,  # 这里只需要较小的上下文
+                proxy_config=proxy_config
             )
         return self.llm_client
     
@@ -261,4 +265,4 @@ class DiaryService:
         # 合并所有行
         diary_content = '\n'.join(formatted_lines)
         
-        return diary_content 
+        return diary_content

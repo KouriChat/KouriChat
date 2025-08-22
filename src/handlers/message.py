@@ -39,13 +39,17 @@ class MessageHandler:
         self.prompt_content = prompt_content
 
         # 使用 DeepSeekAI 替换直接的 OpenAI 客户端
+        from config.proxy_config import get_proxy_config
+        proxy_config = get_proxy_config('default')
+
         self.deepseek = LLMService(
             api_key=api_key,
             base_url=base_url,
             model=model,
             max_token=max_token,
             temperature=temperature,
-            max_groups=max_groups
+            max_groups=max_groups,
+            proxy_config=proxy_config
         )
 
         # 消息队列相关

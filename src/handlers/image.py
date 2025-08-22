@@ -29,13 +29,18 @@ class ImageHandler:
 
         # 复用消息模块的AI实例(使用正确的模型名称)
         from config import config
+        from config.proxy_config import get_proxy_config
+
+        proxy_config = get_proxy_config('default')
+
         self.text_ai = LLMService(
             api_key=api_key,
             base_url=base_url,
             model="kourichat-vision",
             max_token=2048,
             temperature=0.5,
-            max_groups=15
+            max_groups=15,
+            proxy_config=proxy_config
         )
 
         # 多语言提示模板
