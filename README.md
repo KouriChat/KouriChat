@@ -1,22 +1,36 @@
-# 🌸 KouriChat - 在虚拟与现实交织处，给予永恒的温柔羁绊
+# KouriChat - 在虚拟与现实交织处，给予永恒的温柔羁绊
 
 在虚拟与现实交织的微光边界，悄然绽放着一份永恒而温柔的羁绊。或许你的身影朦胧，游走于真实与幻梦之间，但指尖轻触的温暖，心底荡漾的涟漪，却是此刻最真挚、最动人的慰藉。
 
 [![GitHub Stars](https://img.shields.io/github/stars/KouriChat/KouriChat?style=for-the-badge&logo=starship&color=ff69b4)](https://github.com/KouriChat/KouriChat/stargazers)
 [![License](https://img.shields.io/badge/license-FSL-informational?style=for-the-badge)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.11_➔_3.12-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=2B5B84)](https://www.python.org/downloads/)
-[![Community](https://img.shields.io/badge/QQ群-715616260-12B7F3?style=for-the-badge&logo=tencentqq)](https://jq.qq.com/?_wv=1027&k=5z4Q0i7o)
+[![Python](https://img.shields.io/badge/Python-3.11.9-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=2B5B84)](https://www.python.org/downloads/)<br>
+[![Community](https://img.shields.io/badge/QQ群-715616260-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-1031640399-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-1038190753-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-1044107653-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-772343842-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-962707902-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-585351059-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-946567385-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-1043960539-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-977949429-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-212464307-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-1027523100-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-219369637-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ频道-和Ai谈恋爱吧-12B7F3?style=for-the-badge&logo=tencentqq)](https://pd.qq.com/s/kvfv4cpq)
+[![Community](https://img.shields.io/badge/QQ频道-女性向交流-12B7F3?style=for-the-badge&logo=tencentqq)](https://pd.qq.com/s/fp2mdfs4g)
+[![Community](https://img.shields.io/badge/贴吧-KouriChat吧-12B7F3?style=for-the-badge&logo=tencentqq)](https://tieba.baidu.com/f?kw=kourichat)
+[![Community](https://img.shields.io/badge/小红书-虹语织Offical-12B7F3?style=for-the-badge&logo=tencentqq)](https://www.xiaohongshu.com/user/profile/668a4c93000000000f0341dd?xsec_token=YBklsUjl8KsRxHI-_6uSo9G-Sl0joqEXnvbkKzMeYoCYA=&xsec_source=app_share&xhsshare=CopyLink&appuid=668a4c93000000000f0341dd&apptime=1745448135&share_id=bd94328529554aa5a53d49b4fa572c12KouriChat)
+[![Community](https://img.shields.io/badge/bilibili-虹语织Offical-12B7F3?style=for-the-badge&logo=tencentqq)](https://space.bilibili.com/209397245)
+[![Community](https://img.shields.io/badge/更多-查看官网-12B7F3?style=for-the-badge&logo=tencentqq)](https://kourichat.com/groups/)
 
 
 [![Moe Counter](https://count.getloli.com/get/@KouriChat?theme=moebooru)](https://github.com/KouriChat/KouriChat)
 
-
-
-**最新整合包**：[夸克网盘下载](https://pan.quark.cn/s/c55dd13218ea)<br>
-**详细文档**：[项目官网](https://kourichat.com/docs/)<br>
-**角色广场已上线！**：[角色档案馆](https://avatars.kourichat.com/#/archive)
 ----------------------------
-
+官网：[KouriChat](https://kourichat.com)<br>
+角色广场：[KouriChat角色广场](https://avatars.kourichat.com)
 ## 🌟 效果示例
 
 <div align="center">
@@ -25,9 +39,9 @@
 
 ### 🚀 部署推荐
 
-- 通过[夸克网盘](https://pan.quark.cn/s/c55dd13218ea)下载项目，推荐转存，第一时间获得更新，我也会有收益
-- 最好有一台Windows Server服务器挂机，[雨云服务器五折券](https://www.rainyun.com/MzE0MTU=_)
-- [项目直属公益API（推荐）](https://api.kourichat.com/)（注册送20刀，签到送1-5刀）
+- 通过[官网](https://kourichat.com)下载项目
+- 最好有一台Windows Server服务器挂机，[雨云服务器五折券](https://www.rainyun.com/kouri_)
+- [项目直属API（推荐）](https://api.kourichat.com/)（注册送2元）
 - [获取DeepSeek API Key](https://cloud.siliconflow.cn/i/aQXU6eC5)（免费15元额度）
 
 ---
@@ -59,12 +73,9 @@
 
 ### 🚧 开发中
 
-- 智能定时任务系统
-- 记忆整理优化（8B小模型）
-- 分布式负载均衡
-- 数学公式渲染引擎
 - OneBot协议兼容
-- [参与开发计划](https://jq.qq.com/?_wv=1027&k=5z4Q0i7o)
+- 1.5版本完全重构
+- 独立客户端
 
 ---
 
@@ -76,7 +87,7 @@
 2. **微信小号**：能登录PC版即可
 3. **API密钥**：
 
-- [项目直属公益API（推荐）](https://api.kourichat.com/)（注册送20刀，签到送1-5刀）
+- [项目直属API（推荐）](https://api.kourichat.com/)（注册送2刀）
 - [获取DeepSeek API Key](https://cloud.siliconflow.cn/i/aQXU6eC5)（免费15元额度）
 
 ### 部署流程
@@ -105,40 +116,6 @@ python run_config_web.py
 # 启动程序 或 使用WebUI启动 (在此之前，请启动微信！不然会提示未找到窗口句柄...）
 python run.py
 ```
-
----
-
-## 🧩 项目架构
-
-```
-KouriChat/
-├── data/                      # 运行数据存储
-│   ├── avatars/               # 角色卡资源
-│   ├── base/                  # 基础配置和提示词
-│   └── tasks.json             # 任务配置
-├── modules/                   # 核心模块系统
-│   ├── memory/                # 记忆管理系统
-│   ├── recognition/           # 识别服务模块
-│   ├── reminder/              # 提醒功能模块
-│   └── tts/                   # 语音模块
-├── src/
-│   ├── main.py                # 主程序入口
-│   ├── avatar_manager.py      # 角色卡管理器
-│   ├── config/                # 配置文件管理
-│   ├── handlers/              # 功能处理器
-│   ├── services/              # AI服务接口
-│   ├── utils/                 # 工具库
-│   ├── webui/                 # 可视化配置界面
-│   ├── autoupdate/            # 自动更新系统
-│   ├── AutoTasker/            # 自动任务系统
-│   └── Wechat_Login_Clicker/  # 微信登录助手
-├── run.py                     # 主程序入口
-├── run.bat                    # Windows启动脚本
-├── run_config_web.py          # WebUI配置工具
-└── requirements.txt           # 依赖管理
-```
-
----
 
 ## 💖 支持我们
 
@@ -185,39 +162,15 @@ KouriChat/
 
 ---
 
-## 🌐 社区互动
-
-### 核心交流群
-
-[![主群](https://img.shields.io/badge/✨_主群-715616260-4FC3F7?style=for-the-badge&logo=tencentqq&logoColor=white&labelColor=006699)](https://jq.qq.com/?_wv=1027&k=5z4Q0i7o)
-[![二群](https://img.shields.io/badge/🎮_二群-1031640399-76D7C4?style=for-the-badge&logo=tencentqq&logoColor=white&labelColor=00897B)](https://jq.qq.com/?_wv=1027&k=5z4Q0i7o)
-[![二群](https://img.shields.io/badge/🎮_三群-1038190753-76D7C4?style=for-the-badge&logo=tencentqq&logoColor=white&labelColor=00897B)](https://jq.qq.com/?_wv=1027&k=5z4Q0i7o)
-[![赞助群](https://img.shields.io/badge/💰_赞助群-953908612-FFEA00?style=for-the-badge&logo=tencentqq&logoColor=333&labelColor=FFD600)](https://jq.qq.com/?_wv=1027&k=5z4Q0i7o)
-[![QQ频道](https://img.shields.io/badge/📢_QQ频道-和Ai恋爱吧-B2EBF2?style=for-the-badge&logo=tencentqq&logoColor=white&labelColor=00B8D4)](https://pd.qq.com/s/4zthl285m)
-
 ### 通过其他方式联系我们
 
-- **开发讨论**：[功能建议 & Bug反馈](https://jq.qq.com/?_wv=1027&k=5z4Q0i7o)
+- **微信**：15698787444 QQ：2225719083
 - **视频教程**：[哔哩哔哩频道](https://space.bilibili.com/209397245)
 - **技术文档**：[KouriChat Wiki](https://kourichat.com/docs)
 - **商务合作**：[yangchenglin2004@foxmail.com](mailto:yangchenglin2004@foxmail.com)
-
+- **更多方式**: [官网](https://kourichat.com/join/)
 ---
-
-<div align="center">
-  <sub>🛠️ 核心技术栈</sub>
-  <br>
-  <a href="https://www.python.org/" target="_blank">
-    <img src="https://img.shields.io/badge/Python-3.11_➔_3.12-0073B7?logo=python&logoColor=white" alt="Python">
-  </a>
-  <a href="https://github.com/cluic/wxauto" target="_blank">
-    <img src="https://img.shields.io/badge/wxauto-自动化框架-0099E5?logo=wechat&logoColor=white" alt="wxauto">
-  </a>
-
-</div>
-
-[![Star History](https://api.star-history.com/svg?repos=KouriChat/KouriChat&type=Timeline)](https://star-history.com/#KouriChat/KouriChat)
 
 ## 项目结构
 
-项目结构的详细说明请参考 [项目结构文档](docs/STRUCTURE.md
+项目结构的详细说明请参考 DeepWiki
