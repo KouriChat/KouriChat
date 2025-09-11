@@ -1,0 +1,43 @@
+<!-- 定时任务配置部分 -->
+<div class="accordion mb-3">
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#schedule-settings">
+                定时任务配置
+            </button>
+        </h2>
+        <div id="schedule-settings" class="accordion-collapse collapse">
+            <div class="accordion-body">
+                <input type="hidden"
+                       id="TASKS"
+                       name="TASKS"
+                       value='{{ tasks_json|safe }}'>
+
+                <div class="mb-3 list-group">
+                    <a href="#" class="list-group-item list-group-item-action"
+                       data-bs-toggle="modal" data-bs-target="#addTaskModal">
+                        <i class="bi bi-plus-lg me-2"></i>
+                        添加定时任务
+                        <i class="bi bi-chevron-right float-end mt-1"></i>
+                    </a>
+                </div>
+
+                <div class="mb-3 list-group">
+                    <a href="#" class="list-group-item list-group-item-action"
+                       data-bs-toggle="modal" data-bs-target="#taskListModal">
+                        <i class="bi bi-list-ul me-2"></i>
+                        任务列表管理
+                        <i class="bi bi-chevron-right float-end mt-1"></i>
+                    </a>
+                </div>
+
+                <div class="text-muted small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    可以添加定时发送消息的任务，支持Cron表达式和时间间隔两种方式
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

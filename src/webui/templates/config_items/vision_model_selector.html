@@ -1,0 +1,51 @@
+<!-- 视觉模型选择器 -->
+<div class="mb-3">
+    <select class="form-select mb-2" id="vision_model_select" onchange="updateVisionModel(this.value)" aria-label="选择图像识别模型">
+        <!-- 模型选项会根据API提供商动态加载 -->
+        <option value="custom">自定义模型</option>
+    </select>
+
+    <!-- 添加自定义模型输入框 -->
+    <div id="customVisionModelInput" class="mb-2" style="display: none;">
+        <input type="text" class="form-control"
+               placeholder="请输入自定义模型名称"
+               onchange="updateCustomVisionModel(this.value)">
+    </div>
+
+    <input type="text" class="form-control"
+        id="{{ key }}" name="{{ key }}"
+        value="{{ config.value }}"
+        readonly
+        style="display: none;">
+</div>
+
+<script>
+// 更新选中的图像识别模型
+function updateVisionModel(value) {
+    const modelInput = document.getElementById('VISION_MODEL');
+    const customModelInput = document.getElementById('customVisionModelInput');
+
+    if (value === 'custom') {
+        customModelInput.style.display = 'block';
+        const inputField = customModelInput.querySelector('input');
+        if (inputField) {
+            inputField.focus();
+        }
+    } else {
+        customModelInput.style.display = 'none';
+        if (value) {
+            modelInput.value = value;
+        }
+    }
+}
+
+// 更新自定义图像识别模型
+function updateCustomVisionModel(value) {
+    const modelInput = document.getElementById('VISION_MODEL');
+    if (value) {
+        modelInput.value = value;
+    }
+}
+
+// updateVisionModelSelect 函数已在 model-config.js 中定义，这里不需要重复定义
+</script>

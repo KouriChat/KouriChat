@@ -1,0 +1,24 @@
+<!-- 基础配置区域 -->
+{% for group_name, configs in config_groups.items() %}
+    {% if group_name == '基础配置' %}
+    <div class="accordion mb-3">
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#{{ group_name|replace(' ', '-') }}">
+                    {{ group_name }}
+                </button>
+            </h2>
+            <div id="{{ group_name|replace(' ', '-') }}" class="accordion-collapse collapse show">
+                <div class="accordion-body">
+                    {% for key, config in configs.items() %}
+                    <div class="mb-4">
+                        {{ render_config_item(key, config) }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endfor %}

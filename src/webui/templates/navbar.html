@@ -1,17 +1,17 @@
 <nav class="navbar navbar-expand-lg bg-body-tertiary shadow-sm">
     <div class="container">
         <a class="navbar-brand fw-bold" href="/dashboard">
-            <img src="/static/mom.ico" alt="MDM" width="32" height="32" 
+            <img src="/static/mom.ico" alt="MDM" width="32" height="32"
                  class="d-inline-block align-text-top me-2 rounded-circle nav-logo">
             KouriChat
         </a>
-        
+
         {% if session.get('logged_in') %}
         <!-- 登录后显示的内容 -->
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="切换导航菜单">
             <span class="navbar-toggler-icon"></span>
         </button>
-        
+
         <div class="collapse navbar-collapse" id="navbarContent">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 <li class="nav-item">
@@ -30,10 +30,10 @@
                     </a>
                 </li>
             </ul>
-            
+
             <div class="d-flex align-items-center ms-auto">
                 <div class="form-check form-switch me-3">
-                    <input class="form-check-input" type="checkbox" role="switch" 
+                    <input class="form-check-input" type="checkbox" role="switch"
                            id="darkModeToggle" data-dark-toggle>
                     <label class="form-check-label" for="darkModeToggle">
                         <i class="bi bi-moon-stars me-1"></i>护眼模式
@@ -52,7 +52,7 @@
         <!-- 未登录时显示的内容 -->
         <div class="d-flex align-items-center">
             <div class="form-check form-switch me-3">
-                <input class="form-check-input" type="checkbox" role="switch" 
+                <input class="form-check-input" type="checkbox" role="switch"
                        id="darkModeToggle" data-dark-toggle>
                 <label class="form-check-label" for="darkModeToggle">
                     <i class="bi bi-moon-stars me-1"></i>护眼模式
@@ -74,13 +74,13 @@ document.getElementById('backgroundInput').addEventListener('change', function(e
     if (file) {
         const formData = new FormData();
         formData.append('background', file);
-        
+
         // 显示加载状态
         const button = this.nextElementSibling;
         const originalText = button.innerHTML;
         button.innerHTML = '<i class="bi bi-arrow-repeat me-2 spin"></i>上传中...';
         button.disabled = true;
-        
+
         fetch('/upload_background', {
             method: 'POST',
             body: formData
@@ -110,7 +110,7 @@ function showManualAnnouncement() {
     const announcementModalElement = document.getElementById('announcementModal');
     if (announcementModalElement) {
         const announcementModal = bootstrap.Modal.getOrCreateInstance(announcementModalElement);
-        
+
         // 如果公告内容尚未加载，则先加载
         const contentElement = document.getElementById('announcementContent');
         if (!contentElement.innerHTML.trim()) {
@@ -124,10 +124,13 @@ function showManualAnnouncement() {
                         modalTitleElement.classList.remove('fs-4');
                         modalTitleElement.classList.add('fw-bold', 'text-center', 'w-100', 'fs-3');
                         contentElement.innerHTML = data.content;
-                        
+
                         const modalHeader = document.querySelector('#announcementModal .modal-header');
                         modalHeader.classList.remove('bg-info', 'bg-warning', 'bg-danger', 'bg-success', 'text-white', 'text-dark');
                         modalHeader.style.backgroundColor = '';
+
+                        // 绑定"不再显示"按钮事件
+                        bindAnnouncementDismissHandler(data);
                         
                         // 显示模态框
                         announcementModal.show();
@@ -234,4 +237,4 @@ function showManualAnnouncement() {
 .spin {
     animation: spin 1s linear infinite;
 }
-</style> 
+</style>

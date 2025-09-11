@@ -1,0 +1,45 @@
+<!-- 模态框组件 -->
+
+<!-- 监听用户列表为空的确认对话框 -->
+<div class="modal fade" id="emptyListenListModal" tabindex="-1" aria-labelledby="emptyListenListModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="emptyListenListModalLabel">
+                    <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>提示
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <p>您未填写监听用户，是否继续保存？</p>
+                <p class="text-muted small">未填写监听用户将导致机器人无法响应任何消息。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">否</button>
+                <button type="button" class="btn btn-secondary" id="confirmSaveBtn">是</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 人设选择提醒对话框 -->
+<div class="modal fade" id="avatarReminderModal" tabindex="-1" aria-labelledby="avatarReminderModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="avatarReminderModalLabel">
+                    <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>人设提醒
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <p>您选择的人设是：<span id="selectedAvatarName" class="fw-bold"></span></p>
+                <p class="text-muted small">请确认这是您要使用的人设。如需修改人设内容，请前往"角色设定"页面。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmAvatarBtn">确认并保存</button>
+            </div>
+        </div>
+    </div>
+</div>

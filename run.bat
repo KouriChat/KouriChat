@@ -3,17 +3,18 @@ setlocal enabledelayedexpansion
 
 :: 设置控制台编码为 GBK
 chcp 936 >nul
-title My Dream Moments 启动器
+title KouriChat 启动器
 
 cls
 echo ====================================
-echo        My Dream Moments Dreamer
+echo         K O U R I   C H A T
 echo ====================================
 echo.
 echo ╔══════════════════════════════════╗
-echo ║    My Dream Moments - AI Chat     ║
-echo ║    Created with Heart by umaru    ║
+echo ║       KouriChat - AI Chat        ║
+echo ║  Created with Heart by KouriTeam ║
 echo ╚══════════════════════════════════╝
+echo KouriChat - AI Chat  Copyright (C) 2025, DeepAnima Network Technology Studio
 echo.
 
 :: 添加错误捕获

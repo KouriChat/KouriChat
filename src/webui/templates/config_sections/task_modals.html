@@ -1,0 +1,217 @@
+<!-- 任务列表模态框 -->
+<div class="modal fade" id="taskListModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-list-check me-2"></i>定时任务列表
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div id="taskListContainer" class="list-group">
+                    <!-- 默认显示无任务提示 -->
+                    <div class="text-center text-muted p-4">
+                        <i class="bi bi-inbox fs-2"></i>
+                        <p class="mt-2">暂无定时任务</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加任务模态框 -->
+<div class="modal fade" id="addTaskModal" tabindex="-1" aria-labelledby="addTaskModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addTaskModalLabel">
+                    <i class="bi bi-plus-circle me-2"></i>添加定时任务
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="taskForm">
+                    <div class="row">
+                        <!-- 左侧：基本信息 -->
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-key me-2"></i>任务ID
+                                </label>
+                                <input type="text" class="form-control" id="taskId" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-person me-2"></i>发送对象
+                                </label>
+                                <select class="form-select" id="taskChatId" required>
+                                    <option value="">请选择发送对象</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-chat-text me-2"></i>消息内容
+                                </label>
+                                <textarea class="form-control" id="taskContent" rows="3" required></textarea>
+                            </div>
+                        </div>
+
+                        <!-- 右侧：定时设置 -->
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-alarm me-2"></i>定时类型
+                                </label>
+                                <select class="form-select" id="scheduleType" onchange="toggleScheduleInput()">
+                                    <option value="cron">Cron表达式</option>
+                                    <option value="interval">时间间隔</option>
+                                </select>
+                            </div>
+
+                            <!-- Cron表达式设置 -->
+                            <div id="cronInputGroup" class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-calendar3 me-2"></i>执行时间
+                                </label>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <select class="form-select" id="cronHour">
+                                            <option value="*">每小时</option>
+                                            <option value="0">0点</option>
+                                            <option value="1">1点</option>
+                                            <option value="2">2点</option>
+                                            <option value="3">3点</option>
+                                            <option value="4">4点</option>
+                                            <option value="5">5点</option>
+                                            <option value="6">6点</option>
+                                            <option value="7">7点</option>
+                                            <option value="8">8点</option>
+                                            <option value="9">9点</option>
+                                            <option value="10">10点</option>
+                                            <option value="11">11点</option>
+                                            <option value="12">12点</option>
+                                            <option value="13">13点</option>
+                                            <option value="14">14点</option>
+                                            <option value="15">15点</option>
+                                            <option value="16">16点</option>
+                                            <option value="17">17点</option>
+                                            <option value="18">18点</option>
+                                            <option value="19">19点</option>
+                                            <option value="20">20点</option>
+                                            <option value="21">21点</option>
+                                            <option value="22">22点</option>
+                                            <option value="23">23点</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <select class="form-select" id="cronMinute">
+                                            <option value="0">整点</option>
+                                            <option value="30">30分</option>
+                                            <option value="15">15分</option>
+                                            <option value="45">45分</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <label class="form-label">
+                                        <i class="bi bi-calendar-week me-2"></i>执行周期
+                                    </label>
+                                    <div class="btn-group w-100 flex-wrap" role="group">
+                                        <input type="checkbox" class="btn-check" id="cronWeekday1" autocomplete="off">
+                                        <label class="btn btn-outline-primary flex-fill" for="cronWeekday1">一</label>
+
+                                        <input type="checkbox" class="btn-check" id="cronWeekday2" autocomplete="off">
+                                        <label class="btn btn-outline-primary flex-fill" for="cronWeekday2">二</label>
+
+                                        <input type="checkbox" class="btn-check" id="cronWeekday3" autocomplete="off">
+                                        <label class="btn btn-outline-primary flex-fill" for="cronWeekday3">三</label>
+
+                                        <input type="checkbox" class="btn-check" id="cronWeekday4" autocomplete="off">
+                                        <label class="btn btn-outline-primary flex-fill" for="cronWeekday4">四</label>
+
+                                        <input type="checkbox" class="btn-check" id="cronWeekday5" autocomplete="off">
+                                        <label class="btn btn-outline-primary flex-fill" for="cronWeekday5">五</label>
+
+                                        <input type="checkbox" class="btn-check" id="cronWeekday6" autocomplete="off">
+                                        <label class="btn btn-outline-primary flex-fill" for="cronWeekday6">六</label>
+
+                                        <input type="checkbox" class="btn-check" id="cronWeekday7" autocomplete="off">
+                                        <label class="btn btn-outline-primary flex-fill" for="cronWeekday7">日</label>
+                                    </div>
+                                </div>
+                                <!-- 添加隐藏的cron表达式输入框 -->
+                                <input type="hidden" id="cronExpression" value="">
+                            </div>
+
+                            <!-- 时间间隔设置 -->
+                            <div id="intervalInputGroup" class="mb-3" style="display: none;">
+                                <label class="form-label">
+                                    <i class="bi bi-hourglass-split me-2"></i>间隔时间
+                                </label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="intervalValue"
+                                           min="1" step="1" placeholder="输入数值">
+                                    <select class="form-select" id="intervalUnit" style="max-width: 120px;">
+                                        <option value="60">分钟</option>
+                                        <option value="3600">小时</option>
+                                        <option value="86400">天</option>
+                                    </select>
+                                </div>
+                                <div class="form-text">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    常用间隔：
+                                    <div class="btn-group mt-1">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setInterval(30, '60')">30分钟</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setInterval(1, '3600')">1小时</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setInterval(2, '3600')">2小时</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setInterval(24, '3600')">1天</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 预览 -->
+                            <div class="mt-3">
+                                <label class="form-label">
+                                    <i class="bi bi-eye me-2"></i>执行时间预览
+                                </label>
+                                <div id="schedulePreview" class="form-control">
+                                    请选择定时类型和设置
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveTask()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除任务确认模态框 -->
+<div class="modal fade" id="deleteTaskModal" tabindex="-1" aria-labelledby="deleteTaskModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteTaskModalLabel">
+                    <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>删除任务
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除任务 "<span id="deleteTaskId"></span>" 吗？</p>
+                <p class="text-muted small">此操作无法撤销。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteTaskBtn">
+                    <i class="bi bi-trash me-1"></i>确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

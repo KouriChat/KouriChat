@@ -1,0 +1,32 @@
+<!-- 温度滑块组件 -->
+<div class="mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span>当前值: <strong id="{{ key }}_display" class="temperature-value">{{ config.value }}</strong></span>
+        <span class="badge bg-primary">创造性参数</span>
+    </div>
+    <input type="range" id="{{ key }}_slider"
+        class="temperature-slider"
+        min="{{ config.min|default(0) }}"
+        max="{{ config.max|default(2) }}"
+        step="0.1"
+        value="{{ config.value }}"
+        oninput="updateTemperature('{{ key }}', this.value)">
+    <div class="d-flex justify-content-between mt-1">
+        <span class="small text-muted">低温 (更确定)</span>
+        <span class="small text-muted">高温 (更创意)</span>
+    </div>
+    <input type="hidden"
+        id="{{ key }}"
+        name="{{ key }}"
+        value="{{ config.value }}">
+</div>
+
+<script>
+    // 确保页面加载时初始化温度值
+    document.addEventListener('DOMContentLoaded', function() {
+        const slider = document.getElementById('{{ key }}_slider');
+        if (slider) {
+            updateTemperature('{{ key }}', slider.value);
+        }
+    });
+</script>

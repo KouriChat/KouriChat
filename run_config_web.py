@@ -62,11 +62,11 @@ dictConfig({
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'default',
-            'level': 'DEBUG'
+            'level': 'INFO'
         }
     },
     'root': {
-        'level': 'DEBUG',
+        'level': 'INFO',
         'handlers': ['console']
     },
     'loggers': {
@@ -89,14 +89,24 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(ROOT_DIR)
 
 # 定义配置文件路径
-config_path = os.path.join(ROOT_DIR, 'src/config/config.json')  # 将配置路径定义为全局常量
+config_path = os.path.join(ROOT_DIR, 'data/config/config.json')  # 将配置路径定义为全局常量
 
 # 禁用Python的字节码缓存
 sys.dont_write_bytecode = True
 
+# 定义模板和静态文件目录
+templates_dir = os.path.join(ROOT_DIR, 'src/webui/templates')
+static_dir = os.path.join(ROOT_DIR, 'src/webui/static')
+
+# 确保目录存在
+os.makedirs(templates_dir, exist_ok=True)
+os.makedirs(static_dir, exist_ok=True)
+os.makedirs(os.path.join(static_dir, 'js'), exist_ok=True)
+os.makedirs(os.path.join(static_dir, 'css'), exist_ok=True)
+
 app = Flask(__name__,
-    template_folder=os.path.join(ROOT_DIR, 'src/webui/templates'),
-    static_folder=os.path.join(ROOT_DIR, 'src/webui/static'))
+    template_folder=templates_dir,
+    static_folder=static_dir)
 
 # 添加配置
 app.config['UPLOAD_FOLDER'] = os.path.join(ROOT_DIR, 'src/webui/background_image')
@@ -108,23 +118,36 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.secret_key = secrets.token_hex(16)
 
 # 在 app 初始化后添加
-app.register_blueprint(avatar_manager)
-app.register_blueprint(avatar_bp)
+try:
+    app.register_blueprint(avatar_manager)
+    app.register_blueprint(avatar_bp)
+    logger.debug("成功注册蓝图组件")
+except Exception as e:
+    logger.error(f"注册蓝图组件失败: {str(e)}")
 
 # 导入更新器中的常量
 from src.autoupdate.updater import Updater
 
-# 公告和版本配置文件路径
-ANNOUNCEMENT_CONFIG_PATH = os.path.join(ROOT_DIR, 'src/autoupdate/cloud/announcement.json')
-VERSION_CONFIG_PATH = os.path.join(ROOT_DIR, 'src/autoupdate/cloud/version.json')
-
-# 在应用启动时检查云端更新
+# 在应用启动时检查云端更新和公告
 def check_cloud_updates_on_startup():
     try:
         from src.autoupdate.updater import check_cloud_info
         logger.info("应用启动时检查云端更新...")
         check_cloud_info()
         logger.info("云端更新检查完成")
+        
+        # 触发公告处理但不显示桌面弹窗
+        try:
+            from src.autoupdate.core.manager import get_manager
+            
+            # 触发更新检查和公告处理
+            manager = get_manager()
+            manager.check_and_process_updates()
+            logger.info("公告数据处理完成，将在Web页面显示")
+                
+        except Exception as announcement_error:
+            logger.error(f"公告处理失败: {announcement_error}")
+            
     except Exception as e:
         logger.error(f"检查云端更新失败: {e}")
 
@@ -132,9 +155,6 @@ def check_cloud_updates_on_startup():
 update_thread = threading.Thread(target=check_cloud_updates_on_startup)
 update_thread.daemon = True
 update_thread.start()
-
-# 添加全局标记，跟踪公告是否已在本应用实例中显示过
-announcement_shown_this_instance = False
 
 def get_available_avatars() -> List[str]:
     """获取可用的人设目录列表"""
@@ -184,16 +204,20 @@ def get_available_avatars() -> List[str]:
 
 def parse_config_groups() -> Dict[str, Dict[str, Any]]:
     """解析配置文件，将配置项按组分类"""
-    from src.config import config
+    from data.config import config
 
     try:
         # 基础配置组
         config_groups = {
             "基础配置": {},
+            "TTS 服务配置": {},
             "图像识别API配置": {},
+            "意图识别API配置": {},
             "主动消息配置": {},
             "消息配置": {},
-            "Prompt配置": {},
+            "人设配置": {},
+            "网络搜索配置": {},
+            "世界书":{}
         }
 
         # 基础配置
@@ -201,7 +225,19 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             {
                 "LISTEN_LIST": {
                     "value": config.user.listen_list,
-                    "description": "用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！)",
+                    "description": "用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！昵称尽量别用特殊字符)",
+                },
+                "GROUP_CHAT_CONFIG": {
+                    "value": [
+                        {
+                            "id": item.id,
+                            "groupName": item.group_name,
+                            "avatar": item.avatar,
+                            "triggers": item.triggers,
+                            "enableAtTrigger": item.enable_at_trigger
+                        } for item in config.user.group_chat_config
+                    ],
+                    "description": "群聊配置列表（为不同群聊配置专用人设和触发词）",
                 },
                 "DEEPSEEK_BASE_URL": {
                     "value": config.llm.base_url,
@@ -224,20 +260,25 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
                     "min": 0.0,
                     "max": 1.7,
                 },
-                "TOP_P": {
-                    "value": float(config.llm.top_p),
-                    "type": "number",
-                    "description": "Top-p采样参数",
-                    "min": 0.1,
-                    "max": 1.0,
+                "AUTO_MODEL_SWITCH": {
+                    "value": config.llm.auto_model_switch,
+                    "type": "boolean",
+                    "description": "自动切换模型"
                 },
-                "FREQUENCY_PENALTY": {
-                    "value": float(config.llm.frequency_penalty),
-                    "type": "number",
-                    "description": "频率惩罚参数",
-                    "min": 0.0,
-                    "max": 2.0,
+            }
+        )
+
+        # TTS 服务配置
+        config_groups["TTS 服务配置"].update(
+            {
+                "TTS_API_KEY":{
+                    "value":config.media.text_to_speech.tts_api_key,
+                    "description": "Fish Audio API 密钥"
                 },
+                "TTS_MODEL_ID":{
+                    "value":config.media.text_to_speech.tts_model_id,
+                    "description": "进行 TTS 的模型 ID"
+                }
             }
         )
 
@@ -261,6 +302,34 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
                 },
                 "VISION_TEMPERATURE": {
                     "value": float(config.media.image_recognition.temperature),
+                    "description": "温度参数",
+                    "type": "number",
+                    "min": 0.0,
+                    "max": 1.0
+                }
+            }
+        )
+
+        # 意图识别API配置
+        config_groups["意图识别API配置"].update(
+            {
+                "INTENT_BASE_URL": {
+                    "value": config.intent_recognition.base_url,
+                    "description": "API注册地址",
+                    "has_provider_options": True
+                },
+                "INTENT_API_KEY": {
+                    "value": config.intent_recognition.api_key,
+                    "description": "API密钥",
+                    "is_secret": False
+                },
+                "INTENT_MODEL": {
+                    "value": config.intent_recognition.model,
+                    "description": "AI模型选择",
+                    "has_model_options": True
+                },
+                "INTENT_TEMPERATURE": {
+                    "value": float(config.intent_recognition.temperature),
                     "description": "温度参数",
                     "type": "number",
                     "min": 0.0,
@@ -308,9 +377,9 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             }
         )
 
-        # Prompt配置
+        # 人设配置
         available_avatars = get_available_avatars()
-        config_groups["Prompt配置"].update(
+        config_groups["人设配置"].update(
             {
                 "MAX_GROUPS": {
                     "value": config.behavior.context.max_groups,
@@ -325,10 +394,54 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             }
         )
 
+        # 网络搜索配置
+        config_groups["网络搜索配置"].update(
+            {
+                "NETWORK_SEARCH_ENABLED": {
+                    "value": config.network_search.search_enabled,
+                    "type": "boolean",
+                    "description": "启用网络搜索功能（仅支持Kouri API）",
+                },
+                "WEBLENS_ENABLED": {
+                    "value": config.network_search.weblens_enabled,
+                    "type": "boolean",
+                    "description": "启用网页内容提取功能（仅支持Kouri API）",
+                },
+                "NETWORK_SEARCH_API_KEY": {
+                    "value": config.network_search.api_key,
+                    "type": "string",
+                    "description": "Kouri API 密钥（留空则使用 LLM 设置中的 API 密钥）",
+                    "is_secret": True
+                }
+                # "NETWORK_SEARCH_BASE_URL": {
+                #     "value": config.network_search.base_url,
+                #     "type": "string",
+                #     "description": "网络搜索 API 基础 URL（留空则使用 LLM 设置中的 URL）",
+                # }
+            }
+        )
+
+        # 世界书配置
+        worldview = ""
+        try:
+            worldview_file_path = os.path.join(ROOT_DIR, 'src/base/worldview.md')
+            with open(worldview_file_path, 'r', encoding='utf-8') as f:
+                worldview = f.read()
+        except Exception as e:
+            logger.error(f"读取世界观失败: {str(e)}")
+        
+        config_groups['世界书'] = {
+            'worldview': {
+                'value': worldview,
+                'type': 'text',
+                'description': '内容'
+            }
+        }
+
         # 直接从配置文件读取定时任务数据
         tasks = []
         try:
-            config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
+            config_path = os.path.join(ROOT_DIR, 'data/config/config.json')
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
                 if 'categories' in config_data and 'schedule_settings' in config_data['categories']:
@@ -383,16 +496,12 @@ def save_config_file(config_data):
 def reinitialize_tasks():
     """重新初始化定时任务"""
     try:
-        from src.main import initialize_auto_tasks, message_handler
-        auto_tasker = initialize_auto_tasks(message_handler)
-        if auto_tasker:
-            logger.info("成功重新初始化定时任务")
-            return True
-        else:
-            logger.warning("重新初始化定时任务返回空值")
-            return False
+        # 直接修改配置文件，不需要重新初始化任务
+        # 因为任务会在主程序启动时自动加载
+        logger.info("配置已更新，任务将在主程序下次启动时生效")
+        return True
     except Exception as e:
-        logger.error(f"重新初始化定时任务失败: {str(e)}")
+        logger.error(f"更新任务配置失败: {str(e)}")
         return False
 
 @app.route('/save', methods=['POST'])
@@ -425,7 +534,6 @@ def save_config():
             if key == 'TASKS':
                 try:
                     tasks = value if isinstance(value, list) else (json.loads(value) if isinstance(value, str) else [])
-                    logger.debug(f"处理任务数据: {tasks}")
 
                     # 确保schedule_settings结构存在
                     if 'categories' not in current_config:
@@ -454,12 +562,20 @@ def save_config():
                         "title": "错误"
                     }), 400
             # 处理其他配置项
-            elif key in ['LISTEN_LIST', 'DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY', 'MAX_TOKEN', 'TEMPERATURE',
-                       'TOP_P', 'FREQUENCY_PENALTY', 'VISION_API_KEY', 'VISION_BASE_URL', 'VISION_TEMPERATURE', 'VISION_MODEL',
-                       'VISION_TOP_P', 'VISION_FREQUENCY_PENALTY', 'IMAGE_MODEL', 'TEMP_IMAGE_DIR', 'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
+            elif key in ['LISTEN_LIST', 'GROUP_CHAT_CONFIG', 'DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY', 'MAX_TOKEN', 'TEMPERATURE','AUTO_MODEL_SWITCH',
+                       'VISION_API_KEY', 'VISION_BASE_URL', 'VISION_TEMPERATURE', 'VISION_MODEL',
+                       'INTENT_API_KEY', 'INTENT_BASE_URL', 'INTENT_MODEL', 'INTENT_TEMPERATURE',
+                       'IMAGE_MODEL', 'TEMP_IMAGE_DIR', 'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
                        'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR',
-                       'QUEUE_TIMEOUT']:
+                       'QUEUE_TIMEOUT', 'NETWORK_SEARCH_ENABLED', 'WEBLENS_ENABLED', 'NETWORK_SEARCH_API_KEY', 'NETWORK_SEARCH_BASE_URL', 'TTS_API_KEY', 'TTS_MODEL_ID']:
                 update_config_value(current_config, key, value)
+            elif key == 'WORLDVIEW':
+                worldview_file_path = os.path.join(ROOT_DIR, 'src/base/worldview.md')
+                try:
+                    with open(worldview_file_path, 'w', encoding='utf-8') as f:
+                        f.write(value)
+                except Exception as e:
+                    logger.error(f"保存世界观配置失败: {str(e)}")
             else:
                 logger.warning(f"未知的配置项: {key}")
 
@@ -473,9 +589,6 @@ def save_config():
 
         # 立即重新加载配置
         g.config_data = current_config
-
-        # 重新初始化定时任务
-        reinitialize_tasks()
 
         return jsonify({
             "status": "success",
@@ -497,19 +610,27 @@ def update_config_value(config_data, key, value):
         # 配置项映射表 - 修正路径以匹配实际配置结构
         mapping = {
             'LISTEN_LIST': ['categories', 'user_settings', 'settings', 'listen_list', 'value'],
+            'GROUP_CHAT_CONFIG': ['categories', 'user_settings', 'settings', 'group_chat_config', 'value'],
             'DEEPSEEK_BASE_URL': ['categories', 'llm_settings', 'settings', 'base_url', 'value'],
             'MODEL': ['categories', 'llm_settings', 'settings', 'model', 'value'],
             'DEEPSEEK_API_KEY': ['categories', 'llm_settings', 'settings', 'api_key', 'value'],
             'MAX_TOKEN': ['categories', 'llm_settings', 'settings', 'max_tokens', 'value'],
             'TEMPERATURE': ['categories', 'llm_settings', 'settings', 'temperature', 'value'],
-            'TOP_P': ['categories', 'llm_settings', 'settings', 'top_p', 'value'],
-            'FREQUENCY_PENALTY': ['categories', 'llm_settings', 'settings', 'frequency_penalty', 'value'],
+            'AUTO_MODEL_SWITCH': ['categories', 'llm_settings', 'settings', 'auto_model_switch', 'value'],
             'VISION_API_KEY': ['categories', 'media_settings', 'settings', 'image_recognition', 'api_key', 'value'],
+            'NETWORK_SEARCH_ENABLED': ['categories', 'network_search_settings', 'settings', 'search_enabled', 'value'],
+            'WEBLENS_ENABLED': ['categories', 'network_search_settings', 'settings', 'weblens_enabled', 'value'],
+            'NETWORK_SEARCH_API_KEY': ['categories', 'network_search_settings', 'settings', 'api_key', 'value'],
+            'NETWORK_SEARCH_BASE_URL': ['categories', 'network_search_settings', 'settings', 'base_url', 'value'],
+            'TTS_API_KEY': ['categories', 'media_settings', 'settings', 'text_to_speech', 'tts_api_key', 'value'],
+            'TTS_MODEL_ID': ['categories', 'media_settings', 'settings', 'text_to_speech', 'tts_model_id', 'value'],
             'VISION_BASE_URL': ['categories', 'media_settings', 'settings', 'image_recognition', 'base_url', 'value'],
             'VISION_TEMPERATURE': ['categories', 'media_settings', 'settings', 'image_recognition', 'temperature', 'value'],
             'VISION_MODEL': ['categories', 'media_settings', 'settings', 'image_recognition', 'model', 'value'],
-            'VISION_TOP_P': ['categories', 'media_settings', 'settings', 'image_recognition', 'top_p', 'value'],
-            'VISION_FREQUENCY_PENALTY': ['categories', 'media_settings', 'settings', 'image_recognition', 'frequency_penalty', 'value'],
+            'INTENT_API_KEY': ['categories', 'intent_recognition_settings', 'settings', 'api_key', 'value'],
+            'INTENT_BASE_URL': ['categories', 'intent_recognition_settings', 'settings', 'base_url', 'value'],
+            'INTENT_MODEL': ['categories', 'intent_recognition_settings', 'settings', 'model', 'value'],
+            'INTENT_TEMPERATURE': ['categories', 'intent_recognition_settings', 'settings', 'temperature', 'value'],
             'IMAGE_MODEL': ['categories', 'media_settings', 'settings', 'image_generation', 'model', 'value'],
             'TEMP_IMAGE_DIR': ['categories', 'media_settings', 'settings', 'image_generation', 'temp_dir', 'value'],
             'TTS_API_URL': ['categories', 'media_settings', 'settings', 'text_to_speech', 'tts_api_url', 'value'],
@@ -532,9 +653,19 @@ def update_config_value(config_data, key, value):
             if key == 'LISTEN_LIST' and isinstance(value, str):
                 value = value.split(',')
                 value = [item.strip() for item in value if item.strip()]
+            
+            # 特殊处理 GROUP_CHAT_CONFIG，确保它是正确的列表格式
+            elif key == 'GROUP_CHAT_CONFIG':
+                if isinstance(value, str):
+                    try:
+                        value = json.loads(value)
+                    except:
+                        value = []
+                elif not isinstance(value, list):
+                    value = []
 
             # 特殊处理API相关配置
-            if key in ['DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY']:
+            if key in ['DEEPSEEK_BASE_URL', 'MODEL', 'DEEPSEEK_API_KEY', 'MAX_TOKEN', 'TEMPERATURE', 'AUTO_MODEL_SWITCH']:
                 # 确保llm_settings结构存在
                 if 'categories' not in current:
                     current['categories'] = {}
@@ -550,6 +681,56 @@ def update_config_value(config_data, key, value):
                     current['categories']['llm_settings']['settings']['model'] = {'value': value}
                 elif key == 'DEEPSEEK_API_KEY':
                     current['categories']['llm_settings']['settings']['api_key'] = {'value': value}
+                elif key == 'MAX_TOKEN':
+                    current['categories']['llm_settings']['settings']['max_tokens'] = {'value': value}
+                elif key == 'TEMPERATURE':
+                    current['categories']['llm_settings']['settings']['temperature'] = {'value': value}
+                elif key == 'AUTO_MODEL_SWITCH':
+                    current['categories']['llm_settings']['settings']['auto_model_switch'] = {'value': True if value == 'on' else False, 'type': 'boolean'}
+                return
+
+            # 特殊处理网络搜索相关配置
+            elif key in ['NETWORK_SEARCH_ENABLED', 'WEBLENS_ENABLED',
+                        'NETWORK_SEARCH_API_KEY', 'NETWORK_SEARCH_BASE_URL']:
+                # 确保network_search_settings结构存在
+                if 'categories' not in current:
+                    current['categories'] = {}
+                if 'network_search_settings' not in current['categories']:
+                    current['categories']['network_search_settings'] = {'title': '网络搜索设置', 'settings': {}}
+                if 'settings' not in current['categories']['network_search_settings']:
+                    current['categories']['network_search_settings']['settings'] = {}
+
+                # 更新对应的配置项
+                if key == 'NETWORK_SEARCH_ENABLED':
+                    current['categories']['network_search_settings']['settings']['search_enabled'] = {'value': value, 'type': 'boolean'}
+                elif key == 'WEBLENS_ENABLED':
+                    current['categories']['network_search_settings']['settings']['weblens_enabled'] = {'value': value, 'type': 'boolean'}
+                elif key == 'NETWORK_SEARCH_API_KEY':
+                    current['categories']['network_search_settings']['settings']['api_key'] = {'value': value}
+                elif key == 'NETWORK_SEARCH_BASE_URL':
+                    current['categories']['network_search_settings']['settings']['base_url'] = {'value': value}
+                return
+            
+            # 特殊处理意图识别相关配置
+            elif key in ['INTENT_API_KEY', 'INTENT_BASE_URL',
+                         'INTENT_MODEL', 'INTENT_TEMPERATURE']:
+                # 确保intent_recognition_settings结构存在
+                if 'categories' not in current:
+                    current['categories'] = {}
+                if 'intent_recognition_settings' not in current['categories']:
+                    current['categories']['intent_recognition_settings'] = {'title': '意图识别配置', 'settings': {}}
+                if 'settings' not in current['categories']['intent_recognition_settings']:
+                    current['categories']['intent_recognition_settings']['settings'] = {}
+
+                # 更新对应的配置项
+                if key == 'INTENT_API_KEY':
+                    current['categories']['intent_recognition_settings']['settings']['api_key'] = {'value': value, 'type': 'string', 'is_secret': True}
+                elif key == 'INTENT_BASE_URL':
+                    current['categories']['intent_recognition_settings']['settings']['base_url'] = {'value': value, 'type': 'string'}
+                elif key == 'INTENT_MODEL':
+                    current['categories']['intent_recognition_settings']['settings']['model'] = {'value': value, 'type': 'string'}
+                elif key == 'INTENT_TEMPERATURE':
+                    current['categories']['intent_recognition_settings']['settings']['temperature'] = {'value': float(value), 'type': 'number', 'min': 0.0, 'max': 1.0}
                 return
 
             # 遍历路径直到倒数第二个元素
@@ -559,8 +740,8 @@ def update_config_value(config_data, key, value):
                 current = current[part]
 
             # 设置最终值，确保类型正确
-            if isinstance(value, str) and key in ['MAX_TOKEN', 'TEMPERATURE', 'TOP_P', 'FREQUENCY_PENALTY', 'VISION_TEMPERATURE',
-                                               'VISION_TOP_P', 'VISION_FREQUENCY_PENALTY', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS', 'MAX_GROUPS',
+            if isinstance(value, str) and key in ['MAX_TOKEN', 'TEMPERATURE', 'VISION_TEMPERATURE',
+                                               'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS', 'MAX_GROUPS',
                                                'QUEUE_TIMEOUT']:
                 try:
                     # 尝试转换为数字
@@ -570,9 +751,14 @@ def update_config_value(config_data, key, value):
                         value = int(value)
                 except ValueError:
                     pass
-
+            # 处理布尔类型
+            elif key in ['NETWORK_SEARCH_ENABLED', 'WEBLENS_ENABLED']:
+                # 将字符串 'true'/'false' 转换为布尔值
+                if isinstance(value, str):
+                    value = value.lower() == 'true'
+                # 确保值是布尔类型
+                value = bool(value)
             current[path[-1]] = value
-            logger.debug(f"已更新配置 {key}: {value}")
         else:
             logger.warning(f"未知的配置项: {key}")
 
@@ -643,14 +829,17 @@ def load_config():
 
 @app.route('/dashboard')
 def dashboard():
-    global announcement_shown_this_instance # 引用全局标记
     if not session.get('logged_in'):
         return redirect(url_for('login'))
 
-    # 决定本次请求是否需要显示公告
-    show_announcement_now = not announcement_shown_this_instance
-    if show_announcement_now:
-        announcement_shown_this_instance = True # 标记为已显示
+    # 检查是否有未读公告用于Web页面显示
+    show_announcement = False
+    try:
+        from src.autoupdate.announcement import has_unread_announcement
+        show_announcement = has_unread_announcement()
+        logger.info(f"Dashboard: 检测到未读公告状态 = {show_announcement}")
+    except Exception as e:
+        logger.warning(f"检查公告状态失败: {e}")
 
     # 使用 g 中的配置数据 (如果之前有)
     config_groups = g.config_data.get('categories', {})
@@ -660,7 +849,7 @@ def dashboard():
         is_local=is_local_network(),
         active_page='dashboard',
         config_groups=config_groups,
-        show_announcement=show_announcement_now # 将显示标记传递给模板
+        show_announcement=show_announcement  # 恢复Web页面公告显示
     )
 
 @app.route('/system_info')
@@ -736,7 +925,7 @@ def check_update():
             'has_update': result.get('has_update', False),
             'console_output': result['output'],
             'update_info': result if result.get('has_update') else None,
-            'wait_input': result.get('has_update', False)
+            'wait_input': False  # 不再需要控制台输入确认
         })
     except Exception as e:
         logger.error(f"检查更新失败: {str(e)}", exc_info=True)
@@ -755,7 +944,6 @@ def confirm_update():
 
         if choice in ('y', 'yes', '是', '确认', '确定'):
             logger.info("用户确认更新，开始执行更新过程")
-            # 使用已导入的 Updater 类
             updater = Updater()
             result = updater.update(
                 callback=lambda msg: logger.info(f"更新进度: {msg}")
@@ -764,7 +952,7 @@ def confirm_update():
             logger.info(f"更新完成，结果: {result['success']}")
             return jsonify({
                 'status': 'success' if result['success'] else 'error',
-                'console_output': result['output']
+                'console_output': result.get('message', '更新过程出现未知错误')
             })
         else:
             logger.info("用户取消更新")
@@ -778,6 +966,71 @@ def confirm_update():
             'status': 'error',
             'console_output': f'更新失败: {str(e)}'
         })
+
+# 全局变量存储更新进度
+update_progress_logs = []
+update_in_progress = False
+
+@app.route('/execute_update', methods=['POST'])
+def execute_update():
+    """直接执行更新，不需要控制台确认"""
+    global update_progress_logs, update_in_progress
+
+    if update_in_progress:
+        return jsonify({
+            'status': 'error',
+            'message': '更新正在进行中，请稍候...'
+        })
+
+    try:
+        update_in_progress = True
+        update_progress_logs = []
+
+        def progress_callback(msg):
+            """更新进度回调函数"""
+            logger.info(f"更新进度: {msg}")
+            update_progress_logs.append({
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+                'message': msg
+            })
+
+        logger.info("用户通过Web界面直接确认更新，开始执行更新过程")
+        progress_callback("Starting update process...")
+
+        updater = Updater()
+        result = updater.update(callback=progress_callback)
+
+        logger.info(f"更新完成，结果: {result['success']}")
+        final_message = result.get('message', '更新过程出现未知错误')
+        progress_callback(f"Update completed: {final_message}")
+
+        return jsonify({
+            'status': 'success' if result['success'] else 'error',
+            'message': final_message,
+            'restart_required': result.get('restart_required', False)
+        })
+    except Exception as e:
+        error_msg = f'更新失败: {str(e)}'
+        logger.error(error_msg, exc_info=True)
+        update_progress_logs.append({
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'message': error_msg
+        })
+        return jsonify({
+            'status': 'error',
+            'message': error_msg
+        })
+    finally:
+        update_in_progress = False
+
+@app.route('/update_progress')
+def get_update_progress():
+    """获取更新进度日志"""
+    global update_progress_logs
+    return jsonify({
+        'logs': update_progress_logs,
+        'in_progress': update_in_progress
+    })
 
 def start_bot_process():
     """启动机器人进程，返回(成功状态, 消息)"""
@@ -976,7 +1229,7 @@ def config():
     # 直接从配置文件读取任务数据
     tasks = []
     try:
-        config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
+        config_path = os.path.join(ROOT_DIR, 'data/config/config.json')
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
             if 'categories' in config_data and 'schedule_settings' in config_data['categories']:
@@ -996,6 +1249,8 @@ def config():
         is_local=is_local_network(),
         active_page='config'
     )
+
+# 联网搜索配置已整合到高级配置页面
 
 # 在 app 初始化后添加
 @app.route('/static/<path:filename>')
@@ -1025,6 +1280,8 @@ memory - 显示内存使用情况
 start - 启动机器人
 stop - 停止机器人
 restart - 重启机器人
+check update - 检查更新
+execute update - 执行更新
 
 支持所有CMD命令，例如:
 dir - 显示目录内容
@@ -1106,6 +1363,37 @@ type - 显示文件内容
                     'status': 'error',
                     'error': f'重启失败: {message}'
                 })
+
+        elif command.lower() == 'check update':
+            # 检查更新
+            try:
+                updater = Updater()
+                result = updater.check_for_updates()
+
+                if result.get('has_update', False):
+                    output = f"发现新版本: {result.get('cloud_version', 'unknown')}\n"
+                    output += f"当前版本: {result.get('local_version', 'unknown')}\n"
+                    output += f"更新内容: {result.get('description', '无详细说明')}\n"
+                    output += "您可以输入 'execute update' 命令开始更新"
+                else:
+                    output = "当前已是最新版本"
+
+                return jsonify({
+                    'status': 'success',
+                    'output': output
+                })
+            except Exception as e:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'检查更新失败: {str(e)}'
+                })
+
+        elif command.lower() == 'execute update':
+            # 执行更新
+            return jsonify({
+                'status': 'success',
+                'output': '正在启动更新进程，请查看实时更新日志...'
+            })
 
         # 执行CMD命令
         else:
@@ -1434,7 +1722,7 @@ def setup_console_control_handler():
 
 def main():
     """主函数"""
-    from src.config import config
+    from data.config import config
 
     # 设置系统编码为 UTF-8 (不清除控制台输出)
     if sys.platform.startswith('win'):
@@ -1452,10 +1740,27 @@ def main():
 
     # 检查必要目录
     print_status("检查系统目录...", "info", "FILE")
-    if not os.path.exists(os.path.join(ROOT_DIR, 'src/webui/templates')):
-        print_status("错误：模板目录不存在！", "error", "CROSS")
-        return
-    print_status("系统目录检查完成", "success", "CHECK")
+    templates_dir = os.path.join(ROOT_DIR, 'src/webui/templates')
+    if not os.path.exists(templates_dir):
+        print_status(f"模板目录不存在！尝试创建: {templates_dir}", "warning", "WARNING")
+        try:
+            os.makedirs(templates_dir, exist_ok=True)
+            print_status("成功创建模板目录", "success", "CHECK")
+        except Exception as e:
+            print_status(f"创建模板目录失败: {e}", "error", "CROSS")
+            return
+
+    # 检查静态文件目录
+    static_dir = os.path.join(ROOT_DIR, 'src/webui/static')
+    if not os.path.exists(static_dir):
+        print_status(f"静态文件目录不存在！尝试创建: {static_dir}", "warning", "WARNING")
+        try:
+            os.makedirs(static_dir, exist_ok=True)
+            os.makedirs(os.path.join(static_dir, 'js'), exist_ok=True)
+            os.makedirs(os.path.join(static_dir, 'css'), exist_ok=True)
+            print_status("成功创建静态文件目录", "success", "CHECK")
+        except Exception as e:
+            print_status(f"创建静态文件目录失败: {e}", "error", "CROSS")
 
     # 检查配置文件
     print_status("检查配置文件...", "info", "CONFIG")
@@ -1463,6 +1768,18 @@ def main():
         print_status("错误：配置文件不存在！", "error", "CROSS")
         return
     print_status("配置文件检查完成", "success", "CHECK")
+
+    # 打印模板目录内容用于调试
+    try:
+        print_status(f"正在检查模板文件...", "info", "FILE")
+        if os.path.exists(templates_dir):
+            template_files = os.listdir(templates_dir)
+            if template_files:
+                print_status(f"找到{len(template_files)}个模板文件: {', '.join(template_files)}", "success", "CHECK")
+            else:
+                print_status("模板目录为空", "warning", "WARNING")
+    except Exception as e:
+        print_status(f"检查模板文件失败: {e}", "error", "CROSS")
 
     # 修改启动 Web 服务器的部分
     try:
@@ -1474,6 +1791,26 @@ def main():
 
     host = '0.0.0.0'
     port = 8502
+
+    # 检查端口是否可用，如果不可用则自动选择其他端口
+    def is_port_available(port):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('localhost', port))
+                return True
+        except OSError:
+            return False
+
+    # 寻找可用端口
+    original_port = port
+    while not is_port_available(port):
+        port += 1
+        if port > 9000:  # 避免无限循环
+            print_status(f"无法找到可用端口（尝试了{original_port}-{port}）", "error", "CROSS")
+            return
+
+    if port != original_port:
+        print_status(f"端口{original_port}被占用，自动选择端口{port}", "warning", "WARNING")
 
     print_status("正在启动Web服务...", "info", "INTERNET")
     print("-"*50)
@@ -1500,12 +1837,27 @@ def main():
     # 启动浏览器
     open_browser(port)
 
-    app.run(
-        host=host,
-        port=port,
-        debug=True,
-        use_reloader=False  # 禁用重载器以避免创建多余的进程
-    )
+    try:
+        app.run(
+            host=host,
+            port=port,
+            debug=False,  # 关闭调试模式避免权限问题
+            use_reloader=False  # 禁用重载器以避免创建多余的进程
+        )
+    except PermissionError as e:
+        print_status(f"权限错误：{str(e)}", "error", "CROSS")
+        print_status("请尝试以管理员身份运行程序", "warning", "WARNING")
+    except OSError as e:
+        if "access" in str(e).lower() or "permission" in str(e).lower():
+            print_status(f"端口访问被拒绝：{str(e)}", "error", "CROSS")
+            print_status("可能的解决方案：", "info", "INFO")
+            print("  1. 以管理员身份运行程序")
+            print("  2. 检查防火墙设置")
+            print("  3. 检查是否有其他程序占用端口")
+        else:
+            print_status(f"网络错误：{str(e)}", "error", "CROSS")
+    except Exception as e:
+        print_status(f"启动Web服务失败：{str(e)}", "error", "CROSS")
 
 @app.route('/install_dependencies', methods=['POST'])
 def install_dependencies():
@@ -1585,7 +1937,7 @@ def check_auth():
         return
 
     # 检查是否需要初始化密码
-    from src.config import config
+    from data.config import config
     if not config.auth.admin_password:
         return redirect(url_for('init_password'))
 
@@ -1600,7 +1952,7 @@ def check_auth():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     # 处理登录请求
-    from src.config import config
+    from data.config import config
 
     # 首先检查是否需要初始化密码
     if not config.auth.admin_password:
@@ -1641,7 +1993,7 @@ def login():
 @app.route('/init_password', methods=['GET', 'POST'])
 def init_password():
     # 初始化管理员密码页面
-    from src.config import config
+    from data.config import config
 
     if request.method == 'GET':
         # 如果已经设置了密码，重定向到登录页面
@@ -1671,8 +2023,8 @@ def init_password():
         hashed_password = hash_password(password)
         if config.update_password(hashed_password):
             # 重新加载配置
-            importlib.reload(sys.modules['src.config'])
-            from src.config import config
+            importlib.reload(sys.modules['data.config'])
+            from data.config import config
 
             # 验证密码是否正确保存
             if not config.auth.admin_password:
@@ -1708,28 +2060,40 @@ def logout():
 def get_model_configs():
     """获取模型和API配置"""
     try:
+        configs = None
+        models_path = os.path.join(ROOT_DIR, 'src/autoupdate/cloud/models.json')
+
         # 先尝试从云端获取模型列表
-        from src.autoupdate.updater import check_cloud_info
-        cloud_info = check_cloud_info()
+        try:
+            from src.autoupdate.updater import check_cloud_info
+            cloud_info = check_cloud_info()
 
-        # 如果云端获取成功，使用云端模型列表
-        if cloud_info['models']:
-            configs = cloud_info['models']
-            logger.info("使用云端模型列表")
-        else:
-            # 如果云端获取失败，使用本地模型列表
-            models_path = os.path.join(ROOT_DIR, 'src/autoupdate/cloud/models.json')
+            # 如果云端获取成功，使用云端模型列表
+            if cloud_info and cloud_info.get('models'):
+                configs = cloud_info['models']
+                logger.info("使用云端模型列表")
+        except Exception as cloud_error:
+            logger.warning(f"从云端获取模型列表失败: {str(cloud_error)}")
 
+        # 如果云端获取失败，使用本地模型列表
+        if configs is None:
             if not os.path.exists(models_path):
+                logger.error(f"本地模型配置文件不存在: {models_path}")
                 return jsonify({
                     'status': 'error',
-                    'message': '配置文件不存在'
+                    'message': '模型配置文件不存在'
                 })
 
-            with open(models_path, 'r', encoding='utf-8') as f:
-                configs = json.load(f)
-            logger.info("使用本地模型列表")
-
+            try:
+                with open(models_path, 'r', encoding='utf-8') as f:
+                    configs = json.load(f)
+                    logger.info("使用本地模型列表")
+            except Exception as local_error:
+                logger.error(f"读取本地模型列表失败: {str(local_error)}")
+                return jsonify({
+                    'status': 'error',
+                    'message': f'读取模型配置失败: {str(local_error)}'
+                })
 
         # 过滤和排序提供商
         active_providers = [p for p in configs['api_providers']
@@ -1754,9 +2118,10 @@ def get_model_configs():
         return jsonify(return_configs)
 
     except Exception as e:
+        logger.error(f"获取模型配置失败: {str(e)}")
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': f'获取模型配置失败: {str(e)}'
         })
 
 @app.route('/save_quick_setup', methods=['POST'])
@@ -1764,10 +2129,10 @@ def save_quick_setup():
     """保存快速设置"""
     try:
         new_config = request.json or {}
-        from src.config import config
+        from data.config import config
 
         # 读取当前配置
-        config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
+        config_path = os.path.join(ROOT_DIR, 'data/config/config.json')
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 current_config = json.load(f)
@@ -1830,13 +2195,19 @@ def save_quick_setup():
                     "type": "number",
                     "description": "温度参数"
                 }
+            if "auto_model_switch" not in current_config["categories"]["llm_settings"]["settings"]:
+                current_config["categories"]["llm_settings"]["settings"]["auto_model_switch"] = {
+                    "value": False,
+                    "type": "boolean",
+                    "description": "自动切换模型"
+                }
 
         # 保存更新后的配置
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(current_config, f, ensure_ascii=False, indent=4)
 
         # 重新加载配置
-        importlib.reload(sys.modules['src.config'])
+        importlib.reload(sys.modules['data.config'])
 
         return jsonify({"status": "success", "message": "设置已保存"})
 
@@ -2129,7 +2500,7 @@ def get_all_configs():
     """获取所有最新的配置数据"""
     try:
         # 直接从配置文件读取所有配置数据
-        config_path = os.path.join(ROOT_DIR, 'src/config/config.json')
+        config_path = os.path.join(ROOT_DIR, 'data/config/config.json')
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
 
@@ -2144,6 +2515,8 @@ def get_all_configs():
                 configs['基础配置'] = {}
                 if 'listen_list' in config_data['categories']['user_settings']['settings']:
                     configs['基础配置']['LISTEN_LIST'] = config_data['categories']['user_settings']['settings']['listen_list']
+                if 'group_chat_config' in config_data['categories']['user_settings']['settings']:
+                    configs['基础配置']['GROUP_CHAT_CONFIG'] = config_data['categories']['user_settings']['settings']['group_chat_config']
 
             # LLM设置
             if 'llm_settings' in config_data['categories'] and 'settings' in config_data['categories']['llm_settings']:
@@ -2158,6 +2531,8 @@ def get_all_configs():
                     configs['基础配置']['MAX_TOKEN'] = llm_settings['max_tokens']
                 if 'temperature' in llm_settings:
                     configs['基础配置']['TEMPERATURE'] = llm_settings['temperature']
+                if 'auto_model_switch' in llm_settings:
+                    configs['基础配置']['AUTO_MODEL_SWITCH'] = llm_settings['auto_model_switch']
 
             # 媒体设置
             if 'media_settings' in config_data['categories'] and 'settings' in config_data['categories']['media_settings']:
@@ -2176,10 +2551,6 @@ def get_all_configs():
                         configs['图像识别API配置']['VISION_TEMPERATURE'] = img_recog['temperature']
                     if 'model' in img_recog:
                         configs['图像识别API配置']['VISION_MODEL'] = img_recog['model']
-                    if 'top_p' in img_recog:
-                        configs['图像识别API配置']['VISION_TOP_P'] = img_recog['top_p']
-                    if 'frequency_penalty' in img_recog:
-                        configs['图像识别API配置']['VISION_FREQUENCY_PENALTY'] = img_recog['frequency_penalty']
 
                 # 图像生成设置
                 '''
@@ -2192,16 +2563,14 @@ def get_all_configs():
                         configs['图像生成配置']['TEMP_IMAGE_DIR'] = {'value': img_gen['temp_dir'].get('value', '')}
                 '''
 
-                # 语音设置
-                '''
-                configs['语音配置'] = {}
+                # TTS 服务配置
+                configs["TTS 服务配置"] = {}
                 if 'text_to_speech' in media_settings:
                     tts = media_settings['text_to_speech']
-                    if 'tts_api_url' in tts:
-                        configs['语音配置']['TTS_API_URL'] = {'value': tts['tts_api_url'].get('value', '')}
-                    if 'voice_dir' in tts:
-                        configs['语音配置']['VOICE_DIR'] = {'value': tts['voice_dir'].get('value', '')}
-                '''
+                    if 'tts_api_key' in tts:
+                        configs['TTS 服务配置']['TTS_API_KEY'] = {'value': tts['tts_api_key'].get('value', '')}
+                    if 'tts_model_id' in tts:
+                        configs['TTS 服务配置']['TTS_MODEL_ID'] = {'value': tts['tts_model_id'].get('value', '')}
 
             # 行为设置
             if 'behavior_settings' in config_data['categories'] and 'settings' in config_data['categories']['behavior_settings']:
@@ -2233,14 +2602,40 @@ def get_all_configs():
                     if 'timeout' in msg_queue:
                         configs['消息配置']['QUEUE_TIMEOUT'] = msg_queue['timeout']
 
-                # Prompt配置
-                configs['Prompt配置'] = {}
+                # 人设配置
+                configs['人设配置'] = {}
                 if 'context' in behavior:
                     context = behavior['context']
                     if 'max_groups' in context:
-                        configs['Prompt配置']['MAX_GROUPS'] = context['max_groups']
+                        configs['人设配置']['MAX_GROUPS'] = context['max_groups']
                     if 'avatar_dir' in context:
-                        configs['Prompt配置']['AVATAR_DIR'] = context['avatar_dir']
+                        configs['人设配置']['AVATAR_DIR'] = context['avatar_dir']
+
+            # 网络搜索设置
+            if 'network_search_settings' in config_data['categories'] and 'settings' in config_data['categories']['network_search_settings']:
+                network_search = config_data['categories']['network_search_settings']['settings']
+                configs['网络搜索配置'] = {}
+                if 'search_enabled' in network_search:
+                    configs['网络搜索配置']['NETWORK_SEARCH_ENABLED'] = network_search['search_enabled']
+                if 'weblens_enabled' in network_search:
+                    configs['网络搜索配置']['WEBLENS_ENABLED'] = network_search['weblens_enabled']
+                if 'api_key' in network_search:
+                    configs['网络搜索配置']['NETWORK_SEARCH_API_KEY'] = network_search['api_key']
+                if 'base_url' in network_search:
+                    configs['网络搜索配置']['NETWORK_SEARCH_BASE_URL'] = network_search['base_url']
+
+            # 意图识别设置
+            if 'intent_recognition_settings' in config_data['categories'] and 'settings' in config_data['categories']['intent_recognition_settings']:
+                intent_recog = config_data['categories']['intent_recognition_settings']['settings']
+                configs['意图识别配置'] = {}
+                if 'api_key' in intent_recog:
+                    configs['意图识别配置']['INTENT_API_KEY'] = intent_recog['api_key']
+                if 'base_url' in intent_recog:
+                    configs['意图识别配置']['INTENT_BASE_URL'] = intent_recog['base_url']
+                if 'model' in intent_recog:
+                    configs['意图识别配置']['INTENT_MODEL'] = intent_recog['model']
+                if 'temperature' in intent_recog:
+                    configs['意图识别配置']['INTENT_TEMPERATURE'] = intent_recog['temperature']
 
             # 定时任务
             if 'schedule_settings' in config_data['categories'] and 'settings' in config_data['categories']['schedule_settings']:
@@ -2265,85 +2660,58 @@ def get_all_configs():
 @app.route('/get_announcement')
 def get_announcement():
     try:
-        # 默认公告内容
-        local_announcement = {
-            'enabled': True,
-            'title': '系统公告',
-            'content': '欢迎使用KouriChat！'
-        }
-
-        # 使用updater模块从云端获取公告和版本信息
-        from src.autoupdate.updater import check_cloud_info
-        cloud_info = check_cloud_info()
-
-        # 如果云端获取失败，尝试从本地读取公告
-        if not cloud_info['announcement'] and os.path.exists(ANNOUNCEMENT_CONFIG_PATH):
-            try:
-                with open(ANNOUNCEMENT_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                    local_announcement = json.load(f)
-                logger.info("从本地读取公告信息成功")
-            except Exception as e:
-                logger.error(f"读取本地公告文件失败: {e}")
-        elif cloud_info['announcement']:
-            # 使用云端公告
-            local_announcement = cloud_info['announcement']
-            logger.info("使用云端公告信息")
-
-        # 如果云端获取失败，尝试从本地读取版本信息
-        version_info = cloud_info['version']
-        if not version_info and os.path.exists(VERSION_CONFIG_PATH):
-            try:
-                with open(VERSION_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                    version_info = json.load(f)
-                logger.info("从本地读取版本信息成功")
-            except Exception as e:
-                logger.error(f"读取本地版本信息失败: {e}")
-
-        # 如果成功获取版本信息，将其添加到公告中
-        if version_info:
-            # 获取版本信息
-            version = version_info.get('version', '未知')
-            last_update = version_info.get('last_update', '未知')
-            description = version_info.get('description', [])
-
-            # 如果云端版本信息包含公告，使用云端公告
-            if 'announcement' in version_info:
-                cloud_announcement = version_info.get('announcement', {})
-                if cloud_announcement:
-                    local_announcement['title'] = cloud_announcement.get('title', local_announcement['title'])
-                    local_announcement['content'] = cloud_announcement.get('content', local_announcement['content'])
-                    local_announcement['enabled'] = cloud_announcement.get('enabled', local_announcement['enabled'])
-
-            # 将版本信息添加到公告内容中
-            version_html = f"""
-            <div class="mt-4 pt-3 border-top">
-                <h5 class="mb-3">当前版本信息</h5>
-                <p><strong>版本号:</strong> {version}</p>
-                <p><strong>更新日期:</strong> {last_update}</p>
-                <p><strong>更新内容:</strong></p>
-            """
-
-            if isinstance(description, list):
-                version_html += "<ul class='ps-3'>"
-                for item in description:
-                    version_html += f"<li>{item}</li>"
-                version_html += "</ul>"
-            else:
-                version_html += f"<p>{description}</p>"
-
-            version_html += "</div>"
-
-            # 将版本信息附加到公告内容
-            local_announcement['content'] += version_html
-
-        return jsonify(local_announcement)
+        # 使用统一的公告管理器获取公告
+        from src.autoupdate.announcement import get_current_announcement
+        announcement = get_current_announcement()
+        
+        if announcement and announcement.get('enabled', False):
+            logger.info("从公告管理器获取到有效公告")
+            return jsonify(announcement)
+        else:
+            logger.info("没有有效公告，返回默认内容")
+            return jsonify({
+                'enabled': True,
+                'title': '欢迎使用KouriChat',
+                'content': '欢迎使用KouriChat！如有问题请联系开发者。'
+            })
     except Exception as e:
-        logger.error(f"获取公告时发生错误: {e}")
+        logger.error(f"获取公告失败: {e}")
         return jsonify({
             'enabled': False,
-            'title': '公告读取失败',
+            'title': '公告获取失败',
             'content': f'<div class="text-danger">错误信息: {str(e)}</div>'
         })
+
+@app.route('/dismiss_announcement', methods=['POST'])
+def dismiss_announcement():
+    """忽略当前公告，不再显示"""
+    try:
+        from src.autoupdate.announcement import dismiss_announcement as dismiss_func
+        
+        # 获取请求中的公告ID（可选）
+        data = request.get_json() if request.is_json else {}
+        announcement_id = data.get('announcement_id', None)
+        
+        success = dismiss_func(announcement_id)
+        
+        if success:
+            logger.info(f"用户忽略了公告: {announcement_id or '当前公告'}")
+            return jsonify({
+                'success': True,
+                'message': '公告已设置为不再显示'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '忽略公告失败'
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"忽略公告失败: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'操作失败: {str(e)}'
+        }), 500
 
 @app.route('/reconnect_wechat')
 def reconnect_wechat():
@@ -2377,7 +2745,7 @@ def get_vision_api_configs():
         # 构建图像识别API提供商列表
         vision_providers = [
             {
-                "id": "kourichat-asia",
+                "id": "kourichat-global",
                 "name": "KouriChat API (推荐)",
                 "url": "https://api.kourichat.com/v1",
                 "register_url": "https://api.kourichat.com/register",
@@ -2404,7 +2772,7 @@ def get_vision_api_configs():
 
         # 构建模型配置 - 只包含支持图像识别的模型
         vision_models = {
-            "kourichat-asia": [
+            "kourichat-global": [
                 {"id": "kourichat-vision", "name": "kourichat-vision"},
                 {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
                 {"id": "gpt-4o", "name": "GPT-4o"}

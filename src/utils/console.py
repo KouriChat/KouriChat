@@ -72,7 +72,6 @@ def print_banner():
 ╔══════════════════════════════════════════════╗
 ║              KouriChat - AI Chat             ║
 ║          Created by KouriChat Team           ║
-║           Created with ❤️  by umaru          ║
 ║     https://github.com/KouriChat/KouriChat   ║
 ╚══════════════════════════════════════════════╝
 

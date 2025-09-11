@@ -1,0 +1,191 @@
+<!-- 意图识别模型选择器 -->
+<div class="mb-3">
+    <select class="form-select mb-2" id="intent_model_select" aria-label="选择意图识别模型">
+        <!-- 模型选项将通过JavaScript动态加载 -->
+        <option value="custom">自定义模型</option>
+    </select>
+    
+    <!-- 自定义模型输入框 -->
+    <div id="intentCustomModelInput" class="mb-2" style="display: none;">
+        <input type="text" class="form-control"
+               placeholder="请输入自定义模型名称"
+               id="intentCustomModelInputField">
+    </div>
+    
+    <input type="text" class="form-control"
+        id="{{ key }}" name="{{ key }}"
+        value="{{ config.value }}"
+        readonly
+        style="display: none;">
+</div>
+
+<script>
+// 意图识别模型选择器处理函数
+window.intentModelSelectHandler = function() {
+    console.log("初始化意图识别模型选择器处理");
+    
+    // 获取元素
+    const modelSelect = document.getElementById('intent_model_select');
+    const modelInput = document.getElementById('{{ key }}');
+    const customModelInput = document.getElementById('intentCustomModelInput');
+    
+    // 检查必要元素
+    if (!modelSelect) {
+        console.error("意图识别模型选择器未找到!");
+        return;
+    }
+    
+    if (!modelInput) {
+        console.error("INTENT_MODEL输入框未找到!");
+        return;
+    }
+    
+    // 获取当前保存的模型值
+    const savedModelValue = modelInput.value || '';
+    
+    // 模型选择变更处理函数
+    function handleIntentModelChange(value) {
+        console.log("处理意图识别模型选择变更:", value);
+        
+        if (!customModelInput) {
+            console.error("自定义意图识别模型输入框未找到!");
+            return;
+        }
+        
+        if (value === 'custom') {
+            console.log("显示自定义意图识别模型输入框");
+            customModelInput.style.display = 'block';
+            const inputField = customModelInput.querySelector('input');
+            if (inputField) {
+                // 如果有保存的值，填充到输入框
+                if (savedModelValue && !isIntentPresetModel(savedModelValue)) {
+                    inputField.value = savedModelValue;
+                }
+                // 聚焦输入框
+                inputField.focus();
+            }
+        } else {
+            console.log("隐藏自定义意图识别模型输入框");
+            customModelInput.style.display = 'none';
+            if (value) {
+                modelInput.value = value;
+                // 触发change事件确保值被保存
+                modelInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+    }
+    
+    // 检查值是否是预设模型
+    function isIntentPresetModel(value) {
+        if (!modelSelect) return false;
+        const options = Array.from(modelSelect.options);
+        return options.some(opt => opt.value === value && opt.value !== 'custom');
+    }
+    
+    // 移除所有现有事件监听器
+    const newSelect = modelSelect.cloneNode(true);
+    modelSelect.parentNode.replaceChild(newSelect, modelSelect);
+    
+    // 添加新事件监听器
+    newSelect.addEventListener('change', function() {
+        console.log("意图识别选择框变更:", this.value);
+        handleIntentModelChange(this.value);
+    });
+    
+    // 检查是否有保存的模型值
+    if (savedModelValue) {
+        console.log("检查保存的意图识别模型值:", savedModelValue);
+        
+        // 检查保存的值是否是预设选项
+        if (isIntentPresetModel(savedModelValue)) {
+            // 如果是预设选项，直接选中
+            console.log("使用预设意图识别模型:", savedModelValue);
+            newSelect.value = savedModelValue;
+            if (customModelInput) customModelInput.style.display = 'none';
+        } else {
+            // 如果不是预设选项，切换到自定义模式
+            console.log("使用自定义意图识别模型:", savedModelValue);
+            newSelect.value = 'custom';
+            
+            if (customModelInput) {
+                customModelInput.style.display = 'block';
+                const inputField = customModelInput.querySelector('input');
+                if (inputField) {
+                    inputField.value = savedModelValue;
+                }
+            }
+        }
+    } else {
+        // 没有保存的值，选择第一个选项
+        console.log("无保存的意图识别模型值，使用默认值");
+        if (newSelect.options.length > 0) {
+            newSelect.selectedIndex = 0;
+            modelInput.value = newSelect.value;
+            if (customModelInput) customModelInput.style.display = 'none';
+        }
+    }
+};
+
+// 为自定义意图识别模型输入框添加事件监听器
+function setupIntentCustomModelInputListeners() {
+    const customModelInputField = document.getElementById('intentCustomModelInputField');
+    const modelSelect = document.getElementById('intent_model_select');
+    const modelInput = document.getElementById('{{ key }}');
+    
+    if (customModelInputField && modelSelect && modelInput) {
+        console.log("设置自定义意图识别模型输入框监听器");
+        
+        // 清除现有事件，防止重复绑定
+        const newField = customModelInputField.cloneNode(true);
+        customModelInputField.parentNode.replaceChild(newField, customModelInputField);
+        
+        // 添加输入事件监听
+        newField.addEventListener('input', function() {
+            console.log("自定义意图识别模型名称输入:", this.value);
+            if (modelInput) {
+                modelInput.value = this.value;
+                // 触发change事件确保值被保存
+                modelInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+        
+        // 添加失焦事件监听
+        newField.addEventListener('blur', function() {
+            console.log("自定义意图识别模型输入框失焦:", this.value);
+            if (this.value && modelInput) {
+                modelInput.value = this.value;
+                // 触发change事件确保值被保存
+                modelInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+        
+        // 检查当前模型值
+        const currentValue = modelInput.value;
+        if (modelSelect.value === 'custom' && currentValue) {
+            console.log("填充自定义意图识别模型值:", currentValue);
+            newField.value = currentValue;
+            
+            // 确保自定义输入框可见
+            const customModelInput = document.getElementById('intentCustomModelInput');
+            if (customModelInput) {
+                customModelInput.style.display = 'block';
+            }
+        }
+    }
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("为自定义意图识别模型输入框添加事件监听器");
+    setupIntentCustomModelInputListeners();
+    
+    // 页面加载完成后延迟执行，确保事件监听器正确添加
+    setTimeout(setupIntentCustomModelInputListeners, 500);
+    
+    // 立即执行意图识别模型选择器处理
+    window.intentModelSelectHandler();
+    
+    // 在页面加载完成后再次执行
+    setTimeout(window.intentModelSelectHandler, 500);
+});
+</script>

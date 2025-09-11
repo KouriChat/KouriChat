@@ -1,0 +1,295 @@
+<div class="mb-3">
+    <select class="form-select mb-2" id="api_provider_select" onchange="updateApiProvider(this.value)" aria-label="选择API提供商">
+        <!-- API提供商选项将通过JavaScript动态加载 -->
+    </select>
+
+    <!-- 添加自定义 API 输入框 -->
+    <div id="customApiInput" class="mb-2" style="display: none;">
+        <input type="text" class="form-control"
+               placeholder="请输入自定义 API 地址"
+               onchange="updateCustomApi(this.value)">
+    </div>
+
+    <!-- 注册链接容器 -->
+    <div id="register_links" class="d-none">
+        <!-- 注册链接将通过JavaScript动态添加 -->
+    </div>
+
+    <input type="text" class="form-control"
+        id="{{ key }}" name="{{ key }}"
+        value="{{ config.value }}"
+        readonly
+        style="display: none;">
+</div>
+
+<script>
+// 动态加载API提供商选项
+async function loadApiProviders() {
+    try {
+        let configs = null;
+        if (typeof window.getModelConfigs === 'function') {
+            configs = await window.getModelConfigs();
+        }
+        
+        const apiSelect = document.getElementById('api_provider_select');
+        
+        if (!apiSelect || !configs || !configs.api_providers) {
+            console.warn('无法加载API提供商配置');
+            throw new Error('配置加载失败');
+        }
+        
+        // 清空现有选项
+        apiSelect.innerHTML = '';
+        
+        // 按优先级排序并添加选项
+        const sortedProviders = configs.api_providers
+            .filter(provider => provider.status === 'active')
+            .sort((a, b) => (a.priority || 999) - (b.priority || 999));
+        
+        sortedProviders.forEach(provider => {
+            const option = document.createElement('option');
+            option.value = provider.id;
+            option.textContent = provider.name;
+            option.setAttribute('data-url', provider.url);
+            option.setAttribute('data-register', provider.register_url);
+            apiSelect.appendChild(option);
+        });
+        
+        // 添加自定义选项
+        const customOption = document.createElement('option');
+        customOption.value = 'custom';
+        customOption.textContent = '自定义API提供商';
+        apiSelect.appendChild(customOption);
+        
+        console.log('✅ API提供商选项加载完成，共', sortedProviders.length + 1, '个选项');
+        
+    } catch (error) {
+        console.error('❌ 加载API提供商失败，使用默认选项:', error);
+        
+        // 使用默认选项作为回退
+        const apiSelect = document.getElementById('api_provider_select');
+        if (apiSelect) {
+            apiSelect.innerHTML = `
+                <option value="kourichat-global" data-url="https://api.kourichat.com/v1" data-register="https://api.kourichat.com/register">KouriChat API (推荐)</option>
+                <option value="siliconflow" data-url="https://api.siliconflow.cn/v1/" data-register="https://www.siliconflow.cn">硅基流动 API</option>
+                <option value="deepseek" data-url="https://api.deepseek.com/v1" data-register="https://platform.deepseek.com">DeepSeek API</option>
+                <option value="ollama" data-url="http://localhost:11434/api/chat" data-register="https://ollama.ai">本地 Ollama</option>
+                <option value="custom">自定义API提供商</option>
+            `;
+        }
+    }
+}
+
+// 设置初始值
+function setInitialValues() {
+    // 检查必要元素
+    const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+    const apiSelect = document.getElementById('api_provider_select');
+    const modelInput = document.getElementById('MODEL');
+    
+    if (!baseUrlInput || !apiSelect) {
+        console.error("初始化失败：必要元素未找到");
+        return;
+    }
+    
+    // 获取当前值
+    const currentUrl = baseUrlInput.value;
+    const currentModel = modelInput ? modelInput.value : '';
+    
+    console.log("初始化值 - 当前URL:", currentUrl, "当前模型:", currentModel);
+    
+    // 确定当前使用的API提供商
+    let currentProviderId = 'kourichat-global'; // 默认值
+    let found = false;
+    
+    // 查找匹配的API提供商
+    for (let i = 0; i < apiSelect.options.length; i++) {
+        const option = apiSelect.options[i];
+        if (option.dataset.url === currentUrl) {
+            currentProviderId = option.value;
+            apiSelect.value = option.value;
+            found = true;
+            break;
+        }
+    }
+    
+    console.log("当前识别的API提供商:", currentProviderId);
+    
+    // 如果没有找到匹配项，可能是自定义API
+    if (!found && currentUrl) {
+        console.log("使用自定义API提供商");
+        currentProviderId = 'custom';
+        apiSelect.value = 'custom';
+        
+        // 显示自定义API输入框
+        if (typeof showCustomApiInput === 'function') {
+            showCustomApiInput(currentUrl);
+        } else {
+            const customApiInput = document.getElementById('customApiInput');
+            if (customApiInput) {
+                customApiInput.style.display = 'block';
+                const input = customApiInput.querySelector('input');
+                if (input) input.value = currentUrl;
+            }
+        }
+    }
+    
+    // 确保隐藏输入框的值与显示值一致
+    const hiddenInput = document.querySelector(`input[name="DEEPSEEK_BASE_URL"]`);
+    if (hiddenInput) {
+        hiddenInput.value = currentUrl;
+    }
+    
+    // 延迟初始化模型选择器，确保DOM已更新
+    setTimeout(() => {
+        // 初始化模型选择器（传递当前API提供商ID）
+        if (typeof initializeModelSelect === 'function') {
+            initializeModelSelect(currentProviderId);
+        } else {
+            console.warn('initializeModelSelect函数未定义，可能导致模型选择器初始化失败');
+            
+            // 备用：如果没有initializeModelSelect函数，但有updateModelSelect函数
+            if (typeof window.updateModelSelect === 'function') {
+                console.log("使用updateModelSelect作为备用");
+                window.updateModelSelect(currentProviderId);
+            }
+        }
+    }, 0);
+}
+
+// 显示自定义API输入框
+function showCustomApiInput(value = '') {
+    const customApiInput = document.getElementById('customApiInput');
+    const hiddenInput = document.querySelector(`input[name="DEEPSEEK_BASE_URL"]`);
+    customApiInput.style.display = 'block';
+    if (value) {
+        const input = customApiInput.querySelector('input');
+        input.value = value;
+        // 同时更新隐藏输入框
+        if (hiddenInput) {
+            hiddenInput.value = value;
+        }
+    }
+}
+
+// 更新API提供商
+function updateApiProvider(value) {
+    console.log("更新API提供商:", value);
+    const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+    const customApiInput = document.getElementById('customApiInput');
+    const registerLinks = document.getElementById('register_links');
+    const hiddenInput = document.querySelector(`input[name="DEEPSEEK_BASE_URL"]`);
+    const modelSelect = document.getElementById('model_select');
+
+    // 重置所有状态
+    customApiInput.style.display = 'none';
+    registerLinks.classList.add('d-none');
+    registerLinks.innerHTML = '';
+
+    // 处理自定义选项
+    if (value === 'custom') {
+        showCustomApiInput();
+        console.log("处理自定义API提供商");
+        // 确保updateModelSelect函数存在后再调用
+        if (typeof window.updateModelSelect === 'function') {
+            setTimeout(() => window.updateModelSelect('custom'), 100);
+        } else {
+            console.warn('updateModelSelect函数未定义，延迟初始化');
+            setTimeout(() => {
+                if (typeof window.updateModelSelect === 'function') {
+                    window.updateModelSelect('custom');
+                } else {
+                    console.error('updateModelSelect函数未定义');
+                }
+            }, 500);
+        }
+        return;
+    }
+
+    // 处理未选择情况
+    if (!value) {
+        // 确保updateModelSelect函数存在后再调用
+        if (typeof window.updateModelSelect === 'function') {
+            window.updateModelSelect('');
+        }
+        return;
+    }
+
+    // 获取选中的提供商配置
+    const selectedOption = document.querySelector(`#api_provider_select option[value="${value}"]`);
+    if (!selectedOption) return;
+
+    // 更新API URL
+    const apiUrl = selectedOption.dataset.url;
+    baseUrlInput.value = apiUrl;
+    // 同时更新隐藏输入框
+    if (hiddenInput) {
+        hiddenInput.value = apiUrl;
+    }
+
+    // 添加标记是否为 Ollama
+    if (value === 'ollama') {
+        baseUrlInput.dataset.isOllama = 'true';
+    } else {
+        baseUrlInput.dataset.isOllama = 'false';
+    }
+
+    // 创建注册按钮
+    const registerUrl = selectedOption.dataset.register;
+    if (registerUrl) {
+        const link = document.createElement('a');
+        link.href = registerUrl;
+        link.className = 'btn btn-outline-primary w-100';
+        link.target = '_blank';
+        link.innerHTML = `<i class="bi bi-box-arrow-up-right me-1"></i>前往${selectedOption.textContent.replace(' API', '')}注册`;
+        registerLinks.innerHTML = '';
+        registerLinks.appendChild(link);
+        registerLinks.classList.remove('d-none');
+    }
+
+    // 确保updateModelSelect函数存在后再调用
+    if (typeof window.updateModelSelect === 'function') {
+        console.log("直接调用updateModelSelect:", value);
+        // 使用延时确保DOM已更新
+        setTimeout(() => window.updateModelSelect(value), 100);
+    } else {
+        console.warn('updateModelSelect函数未定义，延迟初始化');
+        // 尝试延迟调用，确保函数已加载
+        setTimeout(() => {
+            if (typeof window.updateModelSelect === 'function') {
+                console.log("延迟调用updateModelSelect:", value);
+                window.updateModelSelect(value);
+            } else {
+                console.error('updateModelSelect函数未定义');
+                // 初始化模型选择框作为后备方案
+                if (typeof initializeModelSelect === 'function') {
+                    console.log("回退到initializeModelSelect");
+                    initializeModelSelect(value);
+                }
+            }
+        }, 500);
+    }
+}
+
+// 更新自定义API
+function updateCustomApi(value) {
+    const baseUrlInput = document.getElementById('DEEPSEEK_BASE_URL');
+    const hiddenInput = document.querySelector(`input[name="DEEPSEEK_BASE_URL"]`);
+    if (value) {
+        baseUrlInput.value = value;
+        // 同时更新隐藏输入框
+        if (hiddenInput) {
+            hiddenInput.value = value;
+        }
+    }
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 先加载API提供商选项
+    loadApiProviders().then(() => {
+        // 加载完成后设置初始值
+        setTimeout(setInitialValues, 100);
+    });
+});
+</script>

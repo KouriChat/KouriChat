@@ -1,0 +1,46 @@
+{
+    "example-1": {
+        "input": {
+            "role": "user",
+            "content": "时间：2024-03-16 17:39:00\n消息：三分钟后提醒我喝水，五分钟后提醒我吃饭"
+        },
+        "output": {
+            "role": "assistant",
+            "content": [
+                {
+                    "target_time": "2024-03-16 17:42:00",
+                    "reminder_content": "喝水"
+                },
+                {
+                    "target_time": "2024-03-16 17:44:00",
+                    "reminder_content": "吃饭"
+                }
+            ]
+        }
+    },
+    "example-2": {
+        "input": {
+            "role": "user",
+            "content": "时间：2024-04-18 07:39:00\n消息：我等下去洗个澡"
+        },
+        "output": {
+            "role": "assistant",
+            "content": "NOT_TIME_RELATED"
+        }
+    },
+    "example-3": {
+        "input": {
+            "role": "user",
+            "content": "时间：2025-02-09 14:49:00\n消息：五点提醒我吃晚饭可以吗？"
+        },
+        "output": {
+            "role": "assistant",
+            "content": [
+                {
+                    "target_time": "2025-02-09 17:00:00",
+                    "reminder_content": "吃晚饭"
+                }
+            ]
+        }
+    }
+}

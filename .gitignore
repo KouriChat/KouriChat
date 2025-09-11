@@ -11,7 +11,8 @@ memory/
 !modules/memory/
 
 # Config files
-src/config/config.json
+data/config/config.json
+data/config/backups
 
 # Logs
 logs/
@@ -193,3 +194,29 @@ cython_debug/
 .vscode/
 .cursor/
 .cursorrules
+.kiro/
+.kiro/*
+
+# 云端测试数据和缓存
+src/autoupdate/cloud/*
+!src/autoupdate/cloud/version.json
+
+# 临时文件和缓存
+*.tmp
+*.temp
+*.cache
+.DS_Store
+Thumbs.db
+
+# 环境变量文件
+.env.local
+.env.development
+.env.test
+.env.production
+
+# 用户特定配置
+user_config.json
+local_config.json
+
+# 用户隐私备份文件
+.backup/

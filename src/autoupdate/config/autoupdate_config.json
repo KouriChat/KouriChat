@@ -1,0 +1,22 @@
+{
+  "cloud_api": {
+    "update_api_url": "https://git.kourichat.com/KouriChat-Main/cloud-delivery-repo/raw/branch/main/updater.json",
+    "timeout": 10,
+    "retry_count": 3,
+    "verify_ssl": true
+  },
+  "network_adapter": {
+    "enabled": true,
+    "auto_install": true
+  },
+  "security": {
+    "signature_verification": true,
+    "encryption_enabled": true
+  },
+  "logging": {
+    "level": "INFO",
+    "enable_debug": false,
+    "log_file": null,
+    "max_log_size": 10485760
+  }
+}

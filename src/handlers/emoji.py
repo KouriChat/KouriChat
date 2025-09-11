@@ -14,7 +14,7 @@ from datetime import datetime
 import pyautogui
 import time
 from wxauto import WeChat
-from config import config
+from data.config import config
 
 logger = logging.getLogger('main')
 
@@ -23,24 +23,24 @@ class EmojiHandler:
         self.root_dir = root_dir
         # 修改表情包目录路径为avatar目录下的emojis
         self.emoji_dir = os.path.join(root_dir, config.behavior.context.avatar_dir, "emojis")
-        
+
         # 支持的表情类型
         self.emotion_types = [
-    'happy', 'sad', 'angry', 'neutral', 'love', 'funny', 'cute', 'bored', 'shy', 
-    'embarrassed', 'sleepy', 'lonely', 'hungry', 'confort', 'surprise', 'confused', 
-    'playful', 'excited', 'tease', 'hot', 'speechless', 'scared', 'emo_1', 
-    'emo_2', 'emo_3', 'emo_4', 'emo_5', 'afraid', 'amused', 'anxious', 
-    'confident', 'cold', 'suspicious', 'loving', 'curious', 'envious', 
-    'jealous', 'miserable', 'stupid', 'sick', 'ashamed', 'withdrawn', 
-    'indifferent', 'sorry', 'determined', 'crazy', 'bashful', 'depressed', 
-    'enraged', 'frightened', 'interested', 'hopeful', 'regretful', 'stubborn', 
-    'thirsty', 'guilty', 'nervous', 'disgusted', 'proud', 'ecstatic', 
-    'frustrated', 'hurt', 'tired', 'smug', 'thoughtful', 'pained', 'optimistic', 
+    'happy', 'sad', 'angry', 'neutral', 'love', 'funny', 'cute', 'bored', 'shy',
+    'embarrassed', 'sleepy', 'lonely', 'hungry', 'comfort', 'surprise', 'confused',
+    'playful', 'excited', 'tease', 'hot', 'speechless', 'scared', 'emo_1',
+    'emo_2', 'emo_3', 'emo_4', 'emo_5', 'afraid', 'amused', 'anxious',
+    'confident', 'cold', 'suspicious', 'loving', 'curious', 'envious',
+    'jealous', 'miserable', 'stupid', 'sick', 'ashamed', 'withdrawn',
+    'indifferent', 'sorry', 'determined', 'crazy', 'bashful', 'depressed',
+    'enraged', 'frightened', 'interested', 'hopeful', 'regretful', 'stubborn',
+    'thirsty', 'guilty', 'nervous', 'disgusted', 'proud', 'ecstatic',
+    'frustrated', 'hurt', 'tired', 'smug', 'thoughtful', 'pained', 'optimistic',
     'relieved', 'puzzled', 'shocked', 'joyful', 'skeptical', 'bad', 'worried']
 
 
         self.screenshot_dir = os.path.join(root_dir, 'screenshot')
-        
+
     def extract_emotion_tags(self, text: str) -> list:
         """从文本中提取表情标签"""
         tags = []
@@ -64,23 +64,23 @@ class EmojiHandler:
         try:
             target_dir = os.path.join(self.emoji_dir, emotion_type)
             logger.info(f"查找表情包目录: {target_dir}")
-            
+
             if not os.path.exists(target_dir):
                 logger.warning(f"情感目录不存在: {target_dir}")
                 return None
 
             emoji_files = [f for f in os.listdir(target_dir)
                           if f.lower().endswith(('.gif', '.jpg', '.png', '.jpeg'))]
-            
+
             if not emoji_files:
                 logger.warning(f"目录中未找到表情包: {target_dir}")
                 return None
-                
+
             selected = random.choice(emoji_files)
             emoji_path = os.path.join(target_dir, selected)
             logger.info(f"已选择 {emotion_type} 表情包: {emoji_path}")
             return emoji_path
-            
+
         except Exception as e:
             logger.error(f"获取表情包失败: {str(e)}")
             return None

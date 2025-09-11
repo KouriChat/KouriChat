@@ -1,0 +1,80 @@
+{
+    "example-1": {
+        "input": {
+            "role": "user",
+            "content": "时间：2024-04-18 07:39:00\n消息：帮我搜索一下今天的天气，我现在在上海"
+        },
+        "output": {
+            "role": "assistant",
+            "content": {
+                "search_required": true,
+                "search_query": "2024年4月18日上海市天气情况"
+            }
+        }
+    },
+    "example-2": {
+        "input": {
+            "role": "user",
+            "content": "时间：2024-12-23 12:19:00\n消息：假如我住在北京该多好"
+        },
+        "output": {
+            "role": "assistant",
+            "content": {
+                "search_required": false,
+                "search_query": ""
+            }
+        }
+    },
+    "example-3": {
+        "input": {
+            "role": "user",
+            "content": "时间：2024-08-28 17:39:00\n消息：帮我看看今天的股市行情"
+        },
+        "output": {
+            "role": "assistant",
+            "content": {
+                "search_required": true,
+                "search_query": "2024年8月28日A股行情"
+            }
+        }
+    },
+    "example-4": {
+        "input": {
+            "role": "user",
+            "content": "时间：2025-02-09 14:49:00\n消息：我准备去北京出差了"
+        },
+        "output": {
+            "role": "assistant",
+            "content": {
+                "search_required": true,
+                "search_query": "北京市下一周天气情况、北京市美食推荐"
+            }
+        }
+    },
+    "example-5": {
+        "input": {
+            "role": "user",
+            "content": "时间：2025-01-13 02:19:00\n消息：我觉得我应该睡觉了"
+        },
+        "output": {
+            "role": "assistant",
+            "content": {
+                "search_required": false,
+                "search_query": ""
+            }
+        }
+    },
+    "example-6": {
+        "input": {
+            "role": "user",
+            "content": "时间：2025-05-13 20:49:00\n消息：网易云上有一首歌，我很喜欢，叫做起风了"
+        },
+        "output": {
+            "role": "assistant",
+            "content": {
+                "search_required": true,
+                "search_query": "《起风了》歌曲信息"
+            }
+        }
+    }
+}

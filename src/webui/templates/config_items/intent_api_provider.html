@@ -1,0 +1,262 @@
+<div class="mb-3">
+    <select class="form-select mb-2" id="intent_api_provider_select" onchange="updateIntentApiProvider(this.value)" aria-label="选择意图识别API提供商">
+        <!-- API提供商选项将通过JavaScript动态加载 -->
+    </select>
+
+    <!-- 添加自定义 API 输入框 -->
+    <div id="intentCustomApiInput" class="mb-2" style="display: none;">
+        <input type="text" class="form-control"
+               placeholder="请输入自定义 API 地址"
+               onchange="updateIntentCustomApi(this.value)">
+    </div>
+
+    <!-- 注册链接容器 -->
+    <div id="intent_register_links" class="d-none">
+        <!-- 注册链接将通过JavaScript动态添加 -->
+    </div>
+
+    <input type="text" class="form-control"
+        id="{{ key }}" name="{{ key }}"
+        value="{{ config.value }}"
+        readonly
+        style="display: none;">
+</div>
+
+<script>
+// 动态加载意图识别API提供商选项
+async function loadIntentApiProviders() {
+    try {
+        let configs = null;
+        if (typeof window.getModelConfigs === 'function') {
+            configs = await window.getModelConfigs();
+        }
+        
+        const apiSelect = document.getElementById('intent_api_provider_select');
+        
+        if (!apiSelect || !configs || !configs.api_providers) {
+            console.warn('无法加载意图识别API提供商配置');
+            throw new Error('配置加载失败');
+        }
+        
+        // 清空现有选项
+        apiSelect.innerHTML = '';
+        
+        // 按优先级排序并添加选项
+        const sortedProviders = configs.api_providers
+            .filter(provider => provider.status === 'active')
+            .sort((a, b) => (a.priority || 999) - (b.priority || 999));
+        
+        sortedProviders.forEach(provider => {
+            const option = document.createElement('option');
+            option.value = provider.id;
+            option.textContent = provider.name;
+            option.setAttribute('data-url', provider.url);
+            option.setAttribute('data-register', provider.register_url);
+            apiSelect.appendChild(option);
+        });
+        
+        // 添加自定义选项
+        const customOption = document.createElement('option');
+        customOption.value = 'custom';
+        customOption.textContent = '自定义API提供商';
+        apiSelect.appendChild(customOption);
+        
+        console.log('✅ 意图识别API提供商选项加载完成，共', sortedProviders.length + 1, '个选项');
+        
+    } catch (error) {
+        console.error('❌ 加载意图识别API提供商失败，使用默认选项:', error);
+        
+        // 使用默认选项作为回退
+        const apiSelect = document.getElementById('intent_api_provider_select');
+        if (apiSelect) {
+            apiSelect.innerHTML = `
+                <option value="kourichat-global" data-url="https://api.kourichat.com/v1" data-register="https://api.kourichat.com/register">KouriChat API (推荐)</option>
+                <option value="siliconflow" data-url="https://api.siliconflow.cn/v1/" data-register="https://www.siliconflow.cn">硅基流动 API</option>
+                <option value="deepseek" data-url="https://api.deepseek.com/v1" data-register="https://platform.deepseek.com">DeepSeek API</option>
+                <option value="ollama" data-url="http://localhost:11434/api/chat" data-register="https://ollama.ai">本地 Ollama</option>
+                <option value="custom">自定义API提供商</option>
+            `;
+        }
+    }
+}
+
+// 设置意图识别初始值
+function setIntentInitialValues() {
+    // 检查必要元素
+    const baseUrlInput = document.getElementById('INTENT_BASE_URL');
+    const apiSelect = document.getElementById('intent_api_provider_select');
+    const modelInput = document.getElementById('INTENT_MODEL');
+    
+    if (!baseUrlInput || !apiSelect) {
+        console.error("意图识别初始化失败：必要元素未找到");
+        return;
+    }
+    
+    // 获取当前值
+    const currentUrl = baseUrlInput.value;
+    const currentModel = modelInput ? modelInput.value : '';
+    
+    console.log("意图识别初始化值 - 当前URL:", currentUrl, "当前模型:", currentModel);
+    
+    // 确定当前使用的API提供商
+    let currentProviderId = 'kourichat-global'; // 默认值
+    let found = false;
+    
+    // 查找匹配的API提供商
+    for (let i = 0; i < apiSelect.options.length; i++) {
+        const option = apiSelect.options[i];
+        if (option.dataset.url === currentUrl) {
+            currentProviderId = option.value;
+            apiSelect.value = option.value;
+            found = true;
+            break;
+        }
+    }
+    
+    console.log("当前识别的意图识别API提供商:", currentProviderId);
+    
+    // 如果没有找到匹配项，可能是自定义API
+    if (!found && currentUrl) {
+        console.log("使用自定义意图识别API提供商");
+        currentProviderId = 'custom';
+        apiSelect.value = 'custom';
+        
+        // 显示自定义API输入框
+        showIntentCustomApiInput(currentUrl);
+    }
+    
+    // 确保隐藏输入框的值与显示值一致
+    const hiddenInput = document.querySelector(`input[name="INTENT_BASE_URL"]`);
+    if (hiddenInput) {
+        hiddenInput.value = currentUrl;
+    }
+    
+    // 延迟初始化模型选择器，确保DOM已更新
+    setTimeout(() => {
+        // 初始化模型选择器（传递当前API提供商ID）
+        if (typeof initializeIntentModelSelect === 'function') {
+            initializeIntentModelSelect(currentProviderId);
+        } else if (typeof window.updateIntentModelSelect === 'function') {
+            console.log("使用updateIntentModelSelect作为备用");
+            window.updateIntentModelSelect(currentProviderId);
+        }
+    }, 0);
+}
+
+// 显示意图识别自定义API输入框
+function showIntentCustomApiInput(value = '') {
+    const customApiInput = document.getElementById('intentCustomApiInput');
+    const hiddenInput = document.querySelector(`input[name="INTENT_BASE_URL"]`);
+    customApiInput.style.display = 'block';
+    if (value) {
+        const input = customApiInput.querySelector('input');
+        input.value = value;
+        // 同时更新隐藏输入框
+        if (hiddenInput) {
+            hiddenInput.value = value;
+        }
+    }
+}
+
+// 更新意图识别API提供商
+function updateIntentApiProvider(value) {
+    console.log("更新意图识别API提供商:", value);
+    const baseUrlInput = document.getElementById('INTENT_BASE_URL');
+    const customApiInput = document.getElementById('intentCustomApiInput');
+    const registerLinks = document.getElementById('intent_register_links');
+    const hiddenInput = document.querySelector(`input[name="INTENT_BASE_URL"]`);
+
+    // 重置所有状态
+    customApiInput.style.display = 'none';
+    registerLinks.classList.add('d-none');
+    registerLinks.innerHTML = '';
+
+    // 处理自定义选项
+    if (value === 'custom') {
+        showIntentCustomApiInput();
+        console.log("处理自定义意图识别API提供商");
+        if (typeof window.updateIntentModelSelect === 'function') {
+            setTimeout(() => window.updateIntentModelSelect('custom'), 100);
+        }
+        return;
+    }
+
+    // 处理未选择情况
+    if (!value) {
+        if (typeof window.updateIntentModelSelect === 'function') {
+            window.updateIntentModelSelect('');
+        }
+        return;
+    }
+
+    // 获取选中的提供商配置
+    const selectedOption = document.querySelector(`#intent_api_provider_select option[value="${value}"]`);
+    if (!selectedOption) return;
+
+    // 更新API URL
+    const apiUrl = selectedOption.dataset.url;
+    baseUrlInput.value = apiUrl;
+    // 同时更新隐藏输入框
+    if (hiddenInput) {
+        hiddenInput.value = apiUrl;
+    }
+
+    // 添加标记是否为 Ollama
+    if (value === 'ollama') {
+        baseUrlInput.dataset.isOllama = 'true';
+    } else {
+        baseUrlInput.dataset.isOllama = 'false';
+    }
+
+    // 创建注册按钮
+    const registerUrl = selectedOption.dataset.register;
+    if (registerUrl) {
+        const link = document.createElement('a');
+        link.href = registerUrl;
+        link.className = 'btn btn-outline-primary w-100';
+        link.target = '_blank';
+        link.innerHTML = `<i class="bi bi-box-arrow-up-right me-1"></i>前往${selectedOption.textContent.replace(' API', '')}注册`;
+        registerLinks.innerHTML = '';
+        registerLinks.appendChild(link);
+        registerLinks.classList.remove('d-none');
+    }
+
+    // 确保updateIntentModelSelect函数存在后再调用
+    if (typeof window.updateIntentModelSelect === 'function') {
+        console.log("直接调用updateIntentModelSelect:", value);
+        setTimeout(() => window.updateIntentModelSelect(value), 100);
+    } else {
+        console.warn('updateIntentModelSelect函数未定义，延迟初始化');
+        setTimeout(() => {
+            if (typeof window.updateIntentModelSelect === 'function') {
+                console.log("延迟调用updateIntentModelSelect:", value);
+                window.updateIntentModelSelect(value);
+            } else {
+                console.error('updateIntentModelSelect函数未定义');
+            }
+        }, 500);
+    }
+}
+
+// 更新意图识别自定义API
+function updateIntentCustomApi(value) {
+    const baseUrlInput = document.getElementById('INTENT_BASE_URL');
+    const hiddenInput = document.querySelector(`input[name="INTENT_BASE_URL"]`);
+    if (value) {
+        baseUrlInput.value = value;
+        // 同时更新隐藏输入框
+        if (hiddenInput) {
+            hiddenInput.value = value;
+        }
+    }
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 先加载API提供商选项
+    loadIntentApiProviders().then(() => {
+        // 加载完成后设置初始值
+        setTimeout(setIntentInitialValues, 100);
+    });
+});
+</script>

@@ -112,24 +112,28 @@ python run.py
 
 ```
 KouriChat/
-├── docs/                        # 项目文档
-├── data/                        # 运行数据存储
-├── Plugins/                     # 插件系统
-├── tools/                       # 工具脚本
+├── data/                      # 运行数据存储
+│   ├── avatars/               # 角色卡资源
+│   ├── base/                  # 基础配置和提示词
+│   └── tasks.json             # 任务配置
+├── modules/                   # 核心模块系统
+│   ├── memory/                # 记忆管理系统
+│   ├── recognition/           # 识别服务模块
+│   ├── reminder/              # 提醒功能模块
+│   └── tts/                   # 语音模块
 ├── src/
-│   ├── memories/               # 记忆管理系统
-│   ├── config/                 # 配置文件
-│   ├── Plugins/               # 插件管理
+│   ├── main.py                # 主程序入口
+│   ├── avatar_manager.py      # 角色卡管理器
+│   ├── config/                # 配置文件管理
+│   ├── handlers/              # 功能处理器
+│   ├── services/              # AI服务接口
 │   ├── utils/                 # 工具库
-│   ├── Wechat_Login_Clicker/ # 微信登录助手
-│   ├── autoupdate/           # 自动更新系统
-│   ├── api_client/           # API客户端
-│   ├── handlers/             # 功能处理器
-│   ├── webui/               # 可视化配置界面
-│   ├── services/            # AI服务接口
-│   └── AutoTasker/         # 自动任务系统
-├── run.py                      # 主程序入口
-├── run.bat                     # Windows启动脚本
+│   ├── webui/                 # 可视化配置界面
+│   ├── autoupdate/            # 自动更新系统
+│   ├── AutoTasker/            # 自动任务系统
+│   └── Wechat_Login_Clicker/  # 微信登录助手
+├── run.py                     # 主程序入口
+├── run.bat                    # Windows启动脚本
 ├── run_config_web.py          # WebUI配置工具
 └── requirements.txt           # 依赖管理
 ```

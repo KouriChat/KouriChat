@@ -1,0 +1,48 @@
+<!-- 群聊配置组件 -->
+<div class="mb-3">
+    <!-- 添加群聊配置按钮 -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <span class="text-muted small">
+            <i class="bi bi-info-circle me-1"></i>为不同群聊配置专用人设和触发词
+            <br><i class="bi bi-exclamation-triangle text-warning me-1"></i>当前版本仅支持一个群聊配置，多个群聊会导致记忆混乱
+        </span>
+        <button type="button" id="addGroupChatBtn" class="btn btn-primary btn-sm" onclick="addGroupChatConfig()">
+            <i class="bi bi-plus-lg me-1"></i>添加群聊配置
+        </button>
+    </div>
+    
+    <!-- 群聊配置列表 -->
+    <div id="groupChatConfigList" class="mb-3">
+        <!-- 群聊配置项将通过JavaScript动态添加 -->
+    </div>
+    
+    <!-- 隐藏的配置数据存储 -->
+    <input type="hidden" id="{{ key }}" name="{{ key }}" value='{{ config.value | tojson }}'>
+    
+</div>
+
+<style>
+    .config-item {
+        transition: all 0.3s ease;
+        background: rgba(255, 255, 255, 0.02);
+    }
+    
+    .config-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .config-item .list-group:empty::after {
+        content: "暂无触发词，请添加";
+        color: var(--bs-secondary);
+        font-size: 0.875rem;
+        font-style: italic;
+        display: block;
+        text-align: center;
+        padding: 1rem;
+        border: 1px dashed var(--bs-border-color);
+        border-radius: 0.375rem;
+        background: rgba(255, 255, 255, 0.02);
+    }
+</style>

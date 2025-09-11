@@ -1,0 +1,8 @@
+<!-- 人设目录选择组件 -->
+<select class="form-select" id="{{ key }}" name="{{ key }}">
+    {% for option in config.options %}
+    <option value="{{ option }}" {% if option == config.value %}selected{% endif %}>
+        {{ option.split('/')[-1] }}
+    </option>
+    {% endfor %}
+</select>

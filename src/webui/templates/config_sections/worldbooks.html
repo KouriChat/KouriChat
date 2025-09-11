@@ -1,0 +1,532 @@
+<!-- 世界书管理界面 -->
+<div
+  class="worldbooks-container"
+  data-worldbooks="{{ config.value | tojson | safe }}"
+>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h6 class="mb-0">世界书列表</h6>
+    <button
+      type="button"
+      class="btn btn-primary btn-sm"
+      onclick="addWorldbook()"
+    >
+      <i class="bi bi-plus-circle"></i> 添加世界书
+    </button>
+  </div>
+
+  <div id="worldbooks-list" class="worldbooks-list">
+    <!-- 世界书列表将通过JavaScript动态生成 -->
+  </div>
+
+  <!-- 隐藏的输入字段，用于提交数据 -->
+  <input type="hidden" id="worldbooks" name="worldbooks" value="" />
+</div>
+
+<!-- 世界书编辑弹窗 - 注意：此模态框会被JavaScript动态移动到body下以确保全屏显示 -->
+<div id="worldbookModal" class="worldbook-modal" style="display: none">
+  <div class="worldbook-modal-backdrop" onclick="closeWorldbookModal()"></div>
+  <div class="worldbook-modal-content">
+    <div class="worldbook-modal-header">
+      <h5 id="worldbookModalTitle">编辑世界书</h5>
+      <button
+        type="button"
+        class="worldbook-modal-close"
+        onclick="closeWorldbookModal()"
+      >
+        &times;
+      </button>
+    </div>
+
+    <div class="worldbook-modal-body">
+      <div class="mb-3">
+        <label for="worldbook-name" class="form-label">世界书名称</label>
+        <input
+          type="text"
+          class="form-control"
+          id="worldbook-name"
+          placeholder="请输入世界书名称"
+        />
+      </div>
+      <div class="mb-3">
+        <label for="worldbook-content" class="form-label">世界书内容</label>
+        <textarea
+          class="form-control"
+          id="worldbook-content"
+          rows="15"
+          placeholder="请输入世界书内容"
+          style="min-height: 300px"
+        ></textarea>
+      </div>
+      <div class="mb-3">
+        <div class="form-check">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="worldbook-enabled"
+            checked
+          />
+          <label class="form-check-label" for="worldbook-enabled">
+            启用此世界书
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="worldbook-modal-footer">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick="closeWorldbookModal()"
+      >
+        取消
+      </button>
+      <button type="button" class="btn btn-primary" onclick="saveWorldbook()">
+        保存
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .worldbooks-list {
+    min-height: 100px;
+  }
+
+  .worldbook-item {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    background-color: #f8f9fa;
+    position: relative;
+  }
+
+  .worldbook-item.disabled {
+    opacity: 0.6;
+    background-color: #e9ecef;
+  }
+
+  .worldbook-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .worldbook-name {
+    font-weight: 600;
+    margin: 0;
+    flex-grow: 1;
+  }
+
+  .worldbook-actions {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .worldbook-content {
+    font-size: 0.875rem;
+    color: #6c757d;
+    max-height: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre-wrap;
+  }
+
+  .drag-handle {
+    cursor: move;
+    color: #6c757d;
+    margin-right: 0.5rem;
+  }
+
+  .drag-handle:hover {
+    color: #495057;
+  }
+
+  .sortable-ghost {
+    opacity: 0.4;
+  }
+
+  .sortable-chosen {
+    background-color: #e3f2fd !important;
+  }
+
+  /* 自定义模态框样式 */
+  .worldbook-modal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 99999 !important;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2rem 1rem;
+    box-sizing: border-box;
+    overflow-y: auto;
+    transform: none !important;
+  }
+
+  .worldbook-modal-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+
+  .worldbook-modal-content {
+    position: relative;
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    width: 100%;
+    max-width: 900px;
+    min-width: 320px;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+    z-index: 10000;
+    flex-shrink: 0;
+  }
+
+  .worldbook-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+  }
+
+  .worldbook-modal-header h5 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 500;
+  }
+
+  .worldbook-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .worldbook-modal-close:hover {
+    opacity: 0.7;
+  }
+
+  .worldbook-modal-body {
+    padding: 1.5rem;
+  }
+
+  .worldbook-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #dee2e6;
+  }
+
+  /* 响应式设计 */
+  @media (max-width: 768px) {
+    .worldbook-modal {
+      padding: 1rem 0.5rem;
+    }
+
+    .worldbook-modal-content {
+      min-width: 280px;
+      max-height: calc(100vh - 2rem);
+    }
+
+    .worldbook-modal-header,
+    .worldbook-modal-body,
+    .worldbook-modal-footer {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+
+    #worldbook-content {
+      min-height: 200px !important;
+    }
+  }
+</style>
+
+<script>
+  let worldbooksData = [];
+  let currentEditingIndex = -1;
+  let sortable = null;
+
+  // 初始化世界书数据
+  function initWorldbooks() {
+    const container = document.querySelector(".worldbooks-container");
+    try {
+      const configValue = JSON.parse(container.dataset.worldbooks || "[]");
+      worldbooksData = Array.isArray(configValue) ? configValue : [];
+    } catch (e) {
+      console.error("初始化世界书数据失败:", e);
+      worldbooksData = [];
+    }
+    renderWorldbooks();
+    initSortable();
+  }
+
+  // 渲染世界书列表
+  function renderWorldbooks() {
+    const container = document.getElementById("worldbooks-list");
+    if (!container) {
+      console.error("世界书列表容器未找到");
+      return;
+    }
+
+    if (worldbooksData.length === 0) {
+      container.innerHTML =
+        '<div class="text-muted text-center py-3">暂无世界书，点击上方按钮添加</div>';
+      if (sortable) {
+        sortable.destroy();
+        sortable = null;
+      }
+      updateHiddenInput();
+      return;
+    }
+
+    container.innerHTML = worldbooksData
+      .map(
+        (wb, index) => `
+        <div class="worldbook-item ${
+          wb.enabled ? "" : "disabled"
+        }" data-index="${index}">
+            <div class="worldbook-header">
+                <i class="bi bi-grip-vertical drag-handle"></i>
+                <h6 class="worldbook-name">${escapeHtml(
+                  wb.name || "未命名世界书"
+                )}</h6>
+                <div class="worldbook-actions">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="editWorldbook(${index})" title="编辑">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-${
+                      wb.enabled ? "warning" : "success"
+                    } btn-sm" onclick="toggleWorldbook(${index})" title="${
+          wb.enabled ? "禁用" : "启用"
+        }">
+                        <i class="bi bi-${
+                          wb.enabled ? "eye-slash" : "eye"
+                        }"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteWorldbook(${index})" title="删除">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="worldbook-content">${escapeHtml(
+              wb.content || ""
+            ).substring(0, 200)}${
+          (wb.content || "").length > 200 ? "..." : ""
+        }</div>
+        </div>
+    `
+      )
+      .join("");
+
+    updateHiddenInput();
+    setTimeout(() => {
+      initSortable();
+    }, 100);
+  }
+
+  // 初始化拖拽排序
+  function initSortable() {
+    const container = document.getElementById("worldbooks-list");
+    if (!container) {
+      console.error("世界书列表容器未找到");
+      return;
+    }
+
+    if (sortable) {
+      sortable.destroy();
+      sortable = null;
+    }
+
+    if (worldbooksData.length > 0 && typeof Sortable !== "undefined") {
+      try {
+        sortable = new Sortable(container, {
+          handle: ".drag-handle",
+          animation: 150,
+          ghostClass: "sortable-ghost",
+          chosenClass: "sortable-chosen",
+          onEnd: function (evt) {
+            const oldIndex = evt.oldIndex;
+            const newIndex = evt.newIndex;
+            if (oldIndex !== newIndex) {
+              const item = worldbooksData.splice(oldIndex, 1)[0];
+              worldbooksData.splice(newIndex, 0, item);
+              renderWorldbooks();
+            }
+          },
+        });
+      } catch (error) {
+        console.error("初始化拖拽排序失败:", error);
+      }
+    }
+  }
+
+  // 添加世界书
+  function addWorldbook() {
+    currentEditingIndex = -1;
+    document.getElementById("worldbook-name").value = "";
+    document.getElementById("worldbook-content").value = "";
+    document.getElementById("worldbook-enabled").checked = true;
+    document.getElementById("worldbookModalTitle").textContent = "添加世界书";
+    showWorldbookModal();
+  }
+
+  // 编辑世界书
+  function editWorldbook(index) {
+    currentEditingIndex = index;
+    const wb = worldbooksData[index];
+    document.getElementById("worldbook-name").value = wb.name || "";
+    document.getElementById("worldbook-content").value = wb.content || "";
+    document.getElementById("worldbook-enabled").checked = wb.enabled !== false;
+    document.getElementById("worldbookModalTitle").textContent = "编辑世界书";
+    showWorldbookModal();
+  }
+
+  // 保存世界书
+  function saveWorldbook() {
+    const name = document.getElementById("worldbook-name").value.trim();
+    const content = document.getElementById("worldbook-content").value.trim();
+    const enabled = document.getElementById("worldbook-enabled").checked;
+
+    if (!name) {
+      alert("请输入世界书名称");
+      return;
+    }
+
+    if (!content) {
+      alert("请输入世界书内容");
+      return;
+    }
+
+    const worldbook = {
+      id:
+        currentEditingIndex >= 0
+          ? worldbooksData[currentEditingIndex].id
+          : Date.now().toString(),
+      name: name,
+      content: content,
+      enabled: enabled,
+    };
+
+    if (currentEditingIndex >= 0) {
+      worldbooksData[currentEditingIndex] = worldbook;
+    } else {
+      worldbooksData.push(worldbook);
+    }
+
+    renderWorldbooks();
+    closeWorldbookModal();
+  }
+
+  // 切换世界书启用状态
+  function toggleWorldbook(index) {
+    worldbooksData[index].enabled = !worldbooksData[index].enabled;
+    renderWorldbooks();
+  }
+
+  // 删除世界书
+  function deleteWorldbook(index) {
+    if (confirm("确定要删除这个世界书吗？")) {
+      worldbooksData.splice(index, 1);
+      renderWorldbooks();
+    }
+  }
+
+  // 更新隐藏输入字段
+  function updateHiddenInput() {
+    document.getElementById("worldbooks").value =
+      JSON.stringify(worldbooksData);
+  }
+
+  // 保存世界书到服务器
+  function saveWorldbooksToServer() {
+    return fetch("/save_worldbooks", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        worldbooks: worldbooksData,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.status === "success") {
+          console.log("世界书保存成功");
+          return true;
+        } else {
+          console.error("世界书保存失败:", data.message);
+          return false;
+        }
+      })
+      .catch((error) => {
+        console.error("保存世界书时发生错误:", error);
+        return false;
+      });
+  }
+
+  // 显示模态框
+  function showWorldbookModal() {
+    const modal = document.getElementById("worldbookModal");
+    // 将模态框移动到 body 的直接子元素，确保它不受父容器限制
+    if (modal.parentNode !== document.body) {
+      document.body.appendChild(modal);
+    }
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+  }
+
+  // 关闭模态框
+  function closeWorldbookModal() {
+    const modal = document.getElementById("worldbookModal");
+    modal.style.display = "none";
+    document.body.style.overflow = "";
+  }
+
+  // HTML转义
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // 页面加载完成后初始化
+  function initializeWorldbooksWhenReady() {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        setTimeout(initWorldbooks, 300);
+      });
+    } else {
+      setTimeout(initWorldbooks, 300);
+    }
+  }
+
+  // 添加键盘事件监听
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      const modal = document.getElementById("worldbookModal");
+      if (modal && modal.style.display === "flex") {
+        closeWorldbookModal();
+      }
+    }
+  });
+
+  // 调用初始化
+  initializeWorldbooksWhenReady();
+</script>

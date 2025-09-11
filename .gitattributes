@@ -1,0 +1,7 @@
+# Explicitly declare files that should have CRLF line endings on checkout
+* text eol=crlf
+
+# 排除二进制文件，它们将不做换行符转换
+*.ico binary
+*.png binary
+*.jpg binary

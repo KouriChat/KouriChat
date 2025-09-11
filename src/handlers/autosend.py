@@ -65,7 +65,7 @@ class AutoSendHandler:
         if self.listen_list:
             user_id = random.choice(self.listen_list)
             self.unanswered_count += 1
-            reply_content = f"{self.config.behavior.auto_message.content} 这是对方第{self.unanswered_count}次未回复你, 你可以选择模拟对方未回复后的小脾气"
+            reply_content = f"{self.config.behavior.auto_message.content}"
             logger.info(f"自动发送消息到 {user_id}: {reply_content}")
             try:
                 self.message_handler.add_to_queue(

@@ -66,7 +66,7 @@
             "url": "https://github.com/KouriChat"
         },
         "downloadUrl": "https://github.com/KouriChat/KouriChat",
-        "softwareVersion": "1.3.1",
+        "softwareVersion": "1.4.1",
         "keywords": "AI陪伴,DeepSeek,情感陪伴,角色扮演,AI助手,微信机器人,QQ机器人,LLM,AI对话"
     }
     </script>
@@ -106,11 +106,9 @@
             background: var(--card-bg);
             -webkit-backdrop-filter: blur(10px);
             backdrop-filter: blur(10px);
-            border-radius: 1rem;
             border: 1px solid var(--card-border);
             box-shadow: var(--card-shadow);
             padding: 1.5rem;
-            margin-bottom: 1.5rem;
             transition: all 0.3s ease;
         }
 
@@ -610,7 +608,7 @@
             <div class="row align-items-center g-4">
                 <div class="col-md-8">
                     <div class="d-flex align-items-center">
-                        <img src="https://github.com/KouriChat.png" 
+                        <img src="https://git.kourichat.com/assets/img/favicon.png" 
                              alt="umaru-233" 
                              class="rounded-circle me-3 avatar-img"
                              width="64"
@@ -1049,7 +1047,68 @@
                 </div>
                 <div class="modal-footer justify-content-between">
                     <small class="text-muted">注意：每次程序启动后，控制面板会自动获取更新情况，请用户留意</small>
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="announcementOkBtn">我知道了</button>
+                    <div>
+                        <button type="button" class="btn btn-outline-secondary me-2" id="announcementDismissBtn">不再显示</button>
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="announcementOkBtn">我知道了</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 更新通知模态框 -->
+    <div class="modal fade" id="updateNotificationModal" tabindex="-1" aria-labelledby="updateNotificationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="updateNotificationModalLabel">
+                        <i class="bi bi-cloud-arrow-up me-2"></i>发现新版本
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="info-card mb-3">
+                                <h6 class="text-muted mb-2">当前版本</h6>
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-tag me-2 text-secondary"></i>
+                                    <span id="currentVersionText" class="fw-bold">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-card mb-3">
+                                <h6 class="text-muted mb-2">最新版本</h6>
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-star me-2 text-warning"></i>
+                                    <span id="latestVersionText" class="fw-bold text-primary">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="info-card mb-3">
+                        <h6 class="text-muted mb-2">更新说明</h6>
+                        <div id="updateDescription" class="text-break">
+                            正在获取更新信息...
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <h6 class="text-muted mb-2">发布时间</h6>
+                        <div id="updateTime" class="text-muted">
+                            <i class="bi bi-calendar me-1"></i>-
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="updateLaterBtn" data-bs-dismiss="modal">
+                        <i class="bi bi-clock me-1"></i>稍后更新
+                    </button>
+                    <button type="button" class="btn btn-success" id="updateNowBtn">
+                        <i class="bi bi-download me-1"></i>立即更新
+                    </button>
                 </div>
             </div>
         </div>
@@ -1058,6 +1117,50 @@
     <script>
         // 读取 data 属性来判断是否显示公告
         const shouldShowAnnouncement = document.body.dataset.showAnnouncement === 'true';
+
+        // 通用的公告"不再显示"按钮事件处理函数
+        function bindAnnouncementDismissHandler(announcementData) {
+            const dismissBtn = document.getElementById('announcementDismissBtn');
+            if (dismissBtn) {
+                // 移除之前的事件监听器
+                const newDismissBtn = dismissBtn.cloneNode(true);
+                dismissBtn.parentNode.replaceChild(newDismissBtn, dismissBtn);
+                
+                // 绑定新的事件监听器
+                newDismissBtn.addEventListener('click', function() {
+                    // 获取当前公告ID
+                    const announcementId = announcementData ? announcementData.id : null;
+                    
+                    // 调用API忽略公告
+                    fetch('/dismiss_announcement', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            announcement_id: announcementId
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.success) {
+                            showToast('此公告将不再显示', 'success');
+                            // 关闭模态框
+                            const announcementModal = bootstrap.Modal.getInstance(document.getElementById('announcementModal'));
+                            if (announcementModal) {
+                                announcementModal.hide();
+                            }
+                        } else {
+                            showToast('操作失败: ' + result.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('忽略公告失败:', error);
+                        showToast('操作失败，请稍后重试', 'error');
+                    });
+                });
+            }
+        }
 
         // 添加 showToast 函数
         function showToast(message, type = 'info') {
@@ -1349,13 +1452,13 @@
         // 检查更新
         function checkUpdate() {
             const logsElement = document.querySelector('.logs');
-            
+
             // 添加检查更新的命令显示
             const commandLine = document.createElement('div');
             commandLine.className = 'log-line';
             commandLine.innerHTML = `<span class="command-input">$ check update</span>`;
             logsElement.appendChild(commandLine);
-            
+
             fetch('/check_update')
                 .then(response => response.json())
                 .then(data => {
@@ -1364,75 +1467,26 @@
                     outputLine.className = 'log-line';
                     outputLine.innerHTML = `<span class="command-output">${data.console_output}</span>`;
                     logsElement.appendChild(outputLine);
-                    scrollToBottom();
-                    
-                    // 如果有更新并且需要用户确认，则等待用户输入
-                    if (data.has_update && data.wait_input) {
-                        // 等待用户输入
-                        const input = document.getElementById('consoleInput');
-                        input.placeholder = "请输入 y 确认更新或 n 取消更新";
-                        input.focus();
-                        
-                        // 显示提示信息
+
+                    // 如果有更新，显示提示信息
+                    if (data.has_update) {
+                        const updateInfoLine = document.createElement('div');
+                        updateInfoLine.className = 'log-line';
+                        updateInfoLine.innerHTML = `<span class="command-output">发现新版本: ${data.update_info.cloud_version}</span>`;
+                        logsElement.appendChild(updateInfoLine);
+
+                        const descriptionLine = document.createElement('div');
+                        descriptionLine.className = 'log-line';
+                        descriptionLine.innerHTML = `<span class="command-output">更新内容: ${data.update_info.description || '无详细说明'}</span>`;
+                        logsElement.appendChild(descriptionLine);
+
                         const promptLine = document.createElement('div');
                         promptLine.className = 'log-line';
-                        promptLine.innerHTML = `<span class="command-input">请输入 y 确认更新或 n 取消更新，然后按回车键</span>`;
+                        promptLine.innerHTML = `<span class="command-output">您可以点击"立即更新"按钮开始更新，或者在控制台输入 <span class="command-input">execute update</span> 命令开始更新</span>`;
                         logsElement.appendChild(promptLine);
-                        scrollToBottom();
-                        
-                        // 临时修改输入处理
-                        const originalHandler = input.onkeydown;
-                        input.onkeydown = function(event) {
-                            if (event.key === 'Enter') {
-                                event.preventDefault();
-                                const choice = input.value.trim().toLowerCase();
-                                input.value = '';
-                                input.placeholder = "请输入命令...";  // 恢复默认提示
-                                
-                                // 显示用户输入
-                                const inputLine = document.createElement('div');
-                                inputLine.className = 'log-line';
-                                inputLine.innerHTML = `<span class="user-input">> ${choice}</span>`;
-                                logsElement.appendChild(inputLine);
-                                
-                                // 显示处理中提示
-                                const processingLine = document.createElement('div');
-                                processingLine.className = 'log-line';
-                                processingLine.innerHTML = `<span class="command-output">正在处理您的选择...</span>`;
-                                logsElement.appendChild(processingLine);
-                                scrollToBottom();
-                                
-                                // 发送用户选择
-                                fetch('/confirm_update', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({ choice: choice })
-                                })
-                                .then(response => response.json())
-                                .then(result => {
-                                    // 显示更新过程输出
-                                    const resultLine = document.createElement('div');
-                                    resultLine.className = 'log-line';
-                                    resultLine.innerHTML = `<span class="command-${result.status}">${result.console_output}</span>`;
-                                    logsElement.appendChild(resultLine);
-                                    scrollToBottom();
-                                })
-                                .catch(error => {
-                                    const errorLine = document.createElement('div');
-                                    errorLine.className = 'log-line';
-                                    errorLine.innerHTML = `<span class="command-error">更新失败: ${error}</span>`;
-                                    logsElement.appendChild(errorLine);
-                                    scrollToBottom();
-                                })
-                                .finally(() => {
-                                    // 恢复原始输入处理
-                                    input.onkeydown = originalHandler;
-                                });
-                            }
-                        };
                     }
+
+                    scrollToBottom();
                 })
                 .catch(error => {
                     const errorLine = document.createElement('div');
@@ -1440,6 +1494,123 @@
                     errorLine.innerHTML = `<span class="command-error">检查更新失败: ${error}</span>`;
                     logsElement.appendChild(errorLine);
                     scrollToBottom();
+                });
+        }
+
+        // 全局变量，用于跟踪更新进度
+        let updateProgressInterval = null;
+        let lastLogCount = 0;
+
+        // 直接执行更新
+        function executeUpdate() {
+            const logsElement = document.querySelector('.logs');
+
+            // 添加执行更新的命令显示
+            const commandLine = document.createElement('div');
+            commandLine.className = 'log-line';
+            commandLine.innerHTML = `<span class="command-input">$ execute update</span>`;
+            logsElement.appendChild(commandLine);
+
+            // 显示开始更新的信息
+            const startLine = document.createElement('div');
+            startLine.className = 'log-line';
+            startLine.innerHTML = `<span class="command-output">开始执行更新...</span>`;
+            logsElement.appendChild(startLine);
+            scrollToBottom();
+
+            // 重置日志计数
+            lastLogCount = 0;
+
+            // 启动更新进度轮询
+            if (updateProgressInterval) {
+                clearInterval(updateProgressInterval);
+            }
+
+            // 开始轮询更新进度
+            updateProgressInterval = setInterval(fetchUpdateProgress, 1000);
+
+            // 发送更新请求
+            fetch('/execute_update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    // 显示最终更新结果
+                    const outputLine = document.createElement('div');
+                    outputLine.className = 'log-line';
+                    const statusClass = data.status === 'success' ? 'command-success' : 'command-error';
+                    outputLine.innerHTML = `<span class="${statusClass}">更新${data.status === 'success' ? '成功' : '失败'}: ${data.message}</span>`;
+                    logsElement.appendChild(outputLine);
+                    scrollToBottom();
+
+                    // 如果更新成功且需要重启
+                    if (data.status === 'success' && data.restart_required) {
+                        const restartLine = document.createElement('div');
+                        restartLine.className = 'log-line';
+                        restartLine.innerHTML = `<span class="command-output" style="color: orange;">更新完成，需要重启应用程序以完成更新。</span>`;
+                        logsElement.appendChild(restartLine);
+                        scrollToBottom();
+                    }
+
+                    // 停止轮询
+                    if (updateProgressInterval) {
+                        clearInterval(updateProgressInterval);
+                        updateProgressInterval = null;
+                    }
+                })
+                .catch(error => {
+                    console.error('执行更新失败:', error);
+                    const errorLine = document.createElement('div');
+                    errorLine.className = 'log-line';
+                    errorLine.innerHTML = `<span class="command-error">执行更新失败: ${error.message}</span>`;
+                    logsElement.appendChild(errorLine);
+                    scrollToBottom();
+
+                    // 停止轮询
+                    if (updateProgressInterval) {
+                        clearInterval(updateProgressInterval);
+                        updateProgressInterval = null;
+                    }
+                });
+        }
+
+        // 获取更新进度
+        function fetchUpdateProgress() {
+            fetch('/update_progress')
+                .then(response => response.json())
+                .then(data => {
+                    const logsElement = document.querySelector('.logs');
+
+                    // 显示新的日志
+                    if (data.logs && data.logs.length > lastLogCount) {
+                        for (let i = lastLogCount; i < data.logs.length; i++) {
+                            const log = data.logs[i];
+                            const logLine = document.createElement('div');
+                            logLine.className = 'log-line';
+                            logLine.innerHTML = `<span class="command-output">[${log.timestamp}] ${log.message}</span>`;
+                            logsElement.appendChild(logLine);
+                        }
+                        lastLogCount = data.logs.length;
+                        scrollToBottom();
+                    }
+
+                    // 如果更新完成，停止轮询
+                    if (!data.in_progress && updateProgressInterval) {
+                        clearInterval(updateProgressInterval);
+                        updateProgressInterval = null;
+                    }
+                })
+                .catch(error => {
+                    console.error('获取更新进度失败:', error);
+
+                    // 出错时也停止轮询
+                    if (updateProgressInterval) {
+                        clearInterval(updateProgressInterval);
+                        updateProgressInterval = null;
+                    }
                 });
         }
 
@@ -1725,6 +1896,51 @@
         }
 
         function executeCommand(command) {
+            // 特殊处理 execute update 命令
+            if (command.toLowerCase() === 'execute update') {
+                // 先显示命令响应
+                fetch('/execute_command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ command: command })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const logsElement = document.querySelector('.logs');
+                    const outputLine = document.createElement('div');
+                    outputLine.className = 'log-line';
+
+                    if (data.status === 'success') {
+                        outputLine.innerHTML = `<span class="command-output">${data.output}</span>`;
+                    } else {
+                        outputLine.innerHTML = `<span class="command-error">${data.error}</span>`;
+                    }
+
+                    logsElement.appendChild(outputLine);
+                    scrollToBottom();
+
+                    // 如果命令成功，启动实际的更新过程
+                    if (data.status === 'success') {
+                        // 延迟一秒后开始更新，让用户看到响应
+                        setTimeout(() => {
+                            executeUpdateInternal();
+                        }, 1000);
+                    }
+                })
+                .catch(error => {
+                    const logsElement = document.querySelector('.logs');
+                    const errorLine = document.createElement('div');
+                    errorLine.className = 'log-line';
+                    errorLine.innerHTML = `<span class="command-error">执行命令失败: ${error}</span>`;
+                    logsElement.appendChild(errorLine);
+                    scrollToBottom();
+                });
+                return;
+            }
+
+            // 处理其他命令
             fetch('/execute_command', {
                 method: 'POST',
                 headers: {
@@ -1735,22 +1951,22 @@
             .then(response => response.json())
             .then(data => {
                 const logsElement = document.querySelector('.logs');
-                
+
                 // 处理清空命令
                 if (data.clear) {
                     logsElement.innerHTML = '';
                     return;
                 }
-                
+
                 const outputLine = document.createElement('div');
                 outputLine.className = 'log-line';
-                
+
                 if (data.status === 'success') {
                     outputLine.innerHTML = `<span class="command-output">${data.output}</span>`;
                 } else {
                     outputLine.innerHTML = `<span class="command-error">${data.error}</span>`;
                 }
-                
+
                 logsElement.appendChild(outputLine);
                 scrollToBottom();
             })
@@ -1762,6 +1978,69 @@
                 logsElement.appendChild(errorLine);
                 scrollToBottom();
             });
+        }
+
+        // 内部更新执行函数，不显示命令行
+        function executeUpdateInternal() {
+            const logsElement = document.querySelector('.logs');
+
+            // 重置日志计数
+            lastLogCount = 0;
+
+            // 启动更新进度轮询
+            if (updateProgressInterval) {
+                clearInterval(updateProgressInterval);
+            }
+
+            // 开始轮询更新进度
+            updateProgressInterval = setInterval(fetchUpdateProgress, 1000);
+
+            // 发送更新请求
+            fetch('/execute_update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    // 显示最终更新结果
+                    const outputLine = document.createElement('div');
+                    outputLine.className = 'log-line';
+                    const statusClass = data.status === 'success' ? 'command-success' : 'command-error';
+                    outputLine.innerHTML = `<span class="${statusClass}">更新${data.status === 'success' ? '成功' : '失败'}: ${data.message}</span>`;
+                    logsElement.appendChild(outputLine);
+                    scrollToBottom();
+
+                    // 如果更新成功且需要重启
+                    if (data.status === 'success' && data.restart_required) {
+                        const restartLine = document.createElement('div');
+                        restartLine.className = 'log-line';
+                        restartLine.innerHTML = `<span class="command-output" style="color: orange;">更新完成，需要重启应用程序以完成更新。</span>`;
+                        logsElement.appendChild(restartLine);
+                        scrollToBottom();
+                    }
+
+                    // 停止轮询
+                    if (updateProgressInterval) {
+                        clearInterval(updateProgressInterval);
+                        updateProgressInterval = null;
+                    }
+                })
+                .catch(error => {
+                    console.error('执行更新失败:', error);
+                    const errorLine = document.createElement('div');
+                    errorLine.className = 'log-line';
+                    errorLine.innerHTML = `<span class="command-error">执行更新失败: ${error.message}</span>`;
+                    logsElement.appendChild(errorLine);
+                    scrollToBottom();
+
+                    // 停止轮询
+                    if (updateProgressInterval) {
+                        clearInterval(updateProgressInterval);
+                        updateProgressInterval = null;
+                    }
+                });
         }
 
         // 添加防抖函数
@@ -1966,6 +2245,133 @@
             setInterval(updateGitHubStats, 1800000);
         });
 
+        // 手动显示公告功能
+        function showManualAnnouncement() {
+            fetch('/get_announcement')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.enabled) {
+                        // 设置公告内容
+                        const modalTitleElement = document.getElementById('announcementModalLabel');
+                        modalTitleElement.textContent = data.title;
+                        modalTitleElement.classList.remove('fs-4');
+                        modalTitleElement.classList.add('fw-bold', 'text-center', 'w-100', 'fs-3');
+
+                        document.getElementById('announcementContent').innerHTML = data.content;
+
+                        // 移除样式
+                        const modalHeader = document.querySelector('#announcementModal .modal-header');
+                        modalHeader.classList.remove('bg-info', 'bg-warning', 'bg-danger', 'bg-success', 'text-white', 'text-dark');
+                        modalHeader.style.backgroundColor = '';
+
+                        // 绑定"不再显示"按钮事件
+                        bindAnnouncementDismissHandler(data);
+
+                        // 显示公告模态框
+                        const announcementModal = new bootstrap.Modal(document.getElementById('announcementModal'));
+                        announcementModal.show();
+                    } else {
+                        showToast('当前没有可用的公告', 'info');
+                    }
+                })
+                .catch(error => {
+                    console.error("获取公告失败:", error);
+                    showToast('获取公告失败，请稍后重试', 'error');
+                });
+        }
+
+        // 更新通知功能
+        function checkForUpdateNotification(forceCheck = false) {
+            // 如果不是强制检查，则检查24小时限制（用于后台定时检查）
+            if (!forceCheck) {
+                const lastUpdateCheck = localStorage.getItem('lastBackgroundUpdateCheck');
+                const now = Date.now();
+                const checkInterval = 24 * 60 * 60 * 1000; // 24小时
+
+                if (lastUpdateCheck && (now - parseInt(lastUpdateCheck)) < checkInterval) {
+                    console.log('24小时内已进行过后台检查，跳过定时检查');
+                    return;
+                }
+
+                // 更新后台检查时间
+                localStorage.setItem('lastBackgroundUpdateCheck', now.toString());
+            }
+
+            console.log(forceCheck ? '强制检查更新（用户打开页面）' : '定时检查更新');
+
+            fetch('/check_update')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.has_update) {
+                        // 检查是否已经忽略了这个版本
+                        const dismissedVersion = localStorage.getItem('dismissedUpdateVersion');
+                        const latestVersion = data.update_info?.cloud_version;
+
+                        if (dismissedVersion === latestVersion) {
+                            console.log('用户已忽略此版本更新:', latestVersion);
+                            return;
+                        }
+
+                        showUpdateNotification(data.update_info);
+                    } else {
+                        console.log('当前已是最新版本');
+                    }
+                })
+                .catch(error => {
+                    console.error('检查更新失败:', error);
+                });
+        }
+
+        function showUpdateNotification(updateInfo) {
+            // 设置更新信息
+            document.getElementById('currentVersionText').textContent = updateInfo.local_version || '-';
+            document.getElementById('latestVersionText').textContent = updateInfo.cloud_version || '-';
+            document.getElementById('updateDescription').textContent = updateInfo.description || '暂无更新说明';
+            document.getElementById('updateTime').innerHTML =
+                `<i class="bi bi-calendar me-1"></i>${updateInfo.last_update || '未知'}`;
+
+            // 绑定按钮事件
+            const updateNowBtn = document.getElementById('updateNowBtn');
+            const updateLaterBtn = document.getElementById('updateLaterBtn');
+
+            // 移除之前的事件监听器
+            const newUpdateNowBtn = updateNowBtn.cloneNode(true);
+            const newUpdateLaterBtn = updateLaterBtn.cloneNode(true);
+            updateNowBtn.parentNode.replaceChild(newUpdateNowBtn, updateNowBtn);
+            updateLaterBtn.parentNode.replaceChild(newUpdateLaterBtn, updateLaterBtn);
+
+            // 立即更新按钮
+            newUpdateNowBtn.addEventListener('click', function() {
+                // 关闭更新通知模态框
+                const updateModal = bootstrap.Modal.getInstance(document.getElementById('updateNotificationModal'));
+                if (updateModal) {
+                    updateModal.hide();
+                }
+
+                // 直接执行更新，不需要控制台确认
+                setTimeout(() => {
+                    executeUpdate();
+                }, 500);
+            });
+
+            // 稍后更新按钮
+            newUpdateLaterBtn.addEventListener('click', function() {
+                // 记录用户选择稍后更新，24小时内后台不再提醒
+                // 但用户主动打开页面时仍会检查
+                localStorage.setItem('lastBackgroundUpdateCheck', Date.now().toString());
+
+                // 可选：记录用户忽略的版本，避免同一版本重复提醒
+                const latestVersion = document.getElementById('latestVersionText').textContent;
+                if (latestVersion && latestVersion !== '-') {
+                    localStorage.setItem('dismissedUpdateVersion', latestVersion);
+                }
+            });
+
+            // 显示更新通知模态框
+            const updateNotificationModal = new bootstrap.Modal(document.getElementById('updateNotificationModal'));
+            updateNotificationModal.show();
+        }
+
         // 公告功能
         if (shouldShowAnnouncement) {
             document.addEventListener('DOMContentLoaded', function() {
@@ -1987,6 +2393,9 @@
                             modalHeader.classList.remove('bg-info', 'bg-warning', 'bg-danger', 'bg-success', 'text-white', 'text-dark');
                             modalHeader.style.backgroundColor = '';
 
+                            // 绑定"不再显示"按钮事件
+                            bindAnnouncementDismissHandler(data);
+
                             // 强制显示公告模态框
                             const announcementModal = new bootstrap.Modal(document.getElementById('announcementModal'));
                             announcementModal.show();
@@ -2007,39 +2416,50 @@
             const savedLogs = JSON.parse(localStorage.getItem('botLogs') || '[]');
             if (savedLogs.length > 0) {
                 const logsElement = document.querySelector('.logs');
-                
+
                 savedLogs.forEach(log => {
                     const logLine = document.createElement('div');
                     logLine.className = 'log-line';
                     logLine.innerHTML = formatLogLine(log);
                     logsElement.appendChild(logLine);
                 });
-                
+
                 // 滚动到底部
                 scrollToBottom();
             }
-            
+
             // 获取按钮引用
             const startBtn = document.getElementById('startBotBtn');
             const stopBtn = document.getElementById('stopBotBtn');
-            
+
             // 检查机器人状态
             fetch('/get_bot_logs')
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success' && data.is_running) {
-                        document.getElementById('botStatus').innerHTML = 
+                        document.getElementById('botStatus').innerHTML =
                             '<span class="status-running">运行中</span>';
                         startBtn.disabled = true;
                         stopBtn.disabled = false;
                         startPollingLogs();
                     } else {
-                        document.getElementById('botStatus').innerHTML = 
+                        document.getElementById('botStatus').innerHTML =
                             '<span class="status-stopped">已停止</span>';
                         startBtn.disabled = false;
                         stopBtn.disabled = true;
                     }
                 });
+
+            // 延迟3秒后检查更新通知（避免与公告冲突）
+            // 用户打开页面时强制检查更新，不受24小时限制
+            setTimeout(() => {
+                checkForUpdateNotification(true); // true表示强制检查
+            }, 3000);
+
+            // 设置定时检查：每24小时检查一次更新（后台检查，受24小时限制）
+            setInterval(() => {
+                checkForUpdateNotification(false); // false表示后台定时检查
+            }, 24 * 60 * 60 * 1000); // 24小时
         });
     </script>
 </body>

@@ -1,0 +1,25 @@
+<!-- 开关切换组件 -->
+<div class="form-check form-switch d-flex align-items-center" style="padding: 6px 0; min-height: 38px;">
+    <input class="form-check-input me-2" type="checkbox" role="switch"
+        id="{{ key }}" name="{{ key }}"
+        {% if config.value %}checked{% endif %}
+        style="margin: 0;"
+        onchange="updateSwitchLabel(this)">
+    <label class="form-check-label mb-0" id="{{ key }}_label" for="{{ key }}" style="line-height: 24px;">
+        {{ '启用' if config.value else '停用' }}
+    </label>
+</div>
+<script>
+    // 确保页面加载时初始化开关状态
+    document.addEventListener('DOMContentLoaded', function() {
+        const checkbox = document.getElementById('{{ key }}');
+        if (checkbox) {
+            updateSwitchLabel(checkbox);
+
+            // 添加额外的事件监听器，确保状态变化时触发
+            checkbox.addEventListener('change', function() {
+                updateSwitchLabel(this);
+            });
+        }
+    });
+</script>

@@ -25,8 +25,12 @@ init()
 # 禁止生成__pycache__文件夹
 sys.dont_write_bytecode = True
 
+# 将项目根目录添加到Python路径
+root_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(root_dir)
+
 # 将src目录添加到Python路径
-src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
+src_path = os.path.join(root_dir, 'src')
 sys.path.append(src_path)
 
 def initialize_system():
@@ -55,13 +59,12 @@ def initialize_system():
         print_status("清理系统缓存...", "info", "CLEAN")
         try:
             cleanup_pycache()
-            
+
             from src.utils.logger import LoggerConfig
             from src.utils.cleanup import CleanupUtils
             from src.handlers.image import ImageHandler
-            from src.handlers.voice import VoiceHandler
-            from src.config import config
-            
+            from data.config import config
+
             root_dir = os.path.dirname(src_path)
             logger_config = LoggerConfig(root_dir)
             cleanup_utils = CleanupUtils(root_dir)
@@ -71,16 +74,11 @@ def initialize_system():
                 base_url=config.llm.base_url,
                 image_model=config.media.image_generation.model
             )
-            voice_handler = VoiceHandler(
-                root_dir=root_dir,
-                tts_api_url=config.media.text_to_speech.tts_api_url
-            )
 
             logger_config.cleanup_old_logs()
             cleanup_utils.cleanup_all()
             image_handler.cleanup_temp_dir()
-            voice_handler.cleanup_voice_dir()
-            
+
             # 清理更新残留文件
             print_status("清理更新残留文件...", "info", "CLEAN")
             try:
@@ -89,14 +87,14 @@ def initialize_system():
                 print_status("更新残留文件清理完成", "success", "CHECK")
             except Exception as e:
                 print_status(f"清理更新残留文件失败: {str(e)}", "warning", "CROSS")
-                
+
         except Exception as e:
             print_status(f"清理缓存失败: {str(e)}", "warning", "CROSS")
         print_status("缓存清理完成", "success", "CHECK")
 
         # 检查必要目录
         print_status("检查必要目录...", "info", "FILE")
-        required_dirs = ['data', 'logs', 'src/config']
+        required_dirs = ['data', 'logs', 'data/config']
         for dir_name in required_dirs:
             dir_path = os.path.join(os.path.dirname(src_path), dir_name)
             if not os.path.exists(dir_path):
@@ -131,4 +129,4 @@ if __name__ == '__main__':
         print("\n")
     except Exception as e:
         print_status(f"系统错误: {str(e)}", "error", "ERROR")
-        sys.exit(1) 
+        sys.exit(1)

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="KouriChat - 配置中心">
+    <meta name="keywords" content="AI,KouriChat">
+    <meta name="theme-color" content="#6366f1">
+    <title>KouriChat - 配置中心</title>
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdmirror.com/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/static/mom.ico">
+    
+    <!-- 引入样式文件 -->
+    <link href="/static/css/config-styles.css" rel="stylesheet">
+    <link href="/static/css/schedule-tasks.css" rel="stylesheet">
+    
+    <script src="/static/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/dark-mode.js"></script>
+    
+    <!-- 引入配置相关的JavaScript文件 -->
+    <script src="/static/js/model-config.js"></script>
+    <script src="/static/js/config-handlers.js"></script>
+    <script src="/static/js/import-export.js"></script>
+    <script src="/static/js/config-utils.js"></script>
+    <script src="/static/js/schedule-tasks.js"></script>
+</head>
+
+<body>
+    <!-- 导入配置项宏 -->
+    {% from 'config_items/macros.html' import render_config_item %}
+    
+    {% include 'navbar.html' %}
+
+    <main class="container-fluid py-4">
+        <div class="row">
+            <!-- 左侧基础配置 -->
+            <div class="col-md-6 pe-md-2">
+                <div class="config-section h-100">
+                    <h4 class="mb-4">
+                        <i class="bi bi-gear-fill me-2"></i>基础配置
+                        <div class="float-end">
+                            <button type="button" class="btn btn-sm btn-outline-primary me-2" id="exportConfigBtn">
+                                <i class="bi bi-upload me-1"></i>导出配置
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="importConfigBtn">
+                                <i class="bi bi-download me-1"></i>导入配置
+                            </button>
+                        </div>
+                    </h4>
+                    <form id="configForm">
+            {% include 'config_sections/basic_config.html' %}
+                    </form>
+                </div>
+            </div>
+
+            <!-- 右侧高级配置 -->
+            <div class="col-md-6 ps-md-2">
+                <div class="config-section h-100">
+                    <h4 class="mb-4">
+                        <i class="bi bi-sliders me-2"></i>高级配置
+                    </h4>
+                    <form id="otherConfigForm">
+            {% include 'config_sections/advanced_config.html' %}
+            
+            <!-- 定时任务配置 -->
+            {% include 'config_sections/schedule_config.html' %}
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 定时任务模态框 -->
+        {% include 'config_sections/task_modals.html' %}
+
+        <!-- 保存按钮 -->
+        {% include 'config_sections/save_button.html' %}
+    </main>
+
+    <!-- 模态框 -->
+    {% include 'config_sections/modals.html' %}
+    
+    <!-- 定时任务模态框 -->
+    {% include 'config_sections/task_modals.html' %}
+    
+    <!-- 通知组件 -->
+    {% include 'config_sections/notifications.html' %}
+
+    <!-- 配置数据 -->
+    <script id="config_data" type="application/json">
+        {{ config_json|safe }}
+    </script>
+
+    <!-- 主要的配置处理脚本 -->
+    <script src="/static/js/config-main.js"></script>
+    <script src="/static/js/group-chat-config.js"></script>
+</body>
+</html>

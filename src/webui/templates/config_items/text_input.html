@@ -1,0 +1,10 @@
+<!-- 通用文本输入组件 -->
+{% if config.type == 'textarea' %}
+    <textarea class="form-control"
+        id="{{ key }}" name="{{ key }}"
+        rows="5">{{ config.value }}</textarea>
+{% else %}
+    <input type="text" class="form-control"
+        id="{{ key }}" name="{{ key }}"
+        value="{{ config.value }}">
+{% endif %}

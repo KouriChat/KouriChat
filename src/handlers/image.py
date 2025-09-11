@@ -28,7 +28,7 @@ class ImageHandler:
         self.temp_dir = os.path.join(root_dir, "data", "images", "temp")
 
         # 复用消息模块的AI实例(使用正确的模型名称)
-        from config import config
+        from data.config import config
         self.text_ai = LLMService(
             api_key=api_key,
             base_url=base_url,

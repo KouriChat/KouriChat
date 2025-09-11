@@ -1,0 +1,37 @@
+<!-- 配置项宏定义 -->
+{% macro render_config_item(key, config) %}
+<div class="config-item-wrapper">
+    <label class="form-label">
+        <span class="badge badge-info rounded-pill me-2"
+            data-bs-toggle="tooltip"
+            title="{{ key }}">
+            <i class="bi bi-info-circle"></i>
+        </span>
+        {{ config.description }}
+    </label>
+
+    {% if key == 'LISTEN_LIST' %}
+        {% include 'config_items/listen_list.html' %}
+    {% elif key == 'GROUP_CHAT_CONFIG' %}
+        {% include 'config_items/group_chat_config.html' %}
+    {% elif key == 'DEEPSEEK_BASE_URL' %}
+        {% include 'config_items/api_provider.html' %}
+    {% elif key == 'MODEL' %}
+        {% include 'config_items/model_selector.html' %}
+    {% elif key == 'VISION_BASE_URL' %}
+        {% include 'config_items/vision_api_provider.html' %}
+    {% elif key == 'VISION_MODEL' %}
+        {% include 'config_items/vision_model_selector.html' %}
+    {% elif key == 'TEMPERATURE' or key == 'VISION_TEMPERATURE' or key == 'INTENT_TEMPERATURE'%}
+        {% include 'config_items/temperature_slider.html' %}
+    {% elif key == 'NETWORK_SEARCH_ENABLED' or key == 'WEBLENS_ENABLED' %}
+        {% include 'config_items/switch_toggle.html' %}
+    {% elif key == 'AVATAR_DIR' %}
+        {% include 'config_items/avatar_dir_selector.html' %}
+    {% elif config.value is boolean %}
+        {% include 'config_items/switch_toggle.html' %}
+    {% else %}
+        {% include 'config_items/text_input.html' %}
+    {% endif %}
+</div>
+{% endmacro %}

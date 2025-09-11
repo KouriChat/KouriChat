@@ -1,0 +1,213 @@
+<div class="mb-3">
+    <select class="form-select mb-2" id="vision_api_provider_select" onchange="updateVisionApiProvider(this.value)" aria-label="选择图像识别API提供商">
+        <!-- 图像识别API提供商选项将通过JavaScript动态加载 -->
+    </select>
+
+    <!-- 添加自定义 API 输入框 -->
+    <div id="customVisionApiInput" class="mb-2" style="display: none;">
+        <input type="text" class="form-control"
+               placeholder="请输入自定义服务地址"
+               onchange="updateCustomVisionApi(this.value)">
+    </div>
+
+    <!-- 注册链接容器 -->
+    <div id="vision_register_links" class="d-none">
+        <!-- 注册链接将通过JavaScript动态添加 -->
+    </div>
+
+    <input type="text" class="form-control"
+        id="{{ key }}" name="{{ key }}"
+        value="{{ config.value }}"
+        readonly
+        style="display: none;">
+</div>
+
+<script>
+// 动态加载图像识别API提供商选项
+async function loadVisionApiProviders() {
+    try {
+        let configs = null;
+        if (typeof window.getModelConfigs === 'function') {
+            configs = await window.getModelConfigs();
+        }
+        
+        const apiSelect = document.getElementById('vision_api_provider_select');
+        
+        if (!apiSelect || !configs || !configs.vision_api_providers) {
+            console.warn('无法加载图像识别API提供商配置');
+            throw new Error('配置加载失败');
+        }
+        
+        // 清空现有选项
+        apiSelect.innerHTML = '';
+        
+        // 按优先级排序并添加选项
+        const sortedProviders = configs.vision_api_providers
+            .filter(provider => provider.status === 'active')
+            .sort((a, b) => (a.priority || 999) - (b.priority || 999));
+        
+        sortedProviders.forEach(provider => {
+            const option = document.createElement('option');
+            option.value = provider.id;
+            option.textContent = provider.name;
+            option.setAttribute('data-url', provider.url);
+            option.setAttribute('data-register', provider.register_url || '');
+            apiSelect.appendChild(option);
+        });
+        
+        // 添加自定义选项
+        const customOption = document.createElement('option');
+        customOption.value = 'custom';
+        customOption.textContent = '自定义服务提供商';
+        apiSelect.appendChild(customOption);
+        
+        console.log('✅ 图像识别API提供商选项加载完成，共', sortedProviders.length + 1, '个选项');
+        
+    } catch (error) {
+        console.error('❌ 加载图像识别API提供商失败，使用默认选项:', error);
+        
+        // 使用默认选项作为回退
+        const apiSelect = document.getElementById('vision_api_provider_select');
+        if (apiSelect) {
+            apiSelect.innerHTML = `
+                <option value="kourichat-global" data-url="https://api.kourichat.com/v1" data-register="https://api.kourichat.com/register">KouriChat API (推荐)</option>
+                <option value="moonshot" data-url="https://api.moonshot.cn/v1" data-register="https://platform.moonshot.cn/console/api-keys">Moonshot AI</option>
+                <option value="openai" data-url="https://api.openai.com/v1" data-register="https://platform.openai.com/api-keys">OpenAI</option>
+                <option value="siliconflow" data-url="https://api.siliconflow.cn/v1/" data-register="https://www.siliconflow.cn">硅基流动 API</option>
+                <option value="custom">自定义服务提供商</option>
+            `;
+        }
+    }
+}
+
+// 设置初始值
+function setVisionInitialValues() {
+    // 根据当前配置设置初始值
+    const currentUrl = document.getElementById('VISION_BASE_URL').value;
+    const apiSelect = document.getElementById('vision_api_provider_select');
+    const currentModel = document.getElementById('VISION_MODEL').value;
+
+    // 查找匹配的选项
+    let found = false;
+    for (let i = 0; i < apiSelect.options.length; i++) {
+        const option = apiSelect.options[i];
+        if (option.dataset.url === currentUrl) {
+            apiSelect.value = option.value;
+            updateVisionApiProvider(option.value);
+            found = true;
+            break;
+        }
+    }
+
+    // 如果没有找到匹配项，使用自定义选项
+    if (!found && currentUrl) {
+        apiSelect.value = 'custom';
+        showCustomVisionApiInput(currentUrl);
+
+        // 对于自定义API提供商，显示自定义模型输入框并设置值
+        const customModelInput = document.getElementById('customVisionModelInput');
+        if (customModelInput && currentModel) {
+            customModelInput.style.display = 'block';
+            customModelInput.querySelector('input').value = currentModel;
+
+            // 设置模型选择框
+            const modelSelect = document.getElementById('vision_model_select');
+            if (modelSelect) {
+                // 添加自定义选项
+                if (!modelSelect.querySelector('option[value="custom"]')) {
+                    modelSelect.innerHTML += '<option value="custom">自定义模型</option>';
+                }
+                modelSelect.value = 'custom';
+            }
+        }
+
+        if (typeof window.updateVisionModelSelect === 'function') {
+            window.updateVisionModelSelect('custom');
+        }
+    }
+
+    // 如果自定义模型输入框需要显示
+    const customModelInput = document.getElementById('customVisionModelInput');
+    if (apiSelect.value === 'custom' && customModelInput && currentModel) {
+        customModelInput.style.display = 'block';
+        customModelInput.querySelector('input').value = currentModel;
+    }
+}
+
+// 显示自定义图像识别API输入框
+function showCustomVisionApiInput(value = '') {
+    const customApiInput = document.getElementById('customVisionApiInput');
+    customApiInput.style.display = 'block';
+    if (value) {
+        customApiInput.querySelector('input').value = value;
+    }
+}
+
+// 更新自定义图像识别API
+function updateCustomVisionApi(value) {
+    const baseUrlInput = document.getElementById('VISION_BASE_URL');
+    if (value) {
+        baseUrlInput.value = value;
+    }
+}
+
+// 更新图像识别API提供商
+function updateVisionApiProvider(providerId) {
+    // 获取URL输入框和显示区域
+    const urlInput = document.getElementById('VISION_BASE_URL');
+    const registerLinks = document.getElementById('vision_register_links');
+    
+    // 获取选择器和当前选择的选项
+    const selector = document.getElementById('vision_api_provider_select');
+    const selectedOption = selector.options[selector.selectedIndex];
+    
+    // 自定义服务提供商处理
+    const customApiInput = document.getElementById('customVisionApiInput');
+    
+    if (providerId === 'custom') {
+        // 显示自定义输入框
+        customApiInput.style.display = 'block';
+        // 获取当前URL，放入自定义输入框
+        customApiInput.querySelector('input').value = urlInput.value || '';
+        // 隐藏注册链接
+        registerLinks.classList.add('d-none');
+    } else {
+        // 隐藏自定义输入框
+        customApiInput.style.display = 'none';
+        
+        // 从选项中获取API URL
+        const apiUrl = selectedOption.getAttribute('data-url');
+        if (apiUrl) {
+            urlInput.value = apiUrl;
+        }
+        
+        // 显示注册链接（如果有）
+        const registerUrl = selectedOption.getAttribute('data-register');
+        if (registerUrl) {
+            registerLinks.innerHTML = `
+                <a href="${registerUrl}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">
+                    <i class="bi bi-box-arrow-up-right"></i> 获取API密钥
+                </a>`;
+            registerLinks.classList.remove('d-none');
+        } else {
+            registerLinks.classList.add('d-none');
+        }
+    }
+    
+    // 更新对应的模型选择器
+    if (typeof window.updateVisionModelSelect === 'function') {
+        window.updateVisionModelSelect(providerId);
+    } else {
+        console.warn('updateVisionModelSelect 函数未定义');
+    }
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 先加载图像识别API提供商选项
+    loadVisionApiProviders().then(() => {
+        // 加载完成后设置初始值
+        setTimeout(setVisionInitialValues, 100);
+    });
+});
+</script>

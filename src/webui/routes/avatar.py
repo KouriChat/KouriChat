@@ -254,11 +254,11 @@ def load_core_memory():
             memory_dir = AVATARS_DIR / avatar_name / 'memory' / user_id
             memory_dir.mkdir(parents=True, exist_ok=True)
             
-            # 创建空的核心记忆文件 - 使用新的数组格式
-            initial_core_data = [{
+            # 创建空的核心记忆文件 - 使用新的单个对象格式
+            initial_core_data = {
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "content": ""  # 初始为空字符串
-            }]
+            }
             with open(memory_path, 'w', encoding='utf-8') as f:
                 json.dump(initial_core_data, f, ensure_ascii=False, indent=2)
             
@@ -267,26 +267,25 @@ def load_core_memory():
         # 读取核心记忆文件
         with open(memory_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # 处理数组格式
+            # 处理数组格式（旧格式）
             if isinstance(data, list) and len(data) > 0:
                 content = data[0].get("content", "")
-            else:
-                # 兼容旧格式
-                content = data.get('content', '')
                 
                 # 将旧格式迁移为新格式
-                if memory_path.exists():
-                    try:
-                        # 将旧格式转换为新的数组格式
-                        new_data = [{
-                            "timestamp": data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                            "content": content
-                        }]
-                        # 保存为新格式
-                        with open(memory_path, 'w', encoding='utf-8') as f_write:
-                            json.dump(new_data, f_write, ensure_ascii=False, indent=2)
-                    except Exception as e:
-                        print(f"迁移核心记忆格式失败: {str(e)}")
+                try:
+                    # 将旧格式转换为新的单个对象格式
+                    new_data = {
+                        "timestamp": data[0].get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                        "content": content
+                    }
+                    # 保存为新格式
+                    with open(memory_path, 'w', encoding='utf-8') as f_write:
+                        json.dump(new_data, f_write, ensure_ascii=False, indent=2)
+                except Exception as e:
+                    print(f"迁移核心记忆格式失败: {str(e)}")
+            else:
+                # 新格式（单个对象）
+                content = data.get('content', '')
             
         return jsonify({'status': 'success', 'content': content})
     except Exception as e:
@@ -310,11 +309,11 @@ def save_core_memory():
         
         memory_path = memory_dir / 'core_memory.json'
         
-        # 保存核心记忆（使用数组格式）
-        memory_data = [{
+        # 保存核心记忆（使用新的单个对象格式）
+        memory_data = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "content": content
-        }]
+        }
         
         with open(memory_path, 'w', encoding='utf-8') as f:
             json.dump(memory_data, f, ensure_ascii=False, indent=2)
@@ -424,11 +423,11 @@ def clear_core_memory():
         
         memory_path = memory_dir / 'core_memory.json'
         
-        # 清空核心记忆，但保留文件结构（使用数组格式）
-        memory_data = [{
+        # 清空核心记忆，但保留文件结构（使用新的单个对象格式）
+        memory_data = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "content": ""
-        }]
+        }
         
         with open(memory_path, 'w', encoding='utf-8') as f:
             json.dump(memory_data, f, ensure_ascii=False, indent=2)

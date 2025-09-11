@@ -1,0 +1,28 @@
+<!-- 高级配置区域 -->
+{% for group_name, configs in config_groups.items() %}
+    {% if group_name != '基础配置' and group_name != '定时任务配置' %}
+    <div class="accordion mb-3">
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#{{ group_name|replace(' ', '-') }}">
+                    {{ group_name }}
+                </button>
+            </h2>
+            <div id="{{ group_name|replace(' ', '-') }}" class="accordion-collapse collapse">
+                <div class="accordion-body">
+                            {% for key, config in configs.items() %}
+                            <div class="mb-4">
+                                {% if config.type == 'text' %}
+                                <textarea class="form-control" id="WORLDVIEW" name="WORLDVIEW" rows="8" placeholder="请输入世界书内容（默认值为空，即不指定世界观）">{{ config.value }}</textarea>
+                                {% else %}
+                                    {{ render_config_item(key, config) }}
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endfor %}
