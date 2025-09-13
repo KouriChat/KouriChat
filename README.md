@@ -30,6 +30,7 @@
 
 ----------------------------
 官网：[KouriChat](https://kourichat.com)<br>
+技术文档：[KouriChat Wiki](https://kourichat.com/docs)<br>
 角色广场：[KouriChat角色广场](https://avatars.kourichat.com)
 ## 🌟 效果示例
 
