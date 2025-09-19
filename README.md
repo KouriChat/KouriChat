@@ -29,7 +29,7 @@
 [![Moe Counter](https://count.getloli.com/get/@KouriChat?theme=moebooru)](https://github.com/KouriChat/KouriChat)
 
 ----------------------------
-API平台：[Kouri API（推荐）](https://api.kourichat.com/)（注册送2元）
+API平台：[Kouri API（推荐）](https://api.kourichat.com/)（注册送2元）<br>
 官网：[KouriChat](https://kourichat.com)<br>
 技术文档：[KouriChat Wiki](https://kourichat.com/docs)<br>
 角色广场：[KouriChat角色广场](https://avatars.kourichat.com)
