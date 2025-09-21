@@ -67,7 +67,7 @@ class ReminderRecognitionService:
         """
         delay = 2
         current_model = self.intent_recognition_settings["model"]
-        logger.info(f"调用模型{current_model}进行提醒意图识别...")
+        logger.info(f"调用模型{current_model}进行意图识别（自然语言提醒）...（如果卡住或报错请检查是否配置了意图识别API！）")
         current_time = datetime.now()
         messages = [{"role": "system", "content": self.sys_prompt}]
         current_dir = os.path.dirname(os.path.abspath(__file__))

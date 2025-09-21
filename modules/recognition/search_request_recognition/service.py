@@ -64,7 +64,7 @@ class SearchRecognitionService:
             Dict: {"search_required": true/false, "search_query": ""}
         """
         current_model = self.intent_recognition_settings["model"]
-        logger.info(f"调用模型{current_model}进行联网意图识别...")
+        logger.info(f"调用模型{current_model}进行意图识别（联网意图）...（如果卡住或报错请检查是否配置了意图识别API！）")
         current_time = datetime.now()        
         messages = [{"role": "system", "content": self.sys_prompt}]
         current_dir = os.path.dirname(os.path.abspath(__file__))

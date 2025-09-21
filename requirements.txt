@@ -24,3 +24,4 @@ uiautomation
 emoji==2.10.1
 cryptography>=3.0.0
 zhdate
+httpx-ws==0.7.2

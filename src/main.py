@@ -402,25 +402,8 @@ def initialize_services():
     # 创建主动消息处理器
     auto_sender = AutoSendHandler(message_handler, config, listen_list)
 
-    # 创建并行聊天机器人实例
-    # 为私聊创建独立的MessageHandler实例
-    private_message_handler = MessageHandler(
-        root_dir=root_dir,
-        api_key=config.llm.api_key,
-        base_url=config.llm.base_url,
-        model=config.llm.model,
-        max_token=config.llm.max_tokens,
-        temperature=config.llm.temperature,
-        max_groups=config.behavior.context.max_groups,
-        robot_name=ROBOT_WX_NAME,
-        prompt_content=prompt_content,  # 使用默认人设内容
-        image_handler=image_handler,
-        emoji_handler=emoji_handler,
-        memory_service=memory_service,
-        content_generator=content_generator
-    )
-    
-    private_chat_bot = PrivateChatBot(private_message_handler, image_recognition_service, auto_sender, emoji_handler)
+    # 创建并行聊天机器人实例 
+    private_chat_bot = PrivateChatBot(message_handler, image_recognition_service, auto_sender, emoji_handler)
     group_chat_bot = GroupChatBot(MessageHandler, config, auto_sender, emoji_handler, image_recognition_service)
 
     # 启动主动消息倒计时

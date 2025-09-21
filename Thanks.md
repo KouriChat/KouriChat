@@ -1,10 +1,9 @@
-# 致谢
+﻿# 致谢
 
-本项目的成功离不开以下支持：
+## 本项目的成功离不开以下支持：
 
-## 开源项目
-
-- [cluic/wxauto](https://github.com/cluic/wxauto) - 提供了微信自动化的基础功能
+- [Kouri API](https://api.kourichat.com/register?aff=EONx) - 提供高可用AI大模型分发平台
+- [硅基流动](https://cloud.siliconflow.cn/i/aQXU6eC5) - 提供高可用AI大模型分发平台
 - [DeepSeek](https://platform.deepseek.com/) - 提供AI对话能力
 - [Moonshot AI](https://platform.moonshot.cn/) - 提供图像识别能力
 
