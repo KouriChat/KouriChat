@@ -18,6 +18,8 @@
 [![Community](https://img.shields.io/badge/QQ群-212464307-12B7F3?style=for-the-badge&logo=tencentqq)]()
 [![Community](https://img.shields.io/badge/QQ群-1027523100-12B7F3?style=for-the-badge&logo=tencentqq)]()
 [![Community](https://img.shields.io/badge/QQ群-219369637-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-863957211-12B7F3?style=for-the-badge&logo=tencentqq)]()
+[![Community](https://img.shields.io/badge/QQ群-950830521-12B7F3?style=for-the-badge&logo=tencentqq)]()
 [![Community](https://img.shields.io/badge/QQ频道-和Ai谈恋爱吧-12B7F3?style=for-the-badge&logo=tencentqq)](https://pd.qq.com/s/kvfv4cpq)
 [![Community](https://img.shields.io/badge/QQ频道-女性向交流-12B7F3?style=for-the-badge&logo=tencentqq)](https://pd.qq.com/s/fp2mdfs4g)
 [![Community](https://img.shields.io/badge/贴吧-KouriChat吧-12B7F3?style=for-the-badge&logo=tencentqq)](https://tieba.baidu.com/f?kw=kourichat)
