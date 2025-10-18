@@ -12,7 +12,7 @@ snownlp
 SQLAlchemy
 tenacity
 Werkzeug
-wxauto==3.9.11.17.5
+wxautold==3.9.11.17.5
 apscheduler==3.10.4
 python-dateutil==2.9.0.post0
 dateparser==1.2.0
