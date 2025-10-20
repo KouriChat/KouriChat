@@ -180,5 +180,6 @@ python run.py
 
 ## 项目结构
 
-项目结构的详细说明请参考 DeepWiki
+项目结构的详细说明请参考DeepWiki [系统架构说明](https://deepwiki.com/KouriChat/KouriChat/1.2-system-architecture)
+
 
