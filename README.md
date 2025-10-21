@@ -175,10 +175,11 @@ python run.py
 - **视频教程**：[哔哩哔哩频道](https://space.bilibili.com/209397245)
 - **技术文档**：[KouriChat Wiki](https://kourichat.com/docs)
 - **商务合作**：[yangchenglin2004@foxmail.com](mailto:yangchenglin2004@foxmail.com)
-- **更多方式**: [官网](https://kourichat.com/join/)
+- **更多方式**：[官网](https://kourichat.com/join/)
 ---
 
 ## 项目结构
 
-项目结构的详细说明请参考 DeepWiki
+项目结构的详细说明请参考DeepWiki：[系统架构说明](https://deepwiki.com/KouriChat/KouriChat/1.2-system-architecture)
+
 
