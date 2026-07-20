@@ -13,7 +13,7 @@ from typing import Optional
 from datetime import datetime
 import pyautogui
 import time
-from wxauto import WeChat
+from src.utils.wx_client import WeChat
 from data.config import config
 
 logger = logging.getLogger('main')

@@ -3,6 +3,15 @@
         "user_settings": {
             "title": "用户设置",
             "settings": {
+                "wxauto_type": {
+                    "value": "wxauto4 (免费版)",
+                    "type": "string",
+                    "description": "微信自动化底层库版本",
+                    "options": [
+                        "wxauto4 (免费版)",
+                        "wxautox (高级版)"
+                    ]
+                },
                 "listen_list": {
                     "value": [
                         ""

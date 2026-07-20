@@ -11,7 +11,7 @@ import threading
 import time
 import re
 from datetime import datetime
-from wxauto import WeChat
+from src.utils.wx_client import WeChat
 from src.services.database import Session, ChatMessage
 import random
 import os
@@ -838,6 +838,13 @@ class MessageHandler:
         else:
             # 否则使用正常的消息发送方式
             self._send_message_with_dollar(reply, chat_id)
+
+        # 推送到 OneBot
+        if hasattr(self, 'onebot_adapter') and self.onebot_adapter:
+            try:
+                self.onebot_adapter.on_ai_reply(chat_id, reply, is_group)
+            except Exception as e:
+                logger.error(f"OneBot 推送回复异常: {e}")
 
         # 异步保存消息记录
         # 保存实际用户发送的内容，群聊中保留发送者信息

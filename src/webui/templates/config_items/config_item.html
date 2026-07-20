@@ -71,6 +71,8 @@
     {% include 'config_items/switch_toggle.html' %}
 {% elif key == 'AVATAR_DIR' %}
     {% include 'config_items/avatar_dir_selector.html' %}
+{% elif key == 'WXAUTO_TYPE' %}
+    {% include 'config_items/wxauto_type_selector.html' %}
 {% else %}
     {% include 'config_items/text_input.html' %}
 {% endif %}

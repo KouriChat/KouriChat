@@ -17,7 +17,7 @@ except Exception as e:
 
 # 导入其余模块
 from data.config import config, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, MODEL, MAX_TOKEN, TEMPERATURE, MAX_GROUPS
-from wxauto import WeChat
+from src.utils.wx_client import WeChat
 import re
 from src.handlers.emoji import EmojiHandler
 from src.handlers.image import ImageHandler
@@ -405,6 +405,20 @@ def initialize_services():
     # 创建并行聊天机器人实例 
     private_chat_bot = PrivateChatBot(message_handler, image_recognition_service, auto_sender, emoji_handler)
     group_chat_bot = GroupChatBot(MessageHandler, config, auto_sender, emoji_handler, image_recognition_service)
+
+    # 初始化 OneBot 服务
+    if hasattr(config, 'onebot') and config.onebot.enabled:
+        try:
+            from src.onebot.server import OneBotServer
+            onebot_server = OneBotServer(config, message_handler)
+            message_handler.onebot_adapter = onebot_server.adapter
+            onebot_thread = threading.Thread(target=onebot_server.start, name="OneBotServer")
+            onebot_thread.daemon = True
+            onebot_thread.start()
+            print_status(f"OneBot 服务器已启动 (ws://{config.onebot.host}:{config.onebot.port})", "success", "CHECK")
+        except Exception as e:
+            print_status(f"OneBot 服务启动失败: {e}", "error", "CROSS")
+            logger.error(f"OneBot 服务启动失败: {e}", exc_info=True)
 
     # 启动主动消息倒计时
     auto_sender.start_countdown()
