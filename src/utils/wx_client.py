@@ -240,6 +240,27 @@ class WeChatAdapter:
                                             content = new_file_paths[0]
                                 except Exception as e:
                                     logger.warning(f"wx adapter failed to download image: {e}")
+                        elif self._savevoice_config.get(who, False) and ('Voice' in cls_name or 'Audio' in cls_name):
+                            if hasattr(r_msg, 'download'):
+                                import os
+                                try:
+                                    save_dir = os.path.abspath(os.path.join("data", "voices", "temp"))
+                                    os.makedirs(save_dir, exist_ok=True)
+                                    before_files = set(os.listdir(save_dir))
+
+                                    res = r_msg.download(dir_path=save_dir)
+
+                                    if res and hasattr(res, '__str__') and os.path.exists(str(res)):
+                                        content = str(res)
+                                    else:
+                                        after_files = set(os.listdir(save_dir))
+                                        new_files = after_files - before_files
+                                        if new_files:
+                                            new_file_paths = [os.path.join(save_dir, f) for f in new_files]
+                                            new_file_paths.sort(key=os.path.getmtime, reverse=True)
+                                            content = new_file_paths[0]
+                                except Exception as e:
+                                    logger.warning(f"wx adapter failed to download voice message: {e}")
                                     
                         cache.append(msg_hash)
                         if not is_first_poll:
