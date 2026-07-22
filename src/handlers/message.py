@@ -11,7 +11,7 @@ import threading
 import time
 import re
 from datetime import datetime
-from wxauto import WeChat
+from src.utils.wx_client import WeChat
 from src.services.database import Session, ChatMessage
 import random
 import os
@@ -656,11 +656,109 @@ class MessageHandler:
                                 reminder_type=reminder_type
                             )
 
+                # 检查图像生成或随机图片请求
+                if hasattr(self, 'image_handler') and self.image_handler and not is_image_recognition:
+                    if self.image_handler.is_random_image_request(combined_message):
+                        logger.info("检测到随机图片请求，正在处理...")
+                        return self._handle_random_image_request(chat_id, sender_name, username, is_group)
+                    elif self.image_handler.is_image_generation_request(combined_message):
+                        logger.info("检测到图像生成请求，正在处理...")
+                        return self._handle_image_generation_request(combined_message, chat_id, sender_name, username, is_group)
+
                 return self._handle_text_message(processed_message, chat_id, sender_name, username, is_group)
 
         except Exception as e:
             logger.error(f"处理消息队列失败: {e}")
             return None
+
+    def _handle_random_image_request(self, chat_id: str, sender_name: str, username: str, is_group: bool):
+        """处理随机图片请求"""
+        try:
+            logger.info(f"处理随机图片请求 - 来自: {sender_name}")
+            image_path = self.image_handler.get_random_image()
+            if image_path:
+                try:
+                    self.wx.SendFiles(filepath=image_path, who=chat_id)
+                    reply = "这是为您找到的图片~"
+                except Exception as e:
+                    logger.error(f"发送随机图片失败: {str(e)}")
+                    reply = "抱歉，图片发送失败了..."
+                finally:
+                    try:
+                        if os.path.exists(image_path):
+                            os.remove(image_path)
+                    except Exception as e:
+                        logger.error(f"删除临时图片失败: {str(e)}")
+
+                reply = self._add_at_tag_if_needed(reply, sender_name, is_group)
+                is_system_message = sender_name == "System" or username == "System"
+                threading.Thread(target=self.save_message,
+                                 args=(chat_id, sender_name, "【请求随机图片】", reply, is_system_message)).start()
+
+                if hasattr(self, 'onebot_adapter') and self.onebot_adapter:
+                    try:
+                        self.onebot_adapter.on_ai_reply(chat_id, reply, is_group)
+                    except Exception as e:
+                        logger.error(f"OneBot 推送回复异常: {e}")
+
+                return reply
+            else:
+                reply = "抱歉，获取随机图片失败了..."
+                reply = self._add_at_tag_if_needed(reply, sender_name, is_group)
+                self.wx.SendMsg(msg=reply, who=chat_id)
+                return reply
+        except Exception as e:
+            logger.error(f"处理随机图片请求失败: {str(e)}")
+            return None
+
+    def _handle_image_generation_request(self, content: str, chat_id: str, sender_name: str, username: str, is_group: bool):
+        """处理图像生成请求"""
+        try:
+            logger.info(f"处理图像生成请求 - 来自: {sender_name}, 内容: {content}")
+            if is_group:
+                api_content = f"[群聊消息] {sender_name}: {content}"
+            else:
+                api_content = content
+
+            image_path = self.image_handler.generate_image(content)
+            if image_path:
+                try:
+                    self.wx.SendFiles(filepath=image_path, who=chat_id)
+                    reply = "这是按照要求生成的图片~"
+                except Exception as e:
+                    logger.error(f"发送生成图片失败: {str(e)}")
+                    reply = "抱歉，图片生成成功但发送失败了..."
+                finally:
+                    try:
+                        if os.path.exists(image_path):
+                            os.remove(image_path)
+                    except Exception as e:
+                        logger.error(f"删除临时图片失败: {str(e)}")
+
+                reply = self._add_at_tag_if_needed(reply, sender_name, is_group)
+                self.wx.SendMsg(msg=reply, who=chat_id)
+
+                is_system_message = sender_name == "System" or username == "System"
+                save_content = api_content if is_group else content
+                threading.Thread(target=self.save_message,
+                                 args=(chat_id, sender_name, save_content, reply, is_system_message)).start()
+
+                if hasattr(self, 'onebot_adapter') and self.onebot_adapter:
+                    try:
+                        self.onebot_adapter.on_ai_reply(chat_id, reply, is_group)
+                    except Exception as e:
+                        logger.error(f"OneBot 推送回复异常: {e}")
+
+                return reply
+            else:
+                reply = "抱歉，图片生成失败了，请稍后再试..."
+                reply = self._add_at_tag_if_needed(reply, sender_name, is_group)
+                self.wx.SendMsg(msg=reply, who=chat_id)
+                return reply
+        except Exception as e:
+            logger.error(f"处理图像生成请求失败: {str(e)}")
+            return None
+
 
     def _process_text_for_display(self, text: str) -> str:
         """处理文本以确保表情符号正确显示"""
@@ -838,6 +936,13 @@ class MessageHandler:
         else:
             # 否则使用正常的消息发送方式
             self._send_message_with_dollar(reply, chat_id)
+
+        # 推送到 OneBot
+        if hasattr(self, 'onebot_adapter') and self.onebot_adapter:
+            try:
+                self.onebot_adapter.on_ai_reply(chat_id, reply, is_group)
+            except Exception as e:
+                logger.error(f"OneBot 推送回复异常: {e}")
 
         # 异步保存消息记录
         # 保存实际用户发送的内容，群聊中保留发送者信息

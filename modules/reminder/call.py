@@ -2,8 +2,17 @@ import logging
 import time
 import win32gui
 import pygame
-from wxauto import WeChat
-from wxauto.elements import ChatWnd
+from src.utils.wx_client import WeChat
+try:
+    from wxautox.elements import ChatWnd
+except ImportError:
+    try:
+        from wxauto4.elements import ChatWnd
+    except ImportError:
+        try:
+            from wxauto.elements import ChatWnd
+        except ImportError:
+            ChatWnd = None
 from uiautomation import ControlFromHandle
 
 logger = logging.getLogger('main')
@@ -36,7 +45,7 @@ def CallforWho(wx: WeChat, who: str) -> tuple[int|None, bool]:
     """
     logger.info("尝试发起语音通话")
     try:
-        if win32gui.FindWindow('ChatWnd', who):
+        if ChatWnd is not None and win32gui.FindWindow('ChatWnd', who):
             # --- 若找到了和指定对象的独立聊天窗口，在这个窗口上操作 ---
             try:
                 chat_wnd = ChatWnd(who, wx.language)

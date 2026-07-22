@@ -217,12 +217,19 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             "消息配置": {},
             "人设配置": {},
             "网络搜索配置": {},
+            "OneBot协议配置": {},
             "世界书":{}
         }
 
         # 基础配置
         config_groups["基础配置"].update(
             {
+                "WXAUTO_TYPE": {
+                    "value": getattr(config.user, 'wxauto_type', 'wxauto4'),
+                    "description": "微信自动化底层库版本",
+                    "options": ["wxauto4 (免费版)", "wxautox (高级版)"],
+                    "type": "select"
+                },
                 "LISTEN_LIST": {
                     "value": config.user.listen_list,
                     "description": "用户列表(请配置要和bot说话的账号的昵称或者群名，不要写备注！昵称尽量别用特殊字符)",
@@ -421,6 +428,45 @@ def parse_config_groups() -> Dict[str, Dict[str, Any]]:
             }
         )
 
+        # OneBot 配置
+        config_groups["OneBot协议配置"].update(
+            {
+                "ONEBOT_ENABLED": {
+                    "value": config.onebot.enabled,
+                    "type": "boolean",
+                    "description": "启用 OneBot 协议兼容模式"
+                },
+                "ONEBOT_HOST": {
+                    "value": config.onebot.host,
+                    "description": "WebSocket 监听地址 (默认 0.0.0.0)"
+                },
+                "ONEBOT_PORT": {
+                    "value": config.onebot.port,
+                    "description": "WebSocket 监听端口 (默认 6700)",
+                    "type": "number"
+                },
+                "ONEBOT_TOKEN": {
+                    "value": config.onebot.access_token,
+                    "description": "鉴权 Access Token (留空则不鉴权)",
+                    "is_secret": True
+                },
+                "ONEBOT_HEARTBEAT": {
+                    "value": config.onebot.heartbeat_interval,
+                    "description": "心跳发送间隔 (秒，0为禁用)",
+                    "type": "number"
+                },
+                "ONEBOT_SELF_ID": {
+                    "value": config.onebot.self_id,
+                    "description": "机器人在外部的虚拟账号ID",
+                    "type": "number"
+                },
+                "ONEBOT_NICKNAME": {
+                    "value": config.onebot.nickname,
+                    "description": "机器人昵称"
+                }
+            }
+        )
+
         # 世界书配置
         worldview = ""
         try:
@@ -567,7 +613,8 @@ def save_config():
                        'INTENT_API_KEY', 'INTENT_BASE_URL', 'INTENT_MODEL', 'INTENT_TEMPERATURE',
                        'IMAGE_MODEL', 'TEMP_IMAGE_DIR', 'AUTO_MESSAGE', 'MIN_COUNTDOWN_HOURS', 'MAX_COUNTDOWN_HOURS',
                        'QUIET_TIME_START', 'QUIET_TIME_END', 'TTS_API_URL', 'VOICE_DIR', 'MAX_GROUPS', 'AVATAR_DIR',
-                       'QUEUE_TIMEOUT', 'NETWORK_SEARCH_ENABLED', 'WEBLENS_ENABLED', 'NETWORK_SEARCH_API_KEY', 'NETWORK_SEARCH_BASE_URL', 'TTS_API_KEY', 'TTS_MODEL_ID']:
+                       'QUEUE_TIMEOUT', 'NETWORK_SEARCH_ENABLED', 'WEBLENS_ENABLED', 'NETWORK_SEARCH_API_KEY', 'NETWORK_SEARCH_BASE_URL', 'TTS_API_KEY', 'TTS_MODEL_ID',
+                       'ONEBOT_ENABLED', 'ONEBOT_HOST', 'ONEBOT_PORT', 'ONEBOT_TOKEN', 'ONEBOT_HEARTBEAT', 'ONEBOT_SELF_ID', 'ONEBOT_NICKNAME']:
                 update_config_value(current_config, key, value)
             elif key == 'WORLDVIEW':
                 worldview_file_path = os.path.join(ROOT_DIR, 'src/base/worldview.md')
@@ -643,6 +690,14 @@ def update_config_value(config_data, key, value):
             'QUEUE_TIMEOUT': ['categories', 'behavior_settings', 'settings', 'message_queue', 'timeout', 'value'],
             'MAX_GROUPS': ['categories', 'behavior_settings', 'settings', 'context', 'max_groups', 'value'],
             'AVATAR_DIR': ['categories', 'behavior_settings', 'settings', 'context', 'avatar_dir', 'value'],
+            'ONEBOT_ENABLED': ['categories', 'onebot_settings', 'settings', 'enabled', 'value'],
+            'ONEBOT_HOST': ['categories', 'onebot_settings', 'settings', 'host', 'value'],
+            'ONEBOT_PORT': ['categories', 'onebot_settings', 'settings', 'port', 'value'],
+            'ONEBOT_TOKEN': ['categories', 'onebot_settings', 'settings', 'access_token', 'value'],
+            'ONEBOT_HEARTBEAT': ['categories', 'onebot_settings', 'settings', 'heartbeat_interval', 'value'],
+            'ONEBOT_SELF_ID': ['categories', 'onebot_settings', 'settings', 'self_id', 'value'],
+            'ONEBOT_NICKNAME': ['categories', 'onebot_settings', 'settings', 'nickname', 'value'],
+            'WXAUTO_TYPE': ['categories', 'user_settings', 'settings', 'wxauto_type', 'value'],
         }
 
         if key in mapping:
@@ -764,6 +819,97 @@ def update_config_value(config_data, key, value):
 
     except Exception as e:
         logger.error(f"更新配置值失败 {key}: {str(e)}")
+
+# ── wxautox 授权管理路由 ──────────────────────────────────────────
+
+@app.route('/wxautox/status', methods=['GET'])
+def wxautox_status():
+    """检查 wxautox 授权状态"""
+    try:
+        import sys
+        result = subprocess.run(
+            [sys.executable, '-m', 'wxautox', '--debug-license'],
+            capture_output=True, timeout=10,
+            cwd=ROOT_DIR
+        )
+        try:
+            output = (result.stdout + result.stderr).decode('utf-8').strip()
+        except UnicodeDecodeError:
+            output = (result.stdout + result.stderr).decode('gbk', errors='ignore').strip()
+            
+        # 判断是否已授权：未授权时输出含"未授权"或"Missing"或要求提供证书文件
+        authorized = (
+            '未授权' not in output and 
+            'Missing' not in output and 
+            'unauthorized' not in output.lower() and 
+            'WXAUTOX_DEBUG_LICENSE' not in output and 
+            result.returncode == 0
+        )
+        return jsonify({
+            'status': 'success',
+            'authorized': authorized,
+            'output': output
+        })
+    except Exception as e:
+        logger.error(f'检查 wxautox 授权状态失败: {e}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/wxautox/activate', methods=['POST'])
+def wxautox_activate():
+    """使用激活码激活 wxautox"""
+    try:
+        data = request.get_json()
+        if not data or not data.get('auth_code', '').strip():
+            return jsonify({'status': 'error', 'message': '激活码不能为空'}), 400
+        auth_code = data['auth_code'].strip()
+        import sys
+        result = subprocess.run(
+            [sys.executable, '-m', 'wxautox', '--auth', auth_code],
+            capture_output=True, timeout=30,
+            cwd=ROOT_DIR
+        )
+        try:
+            output = (result.stdout + result.stderr).decode('utf-8').strip()
+        except UnicodeDecodeError:
+            output = (result.stdout + result.stderr).decode('gbk', errors='ignore').strip()
+            
+        success = result.returncode == 0 and ('成功' in output or 'success' in output.lower()
+                                               or 'activated' in output.lower())
+        return jsonify({
+            'status': 'success' if success else 'error',
+            'message': output or ('激活成功' if success else '激活失败，请检查激活码'),
+            'authorized': success
+        })
+    except Exception as e:
+        logger.error(f'wxautox 激活失败: {e}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/wxautox/export', methods=['GET'])
+def wxautox_export():
+    """导出 wxautox 机器码"""
+    try:
+        import sys
+        result = subprocess.run(
+            [sys.executable, '-m', 'wxautox', '--export'],
+            capture_output=True, timeout=10,
+            cwd=ROOT_DIR
+        )
+        try:
+            output = (result.stdout + result.stderr).decode('utf-8').strip()
+        except UnicodeDecodeError:
+            output = (result.stdout + result.stderr).decode('gbk', errors='ignore').strip()
+            
+        return jsonify({
+            'status': 'success',
+            'machine_code': output
+        })
+    except Exception as e:
+        logger.error(f'导出 wxautox 机器码失败: {e}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# ── end wxautox 授权管理路由 ────────────────────────────────────────
 
 # 添加上传处理路由
 @app.route('/upload_background', methods=['POST'])

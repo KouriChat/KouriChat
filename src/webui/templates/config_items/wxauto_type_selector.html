@@ -1,0 +1,8 @@
+<!-- 微信自动化底层库版本选择组件 -->
+<select class="form-select" id="{{ key }}" name="{{ key }}">
+    {% for option in config.options %}
+    <option value="{{ option.split(' ')[0] }}" {% if option.split(' ')[0] == config.value or option == config.value %}selected{% endif %}>
+        {{ option }}
+    </option>
+    {% endfor %}
+</select>

@@ -814,6 +814,76 @@
                 </div>
             </div>
 
+            <!-- wxautox 授权管理面板 -->
+            <div class="glass-panel mt-3">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="mb-0">
+                        <i class="bi bi-shield-lock me-2"></i>微信自动化授权管理
+                        <small class="text-muted fs-6 ms-2">wxautox</small>
+                    </h4>
+                    <button class="btn btn-glass text-info" onclick="checkWxautoxStatus()" id="wxautoxRefreshBtn">
+                        <i class="bi bi-arrow-repeat me-1"></i>刷新状态
+                    </button>
+                </div>
+
+                <!-- 授权状态卡片 -->
+                <div class="info-card mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted me-2"><i class="bi bi-patch-check me-1"></i>授权状态</span>
+                            <span id="wxautoxStatusBadge" class="badge bg-secondary">
+                                <i class="bi bi-hourglass-split me-1"></i>检查中...
+                            </span>
+                        </div>
+                        <a href="https://wxauto.org/purchase" target="_blank" rel="noopener"
+                           class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-cart me-1"></i>购买授权
+                        </a>
+                    </div>
+                    <div id="wxautoxStatusDetail" class="mt-2 text-muted small d-none">
+                        <pre class="mb-0" style="white-space:pre-wrap;font-size:0.8rem;background:transparent;border:none;padding:0;"></pre>
+                    </div>
+                </div>
+
+                <!-- 激活码输入 -->
+                <div class="info-card mb-3">
+                    <h6 class="mb-3"><i class="bi bi-key me-2"></i>输入激活码</h6>
+                    <div class="input-group">
+                        <input type="text" id="wxautoxAuthCode" class="form-control"
+                               placeholder="请输入 wxautox 激活码..."
+                               autocomplete="off">
+                        <button class="btn btn-primary" type="button"
+                                onclick="activateWxautox()" id="wxautoxActivateBtn">
+                            <i class="bi bi-lightning-fill me-1"></i>一键激活
+                        </button>
+                    </div>
+                    <div id="wxautoxActivateResult" class="mt-2 d-none"></div>
+                    <small class="text-muted mt-2 d-block">
+                        在 <a href="https://dusapi.com/register" target="_blank" rel="noopener">Du's API</a> 注册账号后，
+                        前往 <a href="https://wxauto.org/purchase" target="_blank" rel="noopener">wxauto.org/purchase</a> 购买激活码
+                    </small>
+                </div>
+
+                <!-- 机器码导出 -->
+                <div class="info-card">
+                    <h6 class="mb-3"><i class="bi bi-pc-display me-2"></i>导出机器码</h6>
+                    <p class="text-muted small mb-3">如需将激活码绑定到本机，可先导出机器码，发送给管理员进行授权。</p>
+                    <button class="btn btn-glass text-warning" onclick="exportWxautoxMachineCode()" id="wxautoxExportBtn">
+                        <i class="bi bi-box-arrow-up me-1"></i>导出机器码
+                    </button>
+                    <div id="wxautoxMachineCode" class="mt-3 d-none">
+                        <label class="form-label text-muted small">机器码（复制发给管理员）：</label>
+                        <div class="input-group">
+                            <textarea class="form-control font-monospace" rows="3" id="wxautoxMachineCodeText" readonly></textarea>
+                            <button class="btn btn-outline-secondary" type="button" onclick="copyMachineCode()">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- end wxautox 授权管理面板 -->
+
             <div class="glass-panel">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h4 class="mb-0">

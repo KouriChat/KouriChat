@@ -19,6 +19,7 @@ class GroupChatConfigItem:
 @dataclass
 class UserSettings:
     listen_list: List[str]
+    wxauto_type: str = "wxauto4"
     group_chat_config: List[GroupChatConfigItem] = None
     
     def __post_init__(self):
@@ -118,6 +119,16 @@ class IntentRecognitionSettings:
     temperature: float
 
 @dataclass
+class OneBotSettings:
+    enabled: bool
+    host: str
+    port: int
+    access_token: str
+    heartbeat_interval: int
+    self_id: int
+    nickname: str
+
+@dataclass
 class Config:
     def __init__(self):
         self.user: UserSettings
@@ -127,6 +138,7 @@ class Config:
         self.auth: AuthSettings
         self.network_search: NetworkSearchSettings
         self.intent_recognition: IntentRecognitionSettings
+        self.onebot: OneBotSettings
         self.version: str = "1.0.0"  # 配置文件版本
         self.load_config()
 
@@ -374,6 +386,8 @@ class Config:
                 if not isinstance(listen_list, list):
                     listen_list = [str(listen_list)] if listen_list else []
                 
+                wxauto_type = user_data.get('wxauto_type', {}).get('value', 'wxauto4')
+                
                 # 群聊配置
                 group_chat_config_data = user_data.get('group_chat_config', {}).get('value', [])
                 group_chat_configs = []
@@ -390,6 +404,7 @@ class Config:
                 
                 self.user = UserSettings(
                     listen_list=listen_list,
+                    wxauto_type=wxauto_type,
                     group_chat_config=group_chat_configs
                 )
 
@@ -507,6 +522,18 @@ class Config:
                     base_url=intent_recognition_data.get('base_url', {}).get('value', 'https://api.kourichat.com/v1'),
                     model=intent_recognition_data.get('model', {}).get('value', 'kourichat-v3'),
                     temperature=float(intent_recognition_data.get('temperature', {}).get('value', 0.1))
+                )
+
+                # OneBot 设置
+                onebot_data = categories.get('onebot_settings', {}).get('settings', {})
+                self.onebot = OneBotSettings(
+                    enabled=onebot_data.get('enabled', {}).get('value', False),
+                    host=onebot_data.get('host', {}).get('value', '0.0.0.0'),
+                    port=int(onebot_data.get('port', {}).get('value', 6700)),
+                    access_token=onebot_data.get('access_token', {}).get('value', ''),
+                    heartbeat_interval=int(onebot_data.get('heartbeat_interval', {}).get('value', 30)),
+                    self_id=int(onebot_data.get('self_id', {}).get('value', 10001000)),
+                    nickname=onebot_data.get('nickname', {}).get('value', 'KouriChat')
                 )
 
                 logger.info("配置加载完成")
