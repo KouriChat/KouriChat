@@ -35,3 +35,6 @@ frontend/dist/
 # wheel 内静态产物（由 build.ps1 从 frontend/dist 填充）
 kourichat/webui/static/
 dist/
+
+# start.bat 下载的依赖缓存
+packages/
