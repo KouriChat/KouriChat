@@ -53,10 +53,10 @@ def _settings(cfg: dict[str, Any], data_dir: str, log_dir: str) -> Settings:
     )
 
 
-def _provider(cfg: dict[str, Any]) -> OpenAIProvider:
+def _provider(cfg: dict[str, Any]) -> OpenAIProvider | None:
     missing = [k for k in ("base_url", "api_key", "model") if not cfg.get(k)]
     if missing:
-        raise RuntimeError(f"llm/factory 插件缺少配置：{', '.join(missing)}")
+        return None
     return OpenAIProvider(
         base_url=cfg["base_url"],
         api_key=cfg["api_key"],
@@ -106,7 +106,7 @@ async def apply(ctx: Any, config: dict[str, Any] | None = None) -> Any:
     data_dir = str(cfg.get("data_dir", "./data"))
     log_dir = str(cfg.get("log_dir", "./logs"))
     logger = ctx.get("logger") or LoguruLogger()
-    provider = _provider(cfg)  # 缺配置在此抛错（无副作用）
+    provider = _provider(cfg)  # 缺配置时允许先启动，引导页保存后再热重载
     settings = _settings(cfg, data_dir, log_dir)
     summary_prompt = str(cfg.get("summary_prompt") or DEFAULT_SUMMARY_PROMPT)
 

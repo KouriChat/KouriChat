@@ -42,7 +42,7 @@ log_level = "INFO"                 # DEBUG/INFO/WARNING/ERROR
 module = "kourichat.adapter.onebot"
 [adapters.config]
 mode = "reverse"                 # forward | reverse
-ws_host = "0.0.0.0"              # 监听地址
+ws_host = "127.0.0.1"            # 监听地址（对局域网开放改 0.0.0.0，并务必设置 token）
 ws_port = 6700                   # 监听端口
 token = ""                       # 设了则平台必须带 Authorization: Bearer <token>
 # register = ["text", "image"]   # 注册类：仅处理声明的段类型
@@ -57,10 +57,11 @@ token = ""                       # 设了则平台必须带 Authorization: Beare
 # token = ""                      # 平台要求的 AccessToken
 # register = ["text", "image"]
 
-# OpenClaw 适配器 —— 对接 weixin-gateway（OneBot v11 网关，默认 http://127.0.0.1:8765）：
-# 负责二维码登录（GET /login 取二维码 → /login/token 轮询）、失效自动刷新二维码、
-# token_expired 登录失效标记 + 手动重登、已登录账号本地持久化（elixir Store）。
-# 前置：先启动网关 `weixin-gateway run`，把其 config.json 里自动生成的 accessToken 填到下面。
+# OpenClaw 适配器 —— 对接 openclaw-onebotv11（OneBot v11 网关，默认 http://127.0.0.1:8765）：
+# 登录走 OneBot action（weixin_login 取二维码 / weixin_login_refresh 刷新 /
+# weixin_logout 登出），结果由 WS notice.login_success / login_qr_expired 广播；
+# token_expired 标记失效 + 手动重登；已登录账号本地持久化（elixir Store）。
+# 前置：先启动网关 `openclaw-onebotv11 run`，把其 config.json 里自动生成的 accessToken 填到下面。
 [[adapters]]
 module = "kourichat.adapter.openclaw"
 [adapters.config]
@@ -68,7 +69,7 @@ gateway_url = "http://127.0.0.1:8765"  # weixin-gateway 地址
 access_token = ""                      # 网关 config.json 的 accessToken（留空则连上但动作会 401）
 data_dir = "./data"                    # 账号镜像持久化目录（openclaw-accounts/）
 autologin = true                       # 无本地账号时自动发起扫码登录
-poll_interval = 2.0                    # /login/token 轮询间隔（秒）
+poll_interval = 2.0                    # 兼容保留（新契约登录走 action+notice，不再轮询）
 # register = ["text", "image"]
 
 # 默认任务：echo 回显（可开关）。收到 `/echo` 后原样回显下一条消息，
