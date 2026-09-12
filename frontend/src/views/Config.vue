@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from "vue";
 import { api, type SettingsFields } from "../api";
+import { toast } from "../lib/toast";
+import type { ChipTone } from "../components/ui/types";
+import GButton from "../components/ui/GButton.vue";
+import GCard from "../components/ui/GCard.vue";
+import GChip from "../components/ui/GChip.vue";
+import GInput from "../components/ui/GInput.vue";
+import GSelect from "../components/ui/GSelect.vue";
+import GSwitch from "../components/ui/GSwitch.vue";
 
 const fields = reactive<SettingsFields>({
   core: { log_level: "INFO" },
@@ -11,7 +19,12 @@ const fields = reactive<SettingsFields>({
     autologin: true,
     poll_interval: 2.0,
   },
-  llm: { base_url: "https://api.openai.com/v1", api_key: "", model: "gpt-4o-mini", data_dir: "./data" },
+  llm: {
+    base_url: "https://api.openai.com/v1",
+    api_key: "",
+    model: "gpt-4o-mini",
+    data_dir: "./data",
+  },
   webui: { host: "127.0.0.1", port: 8080 },
   persona: { personas_dir: "./personas", enable: "" },
   echo: { enabled: true },
@@ -29,7 +42,7 @@ async function load() {
   try {
     const res = await api.settingsGet();
     Object.assign(fields, res.fields);
-    ready = true; // 加载完成后才允许自动保存（避免打开即写文件）
+    ready = true;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
     status.value = "error";
@@ -54,15 +67,17 @@ async function doSave() {
   }
 }
 
-// 输入变化 → 防抖 800ms 自动保存（即时保存）
-watch(fields, () => {
-  if (!ready) return;
-  status.value = "idle";
-  if (saveTimer !== undefined) window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(doSave, 800);
-}, { deep: true });
+watch(
+  fields,
+  () => {
+    if (!ready) return;
+    status.value = "idle";
+    if (saveTimer !== undefined) window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(doSave, 800);
+  },
+  { deep: true },
+);
 
-// —— LLM 连通测试 ——
 const testing = ref(false);
 const testResult = ref<{ ok: boolean; text: string } | null>(null);
 
@@ -74,14 +89,17 @@ async function testLlm() {
     testResult.value = r.ok
       ? { ok: true, text: `✅ 连通正常（${r.model ?? ""}）：${r.reply ?? ""}` }
       : { ok: false, text: `❌ ${r.error ?? "未知错误"}` };
+    if (r.ok) toast.success("LLM 连通正常");
+    else toast.error(r.error ?? "LLM 连通失败");
   } catch (err) {
-    testResult.value = { ok: false, text: `❌ ${err instanceof Error ? err.message : String(err)}` };
+    const message = err instanceof Error ? err.message : String(err);
+    testResult.value = { ok: false, text: `❌ ${message}` };
+    toast.error(message);
   } finally {
     testing.value = false;
   }
 }
 
-// —— LLM 热重载（运行时重启 llm.factory 组件）——
 const reloading = ref(false);
 const reloadResult = ref<{ ok: boolean; text: string } | null>(null);
 
@@ -89,18 +107,34 @@ async function reloadLlm() {
   reloading.value = true;
   reloadResult.value = null;
   try {
-    // 先保存当前表单值（保证文件与内存一致），再热重载
     await api.settingsSave(JSON.parse(JSON.stringify(fields)));
     const r = await api.llmReload();
     reloadResult.value = r.ok
       ? { ok: true, text: `✅ ${r.note ?? "LLM 组件已热重载"}` }
       : { ok: false, text: `❌ ${r.error ?? "热重载失败"}` };
+    if (r.ok) toast.success(r.note ?? "LLM 组件已热重载");
+    else toast.error(r.error ?? "热重载失败");
   } catch (err) {
-    reloadResult.value = { ok: false, text: `❌ ${err instanceof Error ? err.message : String(err)}` };
+    const message = err instanceof Error ? err.message : String(err);
+    reloadResult.value = { ok: false, text: `❌ ${message}` };
+    toast.error(message);
   } finally {
     reloading.value = false;
   }
 }
+
+const statusTone: Record<typeof status.value, ChipTone> = {
+  idle: "neutral",
+  saving: "warning",
+  saved: "success",
+  error: "error",
+};
+const statusText: Record<typeof status.value, string> = {
+  idle: "修改即自动保存",
+  saving: "保存中…",
+  saved: "已保存",
+  error: "保存失败",
+};
 
 onMounted(load);
 </script>
@@ -108,149 +142,159 @@ onMounted(load);
 <template>
   <div class="space-y-6">
     <div class="flex flex-wrap items-center gap-3">
-      <h2 class="text-lg font-semibold text-slate-100">设置</h2>
-      <span
-        class="rounded-full px-2.5 py-1 text-xs font-medium"
-        :class="{
-          'bg-emerald-500/15 text-emerald-300': status === 'saved',
-          'bg-amber-500/15 text-amber-300': status === 'saving',
-          'bg-red-500/15 text-red-300': status === 'error',
-          'bg-slate-800 text-slate-400': status === 'idle',
-        }"
+      <h1 class="text-[32px] leading-tight">设置</h1>
+      <GChip :tone="statusTone[status]">{{ statusText[status] }}</GChip>
+      <p
+        v-if="error"
+        class="rounded-md bg-error/10 px-3 py-1.5 text-[12px] text-error"
       >
-        {{ status === "saving" ? "保存中…" : status === "saved" ? "已保存" : status === "error" ? "保存失败" : "修改即自动保存" }}
-      </span>
-      <span v-if="error" class="rounded-lg bg-red-500/15 px-2 py-1 text-xs text-red-300">{{ error }}</span>
+        {{ error }}
+      </p>
     </div>
 
-    <p v-if="loading" class="text-sm text-slate-400">加载中…</p>
+    <p v-if="loading" class="text-[14px] text-ink-soft">加载中…</p>
     <template v-else>
       <!-- 核心 -->
-      <section class="card p-5">
-        <h3 class="mb-4 text-sm font-semibold text-slate-300">核心</h3>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">日志级别</label>
-            <select v-model="fields.core.log_level" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500">
-              <option value="DEBUG">DEBUG</option><option value="INFO">INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option>
-            </select>
-          </div>
+      <GCard>
+        <h3 class="text-[20px]">核心</h3>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">日志级别</span>
+            <GSelect v-model="fields.core.log_level">
+              <option value="DEBUG">DEBUG</option>
+              <option value="INFO">INFO</option>
+              <option value="WARNING">WARNING</option>
+              <option value="ERROR">ERROR</option>
+            </GSelect>
+          </label>
         </div>
-      </section>
+      </GCard>
 
       <!-- OpenClaw 网关 -->
-      <section class="card p-5">
-        <h3 class="mb-4 text-sm font-semibold text-slate-300">OpenClaw 网关</h3>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">网关地址</label>
-            <input v-model="fields.openclaw.gateway_url" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" placeholder="http://127.0.0.1:8765" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">Access Token</label>
-            <input v-model="fields.openclaw.access_token" type="password" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" placeholder="网关 config.json 的 accessToken" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">数据目录</label>
-            <input v-model="fields.openclaw.data_dir" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">轮询间隔（秒）</label>
-            <input v-model.number="fields.openclaw.poll_interval" type="number" min="0.2" step="0.1" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-          </div>
-          <div class="sm:col-span-2">
-            <label class="flex items-center gap-2 text-sm text-slate-300">
-              <input v-model="fields.openclaw.autologin" type="checkbox" class="h-4 w-4 rounded accent-indigo-500" />
-              无本地账号时自动发起扫码登录
-            </label>
+      <GCard>
+        <h3 class="text-[20px]">OpenClaw 网关</h3>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">网关地址</span>
+            <GInput v-model="fields.openclaw.gateway_url" placeholder="http://127.0.0.1:8765" />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">Access Token</span>
+            <GInput
+              v-model="fields.openclaw.access_token"
+              type="password"
+              placeholder="网关 config.json 的 accessToken"
+            />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">数据目录</span>
+            <GInput v-model="fields.openclaw.data_dir" />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">
+              轮询间隔（秒，兼容保留）
+            </span>
+            <GInput
+              v-model.number="fields.openclaw.poll_interval"
+              type="number"
+              placeholder="2.0"
+            />
+          </label>
+          <div
+            class="flex items-center justify-between gap-4 rounded-lg border border-line px-4 py-3 sm:col-span-2"
+          >
+            <span class="text-[14px] text-ink">无本地账号时自动发起扫码登录</span>
+            <GSwitch v-model="fields.openclaw.autologin" />
           </div>
         </div>
-      </section>
+      </GCard>
 
       <!-- LLM -->
-      <section class="card p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-slate-300">LLM（elixir / OpenAI 兼容）</h3>
+      <GCard>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h3 class="text-[20px]">LLM（elixir / OpenAI 兼容）</h3>
           <div class="flex items-center gap-2">
-            <button
-              class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50"
-              :disabled="testing"
-              @click="testLlm"
-            >{{ testing ? "测试中…" : "测试连通" }}</button>
-            <button
-              class="rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
-              :disabled="reloading"
-              @click="reloadLlm"
-            >{{ reloading ? "重载中…" : "保存并热重载" }}</button>
+            <GButton variant="secondary" size="sm" :loading="testing" @click="testLlm">
+              测试连通
+            </GButton>
+            <GButton size="sm" :loading="reloading" @click="reloadLlm">
+              保存并热重载
+            </GButton>
           </div>
         </div>
         <p
           v-if="testResult"
-          class="mb-3 rounded-lg px-3 py-2 text-xs"
-          :class="testResult.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'"
-        >{{ testResult.text }}</p>
+          class="mt-3 rounded-md px-3 py-2 text-[12px]"
+          :class="testResult.ok ? 'bg-success/10 text-success' : 'bg-error/10 text-error'"
+        >
+          {{ testResult.text }}
+        </p>
         <p
           v-if="reloadResult"
-          class="mb-3 rounded-lg px-3 py-2 text-xs"
-          :class="reloadResult.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'"
-        >{{ reloadResult.text }}</p>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">Base URL</label>
-            <input v-model="fields.llm.base_url" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">API Key</label>
-            <input v-model="fields.llm.api_key" type="password" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" placeholder="sk-..." />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">模型</label>
-            <input v-model="fields.llm.model" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">数据目录</label>
-            <input v-model="fields.llm.data_dir" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-          </div>
+          class="mt-3 rounded-md px-3 py-2 text-[12px]"
+          :class="reloadResult.ok ? 'bg-success/10 text-success' : 'bg-error/10 text-error'"
+        >
+          {{ reloadResult.text }}
+        </p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">Base URL</span>
+            <GInput v-model="fields.llm.base_url" />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">API Key</span>
+            <GInput v-model="fields.llm.api_key" type="password" placeholder="sk-..." />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">模型</span>
+            <GInput v-model="fields.llm.model" />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">数据目录</span>
+            <GInput v-model="fields.llm.data_dir" />
+          </label>
         </div>
-      </section>
+      </GCard>
 
-      <!-- echo 默认任务 -->
-      <section class="card p-5">
-        <h3 class="mb-4 text-sm font-semibold text-slate-300">默认任务</h3>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div class="sm:col-span-2">
-            <label class="flex items-center gap-2 text-sm text-slate-300">
-              <input v-model="fields.echo.enabled" type="checkbox" class="h-4 w-4 rounded accent-indigo-500" />
-              echo 回显（收到 /echo 后原样回显下一条消息；开启时这两条消息不进命令/大模型）
-            </label>
-          </div>
+      <!-- 默认任务 -->
+      <GCard>
+        <h3 class="text-[20px]">默认任务</h3>
+        <div
+          class="mt-4 flex items-center justify-between gap-4 rounded-lg border border-line px-4 py-3"
+        >
+          <span class="text-[14px] text-ink">
+            echo 回显（收到 /echo 后原样回显下一条消息；开启时这两条消息不进命令/大模型）
+          </span>
+          <GSwitch v-model="fields.echo.enabled" />
         </div>
-      </section>
+      </GCard>
 
-      <!-- WebUI 人设 -->
-      <section class="card p-5">
-        <h3 class="mb-4 text-sm font-semibold text-slate-300">WebUI / 人设</h3>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">WebUI 监听地址</label>
-            <input v-model="fields.webui.host" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">WebUI 端口</label>
-            <input v-model.number="fields.webui.port" type="number" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">人设目录</label>
-            <input v-model="fields.persona.personas_dir" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-xs text-slate-500">启用人设</label>
-            <input v-model="fields.persona.enable" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-indigo-500" placeholder="可留空取第一个" />
-          </div>
+      <!-- WebUI / 人设 -->
+      <GCard>
+        <h3 class="text-[20px]">WebUI / 人设</h3>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">WebUI 监听地址</span>
+            <GInput v-model="fields.webui.host" />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">WebUI 端口</span>
+            <GInput v-model.number="fields.webui.port" type="number" />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">人设目录</span>
+            <GInput v-model="fields.persona.personas_dir" />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block text-[13px] font-medium text-ink">启用人设</span>
+            <GInput v-model="fields.persona.enable" placeholder="可留空取第一个" />
+          </label>
         </div>
-      </section>
+      </GCard>
 
-      <p class="text-xs text-slate-500">更改会自动保存到 {{ "kourichat.toml" }}（TOML 校验后原子写入），部分设置需重启生效。</p>
+      <p class="text-[12px] text-ink-soft">
+        更改会自动保存到 kourichat.toml（TOML 校验后原子写入），部分设置需重启生效。
+      </p>
     </template>
   </div>
 </template>

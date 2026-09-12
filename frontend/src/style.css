@@ -1,118 +1,137 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: dark;
-  --grid-line: rgba(99, 102, 241, 0.07);
-  --grid-line-strong: rgba(99, 102, 241, 0.12);
-  --glow-indigo: rgba(99, 102, 241, 0.14);
-  --glow-violet: rgba(139, 92, 246, 0.12);
-  --glow-emerald: rgba(52, 211, 153, 0.10);
+/* ==========================================================================
+   Genesis 设计系统 token（来源：genesis-DESIGN.md，T21）
+   - 浅色 editorial：页面 #FAFAFA、卡片 #FFFFFF、文字 #0A0A0A / #6B6B6B
+   - indigo (#6366F1) 只用于交互；阴影只出现在 hover / focus
+   ========================================================================== */
+
+@theme {
+  /* 颜色 */
+  --color-primary: #6366f1;
+  --color-primary-hover: #4f46e5;
+  --color-secondary: #20970b;
+  --color-neutral: #9c9c9c;
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-ink: #0a0a0a;
+  --color-ink-soft: #6b6b6b;
+  --color-line: #e8e8ec;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+
+  /* 字体（CJK 回退到 Noto Sans SC / 系统字体） */
+  --font-display: "General Sans", "Noto Sans SC", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-sans: "DM Sans", "Noto Sans SC", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* 阴影：静态元素不加，仅 hover / focus / 弹层 */
+  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --shadow-primary: 0 4px 12px rgba(99, 102, 241, 0.35);
+  --shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  --shadow-pop: 0 10px 38px rgba(10, 10, 10, 0.12);
+
+  /* 字体尺度（Genesis type scale 的可读子集） */
+  --text-overline: 11px;
+  --text-caption: 12px;
+  --text-small: 13px;
+  --text-body: 15px;
+  --text-subhead: 20px;
+  --text-section: 32px;
 }
 
-html,
-body {
-  height: 100%;
-}
-
-body {
-  background-color: #05060f;
-  color: #e2e8f0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei",
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-/* ============ 网格纹理 + 光晕底纹 ============ */
-.bg-grid {
-  position: relative;
-  background-color: #05060f;
-  background-image:
-    radial-gradient(1000px 500px at 20% -10%, var(--glow-indigo), transparent 60%),
-    radial-gradient(900px 450px at 95% 10%, var(--glow-violet), transparent 60%),
-    radial-gradient(800px 400px at 50% 110%, var(--glow-emerald), transparent 60%),
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-    linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px);
-  background-size:
-    100% 100%,
-    100% 100%,
-    100% 100%,
-    84px 84px,
-    84px 84px,
-    21px 21px,
-    21px 21px;
-}
-
-.bg-grid::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(180deg, rgba(2, 6, 23, 0.35), transparent 18%),
-    none;
-}
-
-/* 卡片：渐变表面 + 细边 + 顶部高光线 */
-.card {
-  position: relative;
-  border-radius: 1rem;
-  border: 1px solid rgba(51, 65, 85, 0.55);
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(2, 6, 23, 0.55)),
-    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-  background-size: 100% 100%, 24px 24px, 24px 24px;
-  box-shadow: 0 8px 30px rgba(2, 6, 23, 0.35);
-  overflow: hidden;
-}
-
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent,
-      rgba(129, 140, 248, 0.35), rgba(167, 139, 250, 0.35), transparent);
-}
-
-/* 精致滚动条 */
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-*::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 8px;
-  border: 2px solid #05060f;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: #334155;
-}
-
-.terminal {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
-    monospace;
-}
-
-/* 连接状态呼吸灯 */
-.pulse-dot {
-  animation: pulse-dot 2.2s ease-in-out infinite;
-}
-@keyframes pulse-dot {
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45);
+@layer base {
+  html {
+    color-scheme: light;
+    scroll-behavior: smooth;
   }
-  50% {
-    opacity: 0.7;
-    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0);
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Genesis：标题用展示字体 + 紧字距，正文用 DM Sans */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--color-ink);
+  }
+
+  a {
+    color: var(--color-primary);
+    text-underline-offset: 3px;
+  }
+
+  ::selection {
+    background: rgba(99, 102, 241, 0.18);
+  }
+
+  /* 中性滚动条 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #d4d4d8 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #d4d4d8;
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #b9b9c0;
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* 统一 focus ring（Genesis：3px indigo ring，而不是阴影） */
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-focus);
+  }
+
+  /* 唯一装饰元素：极淡点阵（仅 Auth / Onboarding 使用） */
+  .dot-grid {
+    background-color: var(--color-bg);
+    background-image: radial-gradient(
+      rgba(10, 10, 10, 0.09) 1px,
+      transparent 1px
+    );
+    background-size: 22px 22px;
+    background-position: center center;
+  }
+
+  .terminal {
+    font-family: var(--font-mono);
   }
 }
