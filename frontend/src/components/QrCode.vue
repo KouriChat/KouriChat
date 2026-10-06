@@ -14,7 +14,7 @@ async function render() {
     url.value = await QRCode.toDataURL(props.value, {
       width: props.size ?? 176,
       margin: 1,
-      color: { dark: "#0f172a", light: "#ffffff" },
+      color: { dark: "#0a0a0a", light: "#ffffff" },
     });
   } catch {
     url.value = "";
@@ -30,12 +30,14 @@ watch(() => props.value, render);
     v-if="url"
     :src="url"
     alt="登录二维码"
-    class="shrink-0 rounded-xl border border-slate-700 bg-white object-contain p-1.5"
+    class="shrink-0 rounded-xl border border-line bg-white object-contain p-1.5"
     :style="{ width: (size ?? 176) + 'px', height: (size ?? 176) + 'px' }"
   />
   <div
     v-else
-    class="flex shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-800/40 text-xs text-slate-500"
+    class="flex shrink-0 items-center justify-center rounded-xl border border-line bg-bg text-[12px] text-ink-soft"
     :style="{ width: (size ?? 176) + 'px', height: (size ?? 176) + 'px' }"
-  >二维码生成中…</div>
+  >
+    二维码生成中…
+  </div>
 </template>

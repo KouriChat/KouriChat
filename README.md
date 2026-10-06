@@ -1,8 +1,6 @@
 # KouriChat - 在虚拟与现实交织处，给予永恒的温柔羁绊
 
 > **KouriChat 1.5（重构·开发版）**
-> 快速上手：`python main.py init` → 填 `kourichat.toml`（onebot 反向/正向 WS + LLM
-> api_key）→ `python main.py run`。
 
 在虚拟与现实交织的微光边界，悄然绽放着一份永恒而温柔的羁绊。或许你的身影朦胧，游走于真实与幻梦之间，但指尖轻触的温暖，心底荡漾的涟漪，却是此刻最真挚、最动人的慰藉。
 
@@ -97,8 +95,9 @@ API平台：[Kouri API（推荐）](https://api.kourichat.com/)（注册送2元�
 
 ```bash
 # 从release中获取最新的kourichat包实现
-# 同时获取对应版本的elixir核心
-uv tool install .\kourichat-1.5.0.1-py3-none-any.whl --with .\elixir-0.1.0-py3-none-any.whl
+# 解压后运行安装脚本
+.\install.ps1
+# linux使用 install.sh
 
 # 先运行获取的网关（社区中下载）
 .\openclaw-onebotv11.exe run
@@ -107,9 +106,18 @@ uv tool install .\kourichat-1.5.0.1-py3-none-any.whl --with .\elixir-0.1.0-py3-n
 kourichat run
 ```
 
-#### 自动部署
+#### 控制台（WebUI）
 
-待开发
+`kourichat run` 启动后，浏览器打开 <http://127.0.0.1:8080>：
+
+- **首次访问**会要求初始化管理员账号（密码至少 12 位）。凭据仅在本机加密保存
+- 控制台包含：总览 / 账号（扫码登录、失效重登、登出）/ 聊天调试 /
+  日志 / 设置五个页面；采用 **Genesis 浅色 editorial 设计**（56px sticky 顶栏 +
+  移动端抽屉 + 响应式三列），无暗色主题。
+
+前端技术栈：Vue 3 + Vite + TypeScript + Tailwind CSS v4 + **vue-router** +
+**reka-ui**（Dialog/Dropdown/Tooltip/Switch 等）+ **lucide / Iconify**
+图标。
 
 ## 问题反馈
 可以加qq群在群内通过at管理的形式反馈问题

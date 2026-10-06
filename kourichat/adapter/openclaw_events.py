@@ -33,12 +33,18 @@ async def handle_notice(frame: dict[str, Any], *,
     elif notice_type == "offline":
         if account_id:
             await _mark_status(store, account_id, STATUS_OFFLINE)
-    elif notice_type == "login" and sub_type == "login_success":
+    elif notice_type == "login_success" or (
+            notice_type == "login" and sub_type == "login_success"):
+        # 新网关：notice_type=login_success，带 account_id+user_id（无 token）。
+        # 同时兼容旧的 login/login_success 形态。
         if account_id:
-            existing = await store.get(account_id)
-            if existing is not None:
-                await store.save({**existing, "status": STATUS_ONLINE})
+            await _upsert_account(store, account_id,
+                                  str(frame.get("user_id") or ""),
+                                  STATUS_ONLINE)
             needs_relogin.pop(account_id, None)
+    elif notice_type == "login_qr_expired":
+        # 只广播二维码过期；刷新由 LoginManager 处理，不改账号状态。
+        pass
     else:
         return
     await _emit_notice(events, frame)
@@ -60,6 +66,21 @@ async def _mark_status(store: Any, account_id: str, status: str) -> None:
     existing = await store.get(account_id)
     if existing is not None and existing.get("status") != status:
         await store.save({**existing, "status": status})
+
+
+async def _upsert_account(store: Any, account_id: str, user_id: str,
+                          status: str) -> None:
+    """登录成功：账号不存在则创建，存在则更新 user_id/status（无 token）。"""
+    existing = await store.get(account_id)
+    if existing is None:
+        await store.save({"accountId": account_id, "userId": user_id,
+                          "token": "", "baseUrl": "", "status": status})
+        return
+    if (existing.get("status") != status
+            or (user_id and str(existing.get("userId") or "") != user_id)):
+        await store.save({**existing,
+                          "userId": user_id or existing.get("userId") or "",
+                          "status": status})
 
 
 async def _emit_notice(events: Any, frame: dict[str, Any]) -> None:

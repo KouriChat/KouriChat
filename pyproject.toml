@@ -1,6 +1,6 @@
 [project]
 name = "kourichat"
-version = "1.5.0.1"
+version = "1.5.0.2"
 description = "KouriChat 1.5 dev"
 requires-python = ">=3.14"
 dependencies = [
@@ -8,6 +8,7 @@ dependencies = [
     "elixir>=0.1.0",
     "loguru>=0.7",
     "aiohttp>=3.9",   # webui 控制台插件（kourichat.webui）
+    "cryptography>=42",
     "websockets>=13",  # OneBot/OpenClaw 适配器 WS 客户端
 ]
 

@@ -24,7 +24,7 @@ from .base import Adapter
 from ..event import MESSAGE_RECEIVE
 from ..types import Channel, Message, OutMessage, Segment, User
 
-DEFAULT_REVERSE_HOST = "0.0.0.0"
+DEFAULT_REVERSE_HOST = "127.0.0.1"
 DEFAULT_REVERSE_PORT = 6700
 
 
@@ -71,6 +71,10 @@ class OneBotV11Adapter(Adapter):
             logger = self._ctx.get("logger")
             if logger:
                 logger.info("onebot reverse ws listening", host=self.ws_host, port=self.port)
+                if self.ws_host not in {"127.0.0.1", "::1", "localhost"} and not self.token:
+                    logger.warn(
+                        "onebot reverse ws exposed without token; "
+                        "bind 127.0.0.1 or set token", host=self.ws_host, port=self.port)
         else:
             headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
             self._ws = await websockets.connect(self.ws_url, additional_headers=headers)

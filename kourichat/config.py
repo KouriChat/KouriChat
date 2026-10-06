@@ -7,6 +7,31 @@ from pathlib import Path
 from typing import Any
 
 
+def _walk_values(value: Any):
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _walk_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_values(item)
+    else:
+        yield value
+
+
+def _resolve_secret_refs(value: Any, store: Any) -> Any:
+    """Resolve only the explicit ``@secret:<name>`` reference format."""
+    if isinstance(value, dict):
+        return {k: _resolve_secret_refs(v, store) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_resolve_secret_refs(v, store) for v in value]
+    if isinstance(value, str) and value.startswith("@secret:"):
+        name = value[len("@secret:"):]
+        if not name or ":" in name or "\n" in name or "\r" in name:
+            raise ValueError("invalid secret reference")
+        return store.get(name)
+    return value
+
+
 class Config:
     """TOML 主配置：读 `plugins`/`adapters` 清单 + 任意段落。"""
 
@@ -16,7 +41,14 @@ class Config:
 
     def load(self) -> "Config":
         with open(self.path, "rb") as f:
-            self.data = tomllib.load(f)
+            data = tomllib.load(f)
+        if any(isinstance(v, str) and v.startswith("@secret:")
+               for v in _walk_values(data)):
+            from .security import SecretStore
+            store = SecretStore(self.path.parent / ".kourichat-secrets")
+            self.data = _resolve_secret_refs(data, store)
+        else:
+            self.data = data
         return self
 
     def reload(self) -> "Config":

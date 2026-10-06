@@ -10,12 +10,19 @@
 from __future__ import annotations
 
 import collections
+import ipaddress
 import json
+import math
+import os
+import re
+import socket
 import threading
 import time
 import tomllib
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
+from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 try:
     from loguru import logger as _loguru
@@ -28,6 +35,7 @@ except ImportError:  # pragma: no cover
     web = None  # type: ignore[assignment]
 
 from ..event import MESSAGE_RECEIVE
+from ..security import AdminAuth, SecretStore, secure_file
 from ..types import Channel, Message, Segment, User
 
 # 静态目录：优先包内 static/（wheel 打包时由 build 脚本填充 frontend/dist 产物），
@@ -104,6 +112,57 @@ async def _read_body(request: web.Request) -> dict[str, Any]:
     return body
 
 
+async def api_auth_status(request: web.Request) -> web.Response:
+    token = _extract_token(request)
+    authenticated = bool(token and not request.app["admin_auth"].is_revoked(token)
+                         and request.app["admin_auth"].verify_token(token))
+    return _json({"ok": True, "initialized": request.app["admin_auth"].initialized,
+                  "authenticated": authenticated})
+
+
+async def api_auth_setup(request: web.Request) -> web.Response:
+    auth = request.app["admin_auth"]
+    if auth.initialized:
+        return _json({"ok": False, "error": "管理员账号已初始化"}, 409)
+    if not request.remote or request.remote not in {"127.0.0.1", "::1", "localhost"}:
+        return _json({"ok": False, "error": "首次初始化仅允许本机访问"}, 403)
+    body = await _read_body(request)
+    username = body.get("username")
+    password = body.get("password")
+    if not isinstance(username, str) or not isinstance(password, str):
+        return _json({"ok": False, "error": "username and password are required"}, 400)
+    try:
+        auth.setup(username, password)
+        return _json({"ok": True, "token": auth.issue(username.strip())})
+    except ValueError as exc:
+        return _json({"ok": False, "error": str(exc)}, 400)
+
+
+async def api_auth_login(request: web.Request) -> web.Response:
+    auth = request.app["admin_auth"]
+    if not auth.initialized:
+        return _json({"ok": False, "error": "管理员账号尚未初始化"}, 409)
+    body = await _read_body(request)
+    username = body.get("username")
+    password = body.get("password")
+    limiter = request.app["login_limiter"]
+    key = f"{request.remote}:{username}"
+    if not limiter.allow(key):
+        return _json({"ok": False, "error": "尝试过于频繁，请 15 分钟后再试"}, 429)
+    if not isinstance(username, str) or not isinstance(password, str) \
+            or not auth.verify(username, password):
+        limiter.record(key)
+        return _json({"ok": False, "error": "账号或密码错误"}, 401)
+    limiter.reset(key)
+    return _json({"ok": True, "token": auth.issue(username.strip())})
+
+
+async def api_auth_logout(request: web.Request) -> web.Response:
+    token = request.get("auth_token", "")
+    request.app["admin_auth"].revoke(token)
+    return _json({"ok": True})
+
+
 async def api_status(request: web.Request) -> web.Response:
     return _json(await _adapter(request.app["ctx"]).status())
 
@@ -112,6 +171,19 @@ async def api_login(request: web.Request) -> web.Response:
     body = await _read_body(request)
     account_id = str(body.get("accountId") or "") or None
     return _json(await _adapter(request.app["ctx"]).start_login(account_id))
+
+
+async def api_login_refresh(request: web.Request) -> web.Response:
+    """手动刷新当前二维码（weixin_login_refresh；失败回退重新 weixin_login）。"""
+    adapter = _adapter(request.app["ctx"])
+    refresh = getattr(adapter, "refresh_login", None)
+    if refresh is None:
+        return _json({"ok": False, "error": "adapter 不支持二维码刷新"}, 400)
+    try:
+        state = await refresh()
+    except Exception as exc:
+        return _json({"ok": False, "error": str(exc)}, 400)
+    return _json(state or {})
 
 
 async def api_relogin(request: web.Request) -> web.Response:
@@ -129,7 +201,7 @@ async def api_logout(request: web.Request) -> web.Response:
         return _json({"ok": False, "error": "accountId is required"}, 400)
     await _adapter(request.app["ctx"]).logout_local(account_id)
     return _json({"ok": True, "note":
-                  "已本地标记登出；网关侧凭据请用 weixin-gateway logout <id> 清理"})
+                  "已通知网关 weixin_logout 并本地移除账号"})
 
 
 async def api_chat_send(request: web.Request) -> web.Response:
@@ -175,9 +247,16 @@ async def api_chat_mock(request: web.Request) -> web.Response:
 
 
 async def api_logs(request: web.Request) -> web.Response:
-    limit = int(request.query.get("limit", "100") or 100)
-    level = str(request.query.get("level", "DEBUG") or "DEBUG")
-    skip = int(request.query.get("skip", "0") or 0)
+    try:
+        limit = int(request.query.get("limit", "100") or 100)
+        skip = int(request.query.get("skip", "0") or 0)
+    except ValueError:
+        return _json({"ok": False, "error": "invalid limit/skip"}, 400)
+    limit = max(1, min(limit, 1000))
+    skip = max(0, skip)
+    level = str(request.query.get("level", "DEBUG") or "DEBUG").upper()
+    if level not in _LOG_LEVELS:
+        return _json({"ok": False, "error": "invalid level"}, 400)
     buf = request.app["logbuf"]
     return _json({"logs": buf.snapshot(limit=limit, level=level, skip=skip)})
 
@@ -201,8 +280,129 @@ LLM_MODULE = "kourichat.llm.factory"
 WEBUI_MODULE = "kourichat.webui"
 PERSONA_MODULE = "kourichat.logic.persona"
 ECHO_MODULE = "kourichat.logic.echo"
+SECRET_MASK = "********"
+PUBLIC_AUTH_PATHS = frozenset({"/api/auth/status", "/api/auth/setup", "/api/auth/login"})
+JSON_METHODS = frozenset({"POST", "PUT", "PATCH"})
 
-# 表单可编辑字段：section -> {key: 默认值}（仅暴露这些，其余字段在文件中保持不变）
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str,
+                         headers: Any, newurl: str) -> Any:
+        return None
+
+
+def _allowed_origin(request: web.Request, origin: str,
+                    configured: set[str]) -> bool:
+    if not origin:
+        return True
+    if origin in configured:
+        return True
+    return origin == f"{request.scheme}://{request.host}"
+
+
+def _extract_token(request: web.Request) -> str:
+    value = request.headers.get("Authorization", "")
+    scheme, sep, token = value.partition(" ")
+    if not sep or scheme.lower() != "bearer" or not token or " " in token:
+        return ""
+    return token
+
+
+@web.middleware
+def _security_middleware(request: web.Request, handler: Any) -> Any:
+    if not request.path.startswith("/api/"):
+        return handler(request)
+    origin = request.headers.get("Origin", "")
+    if not _allowed_origin(request, origin, request.app["allowed_origins"]):
+        raise web.HTTPForbidden(
+            text=json.dumps({"ok": False, "error": "origin not allowed"}),
+            content_type="application/json")
+    if request.method == "OPTIONS":
+        if not origin:
+            raise web.HTTPForbidden()
+        response = web.Response(status=204)
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, OPTIONS"
+        response.headers["Vary"] = "Origin"
+        return response
+    if request.method in JSON_METHODS:
+        content_type = request.content_type.lower()
+        if content_type != "application/json" and not content_type.endswith("+json"):
+            raise web.HTTPUnsupportedMediaType(
+                text=json.dumps({"ok": False, "error": "JSON body required"}),
+                content_type="application/json")
+    if request.path not in PUBLIC_AUTH_PATHS:
+        token = _extract_token(request)
+        auth = request.app["admin_auth"]
+        if not token or auth.is_revoked(token) or not auth.verify_token(token):
+            raise web.HTTPUnauthorized(
+                text=json.dumps({"ok": False, "error": "authentication required"}),
+                content_type="application/json",
+                headers={"WWW-Authenticate": "Bearer"})
+        request["auth_token"] = token
+    return handler(request)
+
+
+# ---- 安全响应头 / 登录限流（T31）-----------------------------------------
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://api.fontshare.com https://fonts.googleapis.com; "
+    "font-src 'self' data: https://cdn.fontshare.com https://fonts.gstatic.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "form-action 'self'"
+)
+
+
+async def _on_response_prepare(request: web.Request,
+                               response: web.StreamResponse) -> None:
+    h = response.headers
+    h.setdefault("Content-Security-Policy", _CSP)
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault("Permissions-Policy",
+                 "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+    h.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    h.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    h["Server"] = "KouriChat"
+    if request.path.startswith("/api/"):
+        h.setdefault("Cache-Control", "no-store, no-cache, must-revalidate, private")
+        h.setdefault("Pragma", "no-cache")
+    if request.scheme == "https":
+        h.setdefault("Strict-Transport-Security",
+                     "max-age=63072000; includeSubDomains")
+
+
+class _LoginLimiter:
+    """内存登录失败限流（按 远端 IP + 用户名）。"""
+
+    def __init__(self, max_attempts: int = 5, window: float = 900.0) -> None:
+        self.max_attempts = max_attempts
+        self.window = window
+        self._hits: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            hits = [t for t in self._hits.get(key, []) if now - t < self.window]
+            self._hits[key] = hits
+            return len(hits) < self.max_attempts
+
+    def record(self, key: str) -> None:
+        with self._lock:
+            self._hits.setdefault(key, []).append(time.monotonic())
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self._hits.pop(key, None)
+
 SETTINGS_FIELDS: dict[str, dict[str, Any]] = {
     "core": {"log_level": "INFO"},
     "openclaw": {"gateway_url": "http://127.0.0.1:8765",
@@ -219,15 +419,27 @@ SETTINGS_FIELDS: dict[str, dict[str, Any]] = {
 def _fmt_toml(v: Any) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
-    if isinstance(v, (int, float)):
+    if isinstance(v, int):
         return str(v)
-    s = str(v).replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{s}"'
+    if isinstance(v, float):
+        if not math.isfinite(v):
+            raise ValueError("invalid TOML number")
+        return str(v)
+    if not isinstance(v, str):
+        raise ValueError("unsupported TOML value")
+    return json.dumps(v, ensure_ascii=False)
+
+
+def _toml_key(key: Any) -> str:
+    if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", key):
+        raise ValueError("invalid TOML key")
+    return key
 
 
 def _emit_scalar(lines: list[str], key: str, val: Any) -> None:
+    key = _toml_key(key)
     if isinstance(val, dict):  # 单层内联表（如 role_prompt_overrides）
-        inner = ", ".join(f"{k} = {_fmt_toml(v)}" for k, v in val.items())
+        inner = ", ".join(f"{_toml_key(k)} = {_fmt_toml(v)}" for k, v in val.items())
         lines.append(f"{key} = {{ {inner} }}")
     else:
         lines.append(f"{key} = {_fmt_toml(val)}")
@@ -315,7 +527,12 @@ def _project_settings(data: dict[str, Any]) -> dict[str, Any]:
              defaults: dict[str, Any]) -> dict[str, Any]:
         entry = _entry_by_module(data, list_key, module)
         cfg = (entry or {}).get("config") or {}
-        return {k: cfg.get(k, d) for k, d in defaults.items()}
+        result = {k: cfg.get(k, d) for k, d in defaults.items()}
+        if section in ("openclaw", "llm"):
+            secret = result.get("access_token" if section == "openclaw" else "api_key")
+            result["access_token" if section == "openclaw" else "api_key"] = (
+                SECRET_MASK if secret else "")
+        return result
     return {
         "core": {k: core.get(k, d) for k, d in SETTINGS_FIELDS["core"].items()},
         "openclaw": proj("openclaw", "adapters", OPENCLAW_MODULE,
@@ -328,15 +545,91 @@ def _project_settings(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _apply_settings(data: dict[str, Any], fields: dict[str, Any]) -> None:
+def _validate_settings(fields: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(fields, dict):
+        raise ValueError("fields is required")
+    allowed = {section: set(values) for section, values in SETTINGS_FIELDS.items()}
+    result: dict[str, dict[str, Any]] = {}
+    type_map: dict[tuple[str, str], type] = {
+        ("core", "log_level"): str,
+        ("openclaw", "gateway_url"): str, ("openclaw", "access_token"): (str, type(None)),
+        ("openclaw", "data_dir"): str, ("openclaw", "autologin"): bool,
+        ("openclaw", "poll_interval"): (int, float),
+        ("llm", "base_url"): str, ("llm", "api_key"): (str, type(None)),
+        ("llm", "model"): str, ("llm", "data_dir"): str,
+        ("webui", "host"): str, ("webui", "port"): int,
+        ("persona", "personas_dir"): str, ("persona", "enable"): str,
+        ("echo", "enabled"): bool,
+    }
+    for section, values in fields.items():
+        if section not in allowed or not isinstance(values, dict):
+            raise ValueError("unknown settings section")
+        result[section] = {}
+        for key, value in values.items():
+            if key not in allowed[section] or not re.fullmatch(r"[A-Za-z0-9_-]+", key):
+                raise ValueError("unknown settings field")
+            expected = type_map[(section, key)]
+            if expected is int and (isinstance(value, bool) or not isinstance(value, int)):
+                raise ValueError(f"invalid type for {section}.{key}")
+            if expected != int and not isinstance(value, expected):
+                raise ValueError(f"invalid type for {section}.{key}")
+            if section == "core" and key == "log_level" and value not in _LOG_LEVELS:
+                raise ValueError("invalid log level")
+            if section == "webui" and key == "port" and not 1 <= value <= 65535:
+                raise ValueError("invalid port")
+            if section == "openclaw" and key == "poll_interval":
+                if not math.isfinite(float(value)) or value <= 0:
+                    raise ValueError("invalid poll interval")
+            if section in ("openclaw", "llm") and key in ("gateway_url", "base_url"):
+                parsed = urlsplit(str(value).strip())
+                if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                    raise ValueError(f"invalid {section}.{key}")
+            result[section][key] = value
+    return result
+
+
+def _secret_value(store: SecretStore, name: str, value: Any,
+                  old: Any) -> Any:
+    if value == SECRET_MASK:
+        if isinstance(old, str) and old and not old.startswith("@secret:"):
+            return store.put(name, old)
+        return old
+    if value is None or value == "":
+        store.delete(name)
+        return ""
+    return store.put(name, value)
+
+
+def _apply_settings(data: dict[str, Any], fields: dict[str, Any],
+                    secrets: SecretStore) -> dict[str, dict[str, Any]]:
+    fields = _validate_settings(fields)
+    normalized = {section: dict(values) for section, values in fields.items()}
     core = data.setdefault("core", {})
-    for k, v in (fields.get("core") or {}).items():
-        core[k] = v
-    _upsert_config(data, "adapters", OPENCLAW_MODULE, fields.get("openclaw"))
-    _upsert_config(data, "plugins", LLM_MODULE, fields.get("llm"))
-    _upsert_config(data, "plugins", WEBUI_MODULE, fields.get("webui"))
-    _upsert_config(data, "plugins", PERSONA_MODULE, fields.get("persona"))
-    _upsert_config(data, "plugins", ECHO_MODULE, fields.get("echo"))
+    for key, value in normalized.get("core", {}).items():
+        core[key] = value
+    old_projected = _project_settings(data)
+    for section, list_key, module in (
+        ("openclaw", "adapters", OPENCLAW_MODULE),
+        ("llm", "plugins", LLM_MODULE),
+        ("webui", "plugins", WEBUI_MODULE),
+        ("persona", "plugins", PERSONA_MODULE),
+        ("echo", "plugins", ECHO_MODULE),
+    ):
+        patch = normalized.get(section)
+        if patch is None:
+            continue
+        secret_key = "access_token" if section == "openclaw" else "api_key" if section == "llm" else None
+        if secret_key and secret_key in patch:
+            old_entry = _entry_by_module(data, list_key, module) or {}
+            old_cfg = old_entry.get("config") or {}
+            patch[secret_key] = _secret_value(
+                secrets, f"{section}.{secret_key}", patch[secret_key], old_cfg.get(secret_key, ""))
+            runtime_secret = patch[secret_key]
+            if isinstance(runtime_secret, str) and runtime_secret.startswith("@secret:"):
+                runtime_secret = secrets.get(runtime_secret[len("@secret:"):])
+            normalized[section][secret_key] = runtime_secret
+        _upsert_config(data, list_key, module, patch)
+    return normalized
 
 
 async def api_settings_get(request: web.Request) -> web.Response:
@@ -376,36 +669,47 @@ async def api_settings_post(request: web.Request) -> web.Response:
     if not isinstance(fields, dict):
         return _json({"ok": False, "error": "fields is required"}, 400)
     data = _load_config_data(cfg)
-    _apply_settings(data, fields)
-    content = _toml_dump(data)
+    before_modules = [(item.get("module"), key)
+                      for key in ("plugins", "adapters")
+                      for item in data.get(key, []) if isinstance(item, dict)]
     try:
-        tomllib.loads(content)
-    except tomllib.TOMLDecodeError as exc:
-        return _json({"ok": False, "error": f"TOML 校验失败: {exc}"}, 400)
+        normalized = _apply_settings(
+            data, fields, request.app["admin_auth"].secrets)
+        content = _toml_dump(data)
+        parsed = tomllib.loads(content)
+        after_modules = [(item.get("module"), key)
+                         for key in ("plugins", "adapters")
+                         for item in parsed.get(key, []) if isinstance(item, dict)]
+        if before_modules and before_modules != after_modules:
+            raise ValueError("plugin structure cannot be changed")
+    except (ValueError, tomllib.TOMLDecodeError) as exc:
+        return _json({"ok": False, "error": str(exc)}, 400)
     path = Path(cfg.path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
+    _chmod_private(tmp)
     tmp.replace(path)
-    # 热更新运行中的 openclaw 适配器（引导页/设置页保存后立即生效，无需重启）
+    _chmod_private(path)
     adapter = request.app["ctx"].get("adapter.openclaw")
-    oc = fields.get("openclaw") or {}
+    oc = normalized.get("openclaw") or {}
     if adapter is not None:
         try:
             adapter.update_gateway(gateway_url=oc.get("gateway_url"),
                                    access_token=oc.get("access_token"))
-        except Exception:
-            pass  # 适配器无此方法时忽略（旧版本）
-    # LLM 配置变更 → 运行时重启 llm.factory 组件（新 key/model 立即生效）
+        except Exception as exc:
+            logger = request.app["ctx"].get("logger")
+            if logger is not None:
+                logger.warn("webui update_gateway failed", error=str(exc))
     notes: list[str] = ["已保存"]
-    if fields.get("llm"):
+    if normalized.get("llm"):
         try:
-            if await _reload_llm_factory(request.app["ctx"], fields["llm"]):
+            if await _reload_llm_factory(request.app["ctx"], normalized["llm"]):
                 notes.append("LLM 组件已热重载")
             else:
                 notes.append("llm.factory 未装配，跳过热重载")
-        except Exception as exc:
-            notes.append(f"LLM 热重载失败: {exc}")
+        except Exception:
+            notes.append("LLM 热重载失败")
     return _json({"ok": True, "note": "；".join(notes)})
 
 
@@ -415,52 +719,89 @@ async def api_llm_reload(request: web.Request) -> web.Response:
     cfg = ctx.get("config")
     llm: dict[str, Any] = {}
     if cfg is not None:
-        llm = _project_settings(_load_config_data(cfg))["llm"]
+        raw = _load_config_data(cfg)
+        entry = _entry_by_module(raw, "plugins", LLM_MODULE)
+        llm = dict((entry or {}).get("config") or {})
+        key = llm.get("api_key")
+        if isinstance(key, str) and key.startswith("@secret:"):
+            llm["api_key"] = request.app["admin_auth"].secrets.get(key[8:])
     try:
         if await _reload_llm_factory(ctx, llm):
             return _json({"ok": True, "note": "LLM 组件已热重载（新配置已生效）"})
         return _json({"ok": False, "error": "llm.factory 未装配，无法重载"}, 400)
-    except Exception as exc:
-        return _json({"ok": False, "error": f"LLM 热重载失败: {exc}"}, 400)
+    except Exception:
+        return _json({"ok": False, "error": "LLM 热重载失败"}, 400)
 
 
 async def api_llm_test(request: web.Request) -> web.Response:
-    """用当前 LLM 配置发一条最小 chat 请求，验证连通性。"""
+    """用当前或明确提供的 LLM 配置发一条最小 chat 请求。"""
     import urllib.error
-    import urllib.request
 
     body = await _read_body(request)
     cfg = request.app["ctx"].get("config")
-    llm = body.get("llm") or {}
-    if cfg is not None:
-        cur = _project_settings(_load_config_data(cfg))["llm"]
-        llm = {k: llm.get(k, cur.get(k)) for k in cur}
-    base_url = str(llm.get("base_url") or "").rstrip("/")
-    api_key = str(llm.get("api_key") or "")
-    model = str(llm.get("model") or "")
+    current = _load_config_data(cfg) if cfg is not None else {}
+    current_llm = _project_settings(current)["llm"]
+    supplied = body.get("llm") or {}
+    if not isinstance(supplied, dict):
+        return _json({"ok": False, "error": "invalid llm configuration"}, 400)
+    base_url = str(supplied.get("base_url") or current_llm.get("base_url") or "").rstrip("/")
+    endpoint_changed = "base_url" in supplied and base_url != str(current_llm.get("base_url") or "").rstrip("/")
+    api_key = supplied.get("api_key")
+    if not api_key or api_key == SECRET_MASK:
+        api_key = ""
+        if not endpoint_changed:
+            entry = _entry_by_module(current, "plugins", LLM_MODULE)
+            if entry:
+                raw = (entry.get("config") or {}).get("api_key", "")
+                if isinstance(raw, str) and raw.startswith("@secret:"):
+                    api_key = request.app["admin_auth"].secrets.get(raw[8:])
+                else:
+                    api_key = str(raw or "")
+    model = str(supplied.get("model") or current_llm.get("model") or "")
+    parsed = urlsplit(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname \
+            or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        return _json({"ok": False, "error": "unsupported LLM endpoint"}, 400)
+    try:
+        port = parsed.port
+    except ValueError:
+        return _json({"ok": False, "error": "invalid LLM endpoint"}, 400)
+    # 自托管控制台的常见用法就是本地/代理型 endpoint（Ollama、one-api、vLLM、
+    # Clash fake-ip 198.18.0.0/15 等），因此允许私网/回环/自定义端口；
+    # 仅拦截 SSRF 元数据面：link-local(169.254/fe80)、组播、未指定地址。
+    try:
+        infos = await __import__("asyncio").to_thread(
+            socket.getaddrinfo, parsed.hostname, port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM)
+    except OSError:
+        return _json({"ok": False, "error": "LLM endpoint cannot be resolved"}, 400)
+    addresses = {info[4][0] for info in infos}
+    if not addresses:
+        return _json({"ok": False, "error": "LLM endpoint cannot be resolved"}, 400)
+    try:
+        if any((ipaddress.ip_address(addr).is_link_local
+                or ipaddress.ip_address(addr).is_multicast
+                or ipaddress.ip_address(addr).is_unspecified)
+               for addr in addresses):
+            return _json({"ok": False, "error": "LLM endpoint is not allowed"}, 400)
+    except ValueError:
+        return _json({"ok": False, "error": "invalid LLM endpoint"}, 400)
     if not base_url or not api_key or not model:
         return _json({"ok": False, "error": "请先填写 base_url / api_key / model"}, 400)
-    url = base_url + "/chat/completions"
-    payload = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 4,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=payload,
-        headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {api_key}"})
+    payload = json.dumps({"model": model, "messages": [{"role": "user", "content": "ping"}],
+                          "max_tokens": 4}).encode("utf-8")
+    req = Request(base_url + "/chat/completions", data=payload,
+                  headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"})
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        with build_opener(_NoRedirect()).open(req, timeout=20) as resp:
+            raw = resp.read(64 * 1024)
+            data = json.loads(raw.decode("utf-8"))
         text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
-        return _json({"ok": True, "reply": text, "model": model,
-                      "note": "LLM 连通正常"})
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:300]
-        return _json({"ok": False, "error": f"HTTP {exc.code}: {detail}"}, 400)
-    except Exception as exc:
-        return _json({"ok": False, "error": f"连接失败: {exc}"}, 400)
+        return _json({"ok": True, "reply": str(text)[:4000], "model": model, "note": "LLM 连通正常"})
+    except urllib.error.HTTPError:
+        return _json({"ok": False, "error": "LLM returned an HTTP error"}, 400)
+    except Exception:
+        return _json({"ok": False, "error": "LLM connection failed"}, 400)
 
 
 async def api_setup_status(request: web.Request) -> web.Response:
@@ -514,18 +855,78 @@ async def _serve_static(request: web.Request) -> web.Response:
 # 插件入口
 # ---------------------------------------------------------------------------
 
+
+def _chmod_private(path: Path) -> None:
+    secure_file(path)
+
+
+def _migrate_plaintext_secrets(config_path: Path, auth_dir: Path) -> bool:
+    """把 kourichat.toml 里明文的 api_key/access_token 迁移为 @secret:。
+
+    返回是否发生迁移；写盘后强制 0600。config 不存在/解析失败时静默跳过。
+    """
+    path = Path(config_path)
+    if not path.is_file():
+        return False
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return False
+    store = SecretStore(auth_dir)
+    changed = False
+    for section, list_key, module in (
+        ("openclaw", "adapters", OPENCLAW_MODULE),
+        ("llm", "plugins", LLM_MODULE),
+    ):
+        field = "access_token" if section == "openclaw" else "api_key"
+        entry = _entry_by_module(data, list_key, module)
+        cfg = (entry or {}).get("config")
+        if not isinstance(cfg, dict):
+            continue
+        value = cfg.get(field)
+        if isinstance(value, str) and value and not value.startswith("@secret:"):
+            cfg[field] = store.put(f"{section}.{field}", value)
+            changed = True
+    if changed:
+        try:
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text(_toml_dump(data), encoding="utf-8")
+            _chmod_private(tmp)
+            tmp.replace(path)
+        except OSError:
+            return False
+    _chmod_private(path)
+    return changed
+
+
 async def build_app(ctx: Any, config: dict[str, Any] | None = None) -> Any:
     """构造 aiohttp app（不启动）；供 apply 与测试复用。"""
     _require_aiohttp()
     cfg = config or {}
-    app = web.Application()
+    config_service = ctx.get("config")
+    config_path = Path(getattr(config_service, "path", "kourichat.toml"))
+    auth_dir = Path(cfg.get("auth_data_dir", config_path.parent / ".kourichat-secrets"))
+    _migrate_plaintext_secrets(config_path, auth_dir)
+    app = web.Application(middlewares=[_security_middleware])
+    app.on_response_prepare.append(_on_response_prepare)
     app["ctx"] = ctx
+    app["login_limiter"] = _LoginLimiter()
     app["static_dir"] = str(cfg.get("static_dir", DEFAULT_STATIC_DIR))
     app["logbuf"] = LogBuffer(int(cfg.get("log_lines", DEFAULT_LOG_LINES)))
+    app["admin_auth"] = AdminAuth(auth_dir)
+    configured_origins = cfg.get("allowed_origins", ())
+    if isinstance(configured_origins, str):
+        configured_origins = (configured_origins,)
+    app["allowed_origins"] = {str(origin) for origin in configured_origins if origin}
 
     # API 路由必须先注册，避免被静态 catch-all 吞掉
+    app.router.add_get("/api/auth/status", api_auth_status)
+    app.router.add_post("/api/auth/setup", api_auth_setup)
+    app.router.add_post("/api/auth/login", api_auth_login)
+    app.router.add_post("/api/auth/logout", api_auth_logout)
     app.router.add_get("/api/openclaw/status", api_status)
     app.router.add_post("/api/openclaw/login", api_login)
+    app.router.add_post("/api/openclaw/login/refresh", api_login_refresh)
     app.router.add_post("/api/openclaw/relogin", api_relogin)
     app.router.add_post("/api/openclaw/logout", api_logout)
     app.router.add_post("/api/chat/send", api_chat_send)

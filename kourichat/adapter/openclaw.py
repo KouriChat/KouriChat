@@ -1,4 +1,4 @@
-"""OpenClaw 适配器（ticket 13/16）：对接 weixin-gateway 的 OneBot v11 服务面。
+"""OpenClaw 适配器（ticket 13/16）：对接 openclaw-onebotv11 的 OneBot v11 服务面。
 
 - 不改动 `kourichat/adapter/onebot.py`：继承 OneBotV11Adapter 复用
   WS 帧读写、echo 动作匹配、段过滤（register）、发送锁与未决 future 管理；
@@ -9,8 +9,9 @@
   - notice/meta 事件 → 登录失效/登录成功/生命周期处理（T16）+ `NOTICE_RECEIVE`；
   - 出向 send 的 user_id/group_id 传**字符串**（网关 recipient 只收 string，
     见 onebot-actions.ts:49-51），可选带 account_id；
-  - 登录（二维码/轮询/刷新）由 LoginManager（T15）负责，账号镜像由
-    AccountStore（T14）持久化；token_expired → 标记 invalid + 手动重登。
+  - 登录（weixin_login/weixin_login_refresh + login_success/qr_expired notice）
+    由 LoginManager（T15）负责，账号镜像由 AccountStore（T14）持久化；
+    token_expired → 标记 invalid + 手动重登。
 """
 
 from __future__ import annotations
@@ -22,10 +23,11 @@ import time
 from typing import Any
 
 import websockets
+from urllib.parse import urlsplit
 
 from .onebot import OneBotV11Adapter
 from .openclaw_events import handle_meta, handle_notice
-from .openclaw_login import LoginManager
+from .openclaw_login import ACTION_LOGOUT, LoginManager
 from .openclaw_store import AccountStore
 from ..event import MESSAGE_RECEIVE
 from ..types import Channel, Message, Segment, User
@@ -36,7 +38,7 @@ RECONNECT_MAX_DELAY = 30.0
 
 
 class OpenClawAdapter(OneBotV11Adapter):
-    """weixin-gateway 适配器：OneBot v11 WS 客户端 + 二维码登录 + 账号镜像。"""
+    """openclaw-onebotv11 适配器：OneBot v11 WS 客户端 + 二维码登录 + 账号镜像。"""
 
     capabilities = frozenset({"text", "image", "record", "video", "file"})
 
@@ -94,7 +96,15 @@ class OpenClawAdapter(OneBotV11Adapter):
                 self._connected = True
                 self._conn_attempt = 0
                 self._log("openclaw connected", url=self.ws_url)
-                await self._read_conn(self._ws)
+                reader = asyncio.create_task(self._read_conn(self._ws))
+                try:
+                    # 登录成功 notice 可能在上次断线期间错过 → 连上后核对网关账号
+                    await self._sync_accounts()
+                    await reader
+                finally:
+                    reader.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await reader
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -179,6 +189,16 @@ class OpenClawAdapter(OneBotV11Adapter):
         await handle_notice(frame, store=self._store,
                             needs_relogin=self._needs_relogin,
                             events=events)
+        # 新网关登录族 notice：转发给 LoginManager（二维码状态机）
+        notice_type = str(frame.get("notice_type") or "")
+        sub_type = str(frame.get("sub_type") or "")
+        if notice_type == "login_success" or (
+                notice_type == "login" and sub_type == "login_success"):
+            await self._login.on_login_success(
+                str(frame.get("account_id") or ""),
+                str(frame.get("user_id") or ""))
+        elif notice_type == "login_qr_expired":
+            self._login.on_qr_expired(str(frame.get("qr_id") or ""))
 
     async def _on_meta(self, frame: dict[str, Any]) -> None:
         await handle_meta(frame, store=self._store)
@@ -211,24 +231,79 @@ class OpenClawAdapter(OneBotV11Adapter):
         return await self._login.start(account_id=account_id, force=True)
 
     async def logout_local(self, account_id: str) -> None:
+        """新网关：先发 weixin_logout（停止账号 + 清理网关凭据），再本地移除。
+
+        无 WS 连接/动作失败时仍本地标记 removed，保证前端状态一致。
+        """
+        with contextlib.suppress(Exception):
+            await self._action(ACTION_LOGOUT, {"account_id": account_id})
         await self._store.remove(account_id)
         self._needs_relogin.pop(account_id, None)
+
+    async def refresh_login(self) -> dict[str, Any]:
+        """手动刷新当前二维码（weixin_login_refresh；会话失效则重新登录）。"""
+        return await self._login.refresh()
+
+    async def _sync_accounts(self) -> None:
+        """连上后核对网关在线账号，回填本地 store（可能错过 login_success）。"""
+        try:
+            resp = await self._action("weixin_status", {})
+        except Exception:
+            return
+        data = resp.get("data") if isinstance(resp, dict) else None
+        if not isinstance(data, dict):
+            return
+        for acc in data.get("accounts") or []:
+            if not isinstance(acc, dict):
+                continue
+            aid = str(acc.get("account_id") or "")
+            if not aid:
+                continue
+            status = "online" if acc.get("online") else "offline"
+            existing = await self._store.get(aid)
+            if existing is None:
+                if status == "online":
+                    await self._store.save({
+                        "accountId": aid, "userId": "", "token": "",
+                        "baseUrl": str(acc.get("base_url") or ""),
+                        "status": "online"})
+            elif existing.get("status") != status:
+                # 不覆盖已判失效/待重登的账号（避免与 token_expired 竞态）
+                if status == "online" and self._needs_relogin.get(aid):
+                    continue
+                await self._store.save({**existing, "status": status})
+            if status == "online":
+                await self._reconcile_login(aid)
 
     def update_gateway(self, gateway_url: str | None = None,
                        access_token: str | None = None) -> None:
         """热更新网关地址/令牌（引导页或设置页保存后立即生效，无需重启）。
 
-        仅更新内存状态；WS 重连与后续登录轮询会使用新值。
+        仅更新内存状态；WS 重连与后续登录 action 会使用新值。
         """
         if gateway_url:
-            self.gateway_url = str(gateway_url).rstrip("/")
+            base = str(gateway_url).rstrip("/")
+            parsed = urlsplit(base)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                raise ValueError("gateway_url 必须是 http(s)://host[:port] 形式")
+            self.gateway_url = base
             self.ws_url = self.gateway_url \
                 .replace("http://", "ws://") \
                 .replace("https://", "wss://") + "/ws"
-            self._login.base = self.gateway_url
+            self._login.base = base
         if access_token is not None:
             self.token = str(access_token)
             self._login.access_token = self.token
+
+    async def _reconcile_login(self, account_id: str) -> None:
+        """网关报在线但本地登录仍 pending（notice 错过时）→ 补记 success。"""
+        state = self._login.state()
+        if not state or state.get("status") != "pending":
+            return
+        requested = str(state.get("accountId") or "")
+        if requested and requested != account_id:
+            return
+        await self._login.on_login_success(account_id, "")
 
 
 async def apply(ctx: Any, config: dict[str, Any] | None = None) -> Any:

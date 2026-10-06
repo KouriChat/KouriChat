@@ -17,6 +17,8 @@ kourichat.toml
 .coverage
 .wayfinder
 .agent
+INSTALL.md
+PUBLISH.md
 
 .idea
 elixir-0.1.0-py3-none-any.whl
@@ -35,3 +37,14 @@ frontend/dist/
 # wheel 内静态产物（由 build.ps1 从 frontend/dist 填充）
 kourichat/webui/static/
 dist/
+
+# 本地密钥库 / WebUI 管理员凭据（security.py 生成，严禁提交）
+.kourichat-secrets/
+*.secret-key
+.secrets.json
+.webui-admin.json
+
+# 工作区临时文件
+_tmp/
+genesis-DESIGN.md
+/INSTALL.md
